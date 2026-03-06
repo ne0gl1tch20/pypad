@@ -767,6 +767,8 @@ class UiSetupMixin:
         tab.text_edit.cursorPositionChanged.connect(self._on_cursor_position_changed_for_jump_history)
         tab.text_edit.textChanged.connect(self.update_status_bar)
         tab.text_edit.textChanged.connect(self._handle_text_changed)
+        if hasattr(self, "_gamification_on_text_changed"):
+            tab.text_edit.textChanged.connect(self._gamification_on_text_changed)
         tab.text_edit.selectionChanged.connect(self._handle_selection_changed)
         tab.text_edit.copyAvailable.connect(self.update_action_states)
         tab.text_edit.undoAvailable.connect(self.update_action_states)
@@ -798,6 +800,11 @@ class UiSetupMixin:
             tab.text_edit.textChanged.disconnect(self._handle_text_changed)
         except (TypeError, RuntimeError):
             pass
+        if hasattr(self, "_gamification_on_text_changed"):
+            try:
+                tab.text_edit.textChanged.disconnect(self._gamification_on_text_changed)
+            except (TypeError, RuntimeError):
+                pass
         try:
             tab.text_edit.selectionChanged.disconnect(self._handle_selection_changed)
         except (TypeError, RuntimeError):
@@ -1817,6 +1824,7 @@ class UiSetupMixin:
             "View": "Zoom and interface visibility controls",
             "Window": "Sort and manage open documents",
             "Settings": "Preferences and customization",
+            "Play": "Gamified progression, quests, and challenges",
             "Tools": "Utilities and advanced tooling",
             "Macro": "Record and replay editing macros",
             "Plugins": "Plugin management and plugin tools",
@@ -1830,6 +1838,7 @@ class UiSetupMixin:
             ("view_menu", "View"),
             ("window_menu", "Window"),
             ("settings_menu", "Settings"),
+            ("play_menu", "Play"),
             ("tools_menu", "Tools"),
             ("macros_menu", "Macro"),
             ("plugins_menu", "Plugins"),
@@ -2073,6 +2082,8 @@ class UiSetupMixin:
         self.search_panel_action.setEnabled(has_tab)
         if hasattr(self, "workspace_panel_action"):
             self.workspace_panel_action.setEnabled(True)
+        if hasattr(self, "explorer_panel_action"):
+            self.explorer_panel_action.setEnabled(True)
         if hasattr(self, "search_results_panel_action"):
             self.search_results_panel_action.setEnabled(True)
         if hasattr(self, "status_panel_action"):
@@ -2522,6 +2533,9 @@ class UiSetupMixin:
         self.workspace_panel_action = QAction("Workspace Panel", self)
         self.workspace_panel_action.setCheckable(True)
         self.workspace_panel_action.triggered.connect(self.toggle_workspace_panel)
+        self.explorer_panel_action = QAction("Explorer Panel", self)
+        self.explorer_panel_action.setCheckable(True)
+        self.explorer_panel_action.triggered.connect(self.toggle_explorer_panel)
         self.search_results_panel_action = QAction("Search Results Panel", self)
         self.search_results_panel_action.setCheckable(True)
         self.search_results_panel_action.triggered.connect(self.toggle_search_results_panel)
@@ -2572,6 +2586,20 @@ class UiSetupMixin:
         self.preset_coding_action.triggered.connect(self.apply_coding_preset)
         self.preset_focus_action = QAction("Preset: Focus", self)
         self.preset_focus_action.triggered.connect(self.apply_focus_preset)
+        self.gamification_dashboard_action = QAction("Gamification Dashboard", self)
+        self.gamification_dashboard_action.triggered.connect(self.open_gamification_dashboard)
+        self.focus_sprint_action = QAction("Challenge: Focus Sprint...", self)
+        self.focus_sprint_action.triggered.connect(self.start_focus_sprint_mode)
+        self.no_backspace_challenge_action = QAction("Challenge: No-Backspace", self)
+        self.no_backspace_challenge_action.triggered.connect(self.toggle_no_backspace_challenge)
+        self.bug_hunt_action = QAction("Challenge: Bug Hunt", self)
+        self.bug_hunt_action.triggered.connect(self.start_bug_hunt_mode)
+        self.craft_tool_action = QAction("Craft Template Tool...", self)
+        self.craft_tool_action.triggered.connect(self.craft_template_tool)
+        self.export_crafted_tools_action = QAction("Export Crafted Tools Pack...", self)
+        self.export_crafted_tools_action.triggered.connect(self.export_crafted_tools_pack)
+        self.mark_plugin_use_action = QAction("Count Plugin Feature Use", self)
+        self.mark_plugin_use_action.triggered.connect(self.mark_plugin_feature_used)
 
         self.exit_action = QAction("E&xit", self)
         self.exit_action.triggered.connect(self.close)
@@ -4164,6 +4192,7 @@ class UiSetupMixin:
         project_panels_menu.addAction(self.minimap_action)
         project_panels_menu.addAction(self.symbol_outline_action)
         project_panels_menu.addSeparator()
+        project_panels_menu.addAction(self.explorer_panel_action)
         project_panels_menu.addAction(self.workspace_panel_action)
         project_panels_menu.addAction(self.search_results_panel_action)
         project_panels_menu.addAction(self.editor_panel_action)
@@ -4214,6 +4243,18 @@ class UiSetupMixin:
         self.accessibility_menu = self.settings_menu.addMenu("Accessibility")
         self.accessibility_menu.addAction(self.accessibility_high_contrast_action)
         self.accessibility_menu.addAction(self.accessibility_dyslexic_action)
+
+        self.play_menu = menu_bar.addMenu("&Play")
+        self.play_menu.addAction(self.gamification_dashboard_action)
+        self.play_menu.addSeparator()
+        self.play_menu.addAction(self.focus_sprint_action)
+        self.play_menu.addAction(self.no_backspace_challenge_action)
+        self.play_menu.addAction(self.bug_hunt_action)
+        self.play_menu.addSeparator()
+        self.play_menu.addAction(self.craft_tool_action)
+        self.play_menu.addAction(self.export_crafted_tools_action)
+        self.play_menu.addSeparator()
+        self.play_menu.addAction(self.mark_plugin_use_action)
 
         self.tools_menu = menu_bar.addMenu("&Tools")
         self.tools_menu.addAction(self.goto_definition_action)

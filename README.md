@@ -1,20 +1,25 @@
 ﻿# Pypad
 
 Pypad is a PySide6 desktop text editor focused on fast note-taking and power-user workflows.
+- More than just a notepad app, it has features to keep you running.
 
-Creator's Thoughts
-- You might wonder why my naming is like the other project with same names, i think i named it on my own since it's a great way despite all the mess...
-- Warning: This project is only maintained during my free time, so please expect some delays or even makes the project being abondoned over 12 months.
-- I know some features are experimental, so please expect bugs, unresponsive apps, tracebacks, and errors. It's on prerelease state in my project actually.
+## Project Status
 
-Highlights:
-- Soft modern rounded UI overhaul with token-based theming
-- Multi-tab editor with detachable tabs, pin/favorite states, and rich tab actions
-- Quick Open / Go to Anything (`Ctrl+Alt+P`) with file, line, symbol, workspace-symbol, and command modes
-- AI chat dock with one-click apply actions (Insert/Replace/Append/New Tab/Replace File/Diff)
-- Markdown tools + live preview, syntax modes, workspace search, autosave/recovery, version history
-- Preferences with unified PyPad + Notepad++ compatibility pages
-- Visual UI regression tooling (screenshot smoke tests + baseline compare CI)
+PyPad is currently in **pre-release** and under active development.
+Some features are experimental and may change as the editor evolves.
+
+Development happens during my free time, so updates may be irregular.
+
+## Features
+
+- 🚀 Fast multi-tab editing
+- 🔍 Quick Open (Ctrl+Alt+P) for files, symbols, and commands
+- 🤖 AI assistant dock with apply actions
+- 📝 Markdown preview and tools
+- 💾 Autosave and crash recovery
+- 🗂 Workspace search
+- 🎨 Token-based UI theming
+- 🎨 Command Palette (Ctrl+Shift+P) for quick commands
 
 ## Preview
 

@@ -172,7 +172,7 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
         self.editor_dock.setObjectName("editorDock")
         self.editor_dock.setAllowedAreas(Qt.AllDockWidgetAreas)
         self.editor_dock.setFeatures(
-            QDockWidget.DockWidgetMovable | QDockWidget.DockWidgetFloatable
+            QDockWidget.DockWidgetMovable | QDockWidget.DockWidgetFloatable | QDockWidget.DockWidgetClosable
         )
         self.editor_dock.setWidget(self.central_stack)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.editor_dock)
@@ -215,7 +215,7 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
         self.log_event("Info", "[Startup] AI controller initialized")
         self.ai_chat_dock = AIChatDock(self, self.ai_controller)
         self.ai_chat_dock.setObjectName("aiChatDock")
-        self.ai_chat_dock.setMinimumWidth(320)
+        self.ai_chat_dock.setMinimumWidth(180)
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.ai_chat_dock)
         self.ai_chat_dock.visibilityChanged.connect(self.update_action_states)
         self.ai_chat_dock.hide()
@@ -273,6 +273,9 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
         self.autosave_status_label = QLabel("Autosave: waiting", self)
         self.autosave_status_label.setMargin(3)
         self.status.addPermanentWidget(self.autosave_status_label)
+        self.gamification_status_label = QLabel("LVL 1 | XP 0 | Byte:Seed", self)
+        self.gamification_status_label.setMargin(3)
+        self.status.addPermanentWidget(self.gamification_status_label)
         self.quiz_quit_button = QPushButton("Quit", self)
         self.quiz_quit_button.setVisible(False)
         self.quiz_quit_button.clicked.connect(self.quit_quiz_mode)
@@ -283,6 +286,8 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
         self.status.addPermanentWidget(self.quiz_finish_button)
         self.log_event("Info", "[Startup] Status bar widgets attached")
         self.advanced_features = AdvancedFeaturesController(self)
+        if hasattr(self, "_init_gamification_system"):
+            self._init_gamification_system()
         _mark_startup_stage("advanced_features_ready")
         self.log_event("Info", "[Startup] Advanced features ready")
         self.setDockOptions(
@@ -405,10 +410,12 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
         if folders:
             workspace_root = folders[0]
             self.settings["workspace_root"] = workspace_root
+            self.settings["last_session_workspace_root"] = workspace_root
+            if hasattr(self, "save_settings_to_disk"):
+                self.save_settings_to_disk()
             self.show_status_message(f"Workspace: {workspace_root}", 3000)
             if hasattr(self, "_refresh_workspace_dock"):
                 self._refresh_workspace_dock()
-            self.show_workspace_files()
 
         opened: list[str] = []
         first_opened: str | None = None

@@ -157,6 +157,11 @@ def migrate_settings(settings: dict) -> dict:
         )
         current["save_debug_logs_to_appdata"] = coerce_bool(current.get("save_debug_logs_to_appdata", False), False)
         current["logging_level"] = _coerce_logging_level(current.get("logging_level", "INFO"))
+        current["gamification_enabled"] = coerce_bool(current.get("gamification_enabled", True), True)
+        custom_events = current.get("gamification_custom_events", [])
+        current["gamification_custom_events"] = custom_events if isinstance(custom_events, list) else []
+        gamification_state = current.get("gamification_state", {})
+        current["gamification_state"] = gamification_state if isinstance(gamification_state, dict) else {}
         current["backup_output_dir"] = str(current.get("backup_output_dir", "") or "").strip()
         current["update_feed_url"] = _sanitize_update_feed_url(current.get("update_feed_url"), defaults.get("update_feed_url", ""))
         normalize_ui_visibility_settings(current)
@@ -358,6 +363,11 @@ def migrate_settings(settings: dict) -> dict:
     current["debug_telemetry_enabled"] = coerce_bool(current.get("debug_telemetry_enabled", False), False)
     current["save_debug_logs_to_appdata"] = coerce_bool(current.get("save_debug_logs_to_appdata", False), False)
     current["logging_level"] = _coerce_logging_level(current.get("logging_level", "INFO"))
+    current["gamification_enabled"] = coerce_bool(current.get("gamification_enabled", True), True)
+    custom_events = current.get("gamification_custom_events", [])
+    current["gamification_custom_events"] = custom_events if isinstance(custom_events, list) else []
+    gamification_state = current.get("gamification_state", {})
+    current["gamification_state"] = gamification_state if isinstance(gamification_state, dict) else {}
     current["backup_output_dir"] = str(current.get("backup_output_dir", "") or "").strip()
     current["settings_schema_version"] = 2
 

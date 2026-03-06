@@ -1,18 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <updates>
   <item>
-    <title>PyPad 1.7.7-prerelease</title>
-    <version>1.7.7</version>
+    <title>PyPad 1.7.8-prerelease</title>
+    <version>1.7.8</version>
     <pubDate>2026-03-06</pubDate>
     <description>
-      - Quiz mode restored and expanded (MCQ/TF/short-answer, {user} anchor support, detailed scoring).
-      - Settings-save close behavior hardened; explicit reload-only theme restart flow.
-      - AI panel quick-actions restored (+ menu, Add Files picker, live status).
+      - VSCode-like Explorer upgrades: custom chevrons, SVG icons, right-click + shortcuts, shell-menu action.
+      - Workspace opening now persists root and does not auto-open files/dialogs.
+      - In-tab media mode for image/audio/video with controls and Open Raw in Editor.
       - Detailed changelog: CHANGELOG.md
     </description>
     <sha256>0000000000000000000000000000000000000000000000000000000000000000</sha256>
     <enclosure
-      url="https://github.com/ne0gl1tch20/pypad/releases/download/1.7.7/PyPad-Setup-1.7.7-prerelease.exe"
+      url="https://github.com/ne0gl1tch20/pypad/releases/download/1.7.8/PyPad-Setup-1.7.8-prerelease.exe"
       type="application/octet-stream" />
   </item>
 </updates>

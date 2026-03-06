@@ -69,11 +69,13 @@ class WorkspaceController:
         if not root:
             return
         self.window.settings["workspace_root"] = root
+        self.window.settings["last_session_workspace_root"] = root
+        if hasattr(self.window, "save_settings_to_disk"):
+            self.window.save_settings_to_disk()
         self.window.show_status_message(f"Workspace: {root}", 3000)
         self._start_background_scan(force=True)
         if hasattr(self.window, "_refresh_workspace_dock"):
             self.window._refresh_workspace_dock()
-        self.show_workspace_files()
 
     def workspace_root(self) -> str | None:
         root = str(self.window.settings.get("workspace_root", "") or "").strip()

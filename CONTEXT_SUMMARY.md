@@ -12,14 +12,14 @@
   - `assets/version_info.txt`
 
 ## Current Release Metadata
-- Version: `1.7.7-prerelease`
+- Version: `1.7.8-prerelease`
 - Update feed entry: `update.xml` (2026-03-06)
-- Changelog entry added: `1.7.7-prerelease`
+- Changelog entry added: `1.7.8-prerelease`
 
 ## Current Focus (Completed)
 - LSP definition client hardening (timeouts/retries/logging + server preference settings)
 - Factory reset workflow added in Settings (confirmation + close-on-reset)
-- Release metadata/docs updated for `1.7.7-prerelease`
+- Release metadata/docs updated for `1.7.8-prerelease`
 - Quiz mode restored and expanded:
   - mixed-format parser (MCQ/TF/short-answer)
   - `{user}`/`[user]` answer anchors
@@ -35,6 +35,17 @@
   - explicit reload-only behavior (no auto theme-restart close)
   - temporary close-event trace logging for root-cause diagnostics
 - PySide6 Scintilla-compat engine expanded to cover advanced editing/view behaviors without PyQt/Qsci dependency
+- Explorer panel alignment toward VSCode behavior:
+  - custom chevron glyphs
+  - compact header strip + tighter rows
+  - SVG extension icons with theme-aware tint refresh
+  - context actions/shortcuts and shell-menu action
+- Workspace opening behavior adjusted:
+  - selected root persists immediately to settings
+  - opening workspace no longer auto-opens file list dialogs
+- In-tab media mode:
+  - image/audio/video open inside editor tabs
+  - rich playback controls and `Open Raw in Editor` in-tab
 
 ## What Was Completed (Phases 1-4)
 
@@ -126,7 +137,7 @@
   - Keep enabled for future regressions where settings content contrast/background appears inconsistent at dialog startup
 
 ## Next Easy Resume Points
-1. Build/release packaging validation for `1.7.7-prerelease` (installer output + update feed URL verification).
+1. Build/release packaging validation for `1.7.8-prerelease` (installer output + update feed URL verification).
 2. Optional visual baseline refresh after intentional UI/editor rendering changes using `scripts/run_ui_checks.ps1 -Visual -UpdateVisualBaseline`.
 3. If targeting deeper Scintilla parity, prioritize:
    - advanced lexer stateful styling/perf

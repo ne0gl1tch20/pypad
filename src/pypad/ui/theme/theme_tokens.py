@@ -885,23 +885,35 @@ def build_main_window_qss(*, tokens: UIThemeTokens, tab_close_icon_url: str, clo
             border: 1px solid {tokens.border};
             border-top-left-radius: {tokens.radius_md}px;
             border-top-right-radius: {tokens.radius_md}px;
-            padding: {tokens.space_sm}px {tokens.space_lg}px;
+            padding: 3px 8px;
+            min-height: 20px;
             text-align: left;
+        }}
+        QDockWidget#explorerDock::title,
+        QDockWidget#markdownPreviewDock::title,
+        QDockWidget#editorDock::title {{
+            padding: 2px 8px;
+            min-height: 18px;
+            border-radius: 0px;
+            border-left: none;
+            border-right: none;
+            border-top: none;
+            border-bottom: 1px solid {tokens.border_soft};
         }}
         QDockWidget::close-button,
         QDockWidget::float-button {{
-            background: {tokens.dock_button_bg};
-            border: 1px solid {tokens.border};
+            background: transparent;
+            border: 1px solid transparent;
             border-radius: {tokens.radius_sm}px;
             padding: 0px;
-            margin: 2px;
-            width: 16px;
-            height: 16px;
+            margin: 1px;
+            width: 14px;
+            height: 14px;
         }}
         QDockWidget::close-button:hover,
         QDockWidget::float-button:hover {{
             background: {tokens.dock_button_hover_bg};
-            border: 1px solid {tokens.accent};
+            border: 1px solid {tokens.border_soft};
         }}
         QDockWidget::close-button:pressed,
         QDockWidget::float-button:pressed {{

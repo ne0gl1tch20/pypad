@@ -2328,6 +2328,10 @@ class ScintillaCompatEditor(QPlainTextEdit):
         painter = QPainter(self.viewport())
         color = QColor("#6f7684")
         painter.setPen(color)
+        metrics = self.fontMetrics()
+        viewport_w = max(0, self.viewport().width())
+        right_pad = 8
+        left_pad = int(self.contentOffset().x() + 4)
         block = self.firstVisibleBlock()
         top = round(self.blockBoundingGeometry(block).translated(self.contentOffset()).top())
         bottom = top + round(self.blockBoundingRect(block).height())
@@ -2336,8 +2340,10 @@ class ScintillaCompatEditor(QPlainTextEdit):
                 line = block.blockNumber()
                 note = self._annotations.get(line, "")
                 if note:
-                    x = int(self.contentOffset().x() + 4)
-                    y = int(top + self.fontMetrics().height() - 2)
+                    note_w = max(0, metrics.horizontalAdvance(note))
+                    # Keep annotations away from main text by pinning them near the right edge.
+                    x = max(left_pad, viewport_w - note_w - right_pad)
+                    y = int(top + metrics.height() - 2)
                     painter.drawText(x, y, note)
             block = block.next()
             top = bottom

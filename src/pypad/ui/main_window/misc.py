@@ -22,12 +22,16 @@ from urllib.parse import quote_plus
 from html import escape as html_escape
 from urllib.parse import quote as url_quote, unquote as url_unquote
 
-from PySide6.QtCore import QByteArray, QEvent, QPoint, QSize, Qt, QTimer, Signal, Slot
+from PySide6.QtCore import QByteArray, QEvent, QFileInfo, QPoint, QRect, QSize, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import (
     QAction,
     QColor,
     QFont,
+    QPainter,
+    QPen,
+    QPolygonF,
     QKeySequence,
+    QShortcut,
     QPdfWriter,
     QTextCursor,
     QTextCharFormat,
@@ -43,6 +47,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QDockWidget,
     QFileDialog,
+    QFileIconProvider,
     QFileSystemModel,
     QFontDialog,
     QFormLayout,
@@ -60,11 +65,15 @@ from PySide6.QtWidgets import (
     QRadioButton,
     QScrollArea,
     QSlider,
+    QSizePolicy,
     QSpinBox,
     QSplitter,
     QStatusBar,
+    QStyledItemDelegate,
+    QStyleOptionViewItem,
     QStyle,
     QStyleFactory,
+    QToolButton,
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
@@ -117,6 +126,8 @@ from pypad.ui.system.session_recovery import local_history_key
 from pypad.ui.editor.advanced_text_tools import build_line_refs, export_line_refs_text
 from pypad.ui.document.document_fidelity import DocumentFidelityError, export_document_text, render_text_to_html
 from pypad.ui.features.extensibility_ops import discover_window_actions
+from pypad.ui.features.gamification_system import GamificationSystem, XPResult
+from pypad.ui.features.gamification_dashboard_dialog import GamificationDashboardDialog
 from .notepadpp_pref_runtime import (
     apply_notepadpp_runtime_settings,
     apply_indentation_defaults_to_tab,
@@ -166,6 +177,91 @@ class MiscMixin(
         def __getattr__(self, name: str) -> Any: ...
 
     # ---------- Misc ----------
+    class _ExplorerIconProvider(QFileIconProvider):
+        def __init__(self, owner: "MiscMixin") -> None:
+            super().__init__()
+            self._owner = owner
+
+        def icon(self, arg):  # type: ignore[override]
+            if isinstance(arg, QFileInfo):
+                info = arg
+                name = self._owner._explorer_icon_name_for_info(info)
+                if name:
+                    icon = self._owner._svg_icon(name)
+                    if not icon.isNull():
+                        return icon
+            return super().icon(arg)
+
+    class _ExplorerItemDelegate(QStyledItemDelegate):
+        def __init__(self, view: QTreeView, owner: "MiscMixin") -> None:
+            super().__init__(view)
+            self._view = view
+            self._owner = owner
+            self._chevron_w = 14
+
+        def _chevron_rect(self, option: QStyleOptionViewItem) -> QRect:
+            return QRect(option.rect.left() + 2, option.rect.top(), self._chevron_w, option.rect.height())
+
+        def paint(self, painter: QPainter, option: QStyleOptionViewItem, index) -> None:  # type: ignore[override]
+            if index.column() != 0:
+                super().paint(painter, option, index)
+                return
+            opt = QStyleOptionViewItem(option)
+            self.initStyleOption(opt, index)
+            has_children = bool(index.model().hasChildren(index))
+            # Reserve a left gutter for VSCode-like chevrons.
+            opt.rect = QRect(
+                option.rect.left() + self._chevron_w,
+                option.rect.top(),
+                max(0, option.rect.width() - self._chevron_w),
+                option.rect.height(),
+            )
+            super().paint(painter, opt, index)
+            if not has_children:
+                return
+            color = QColor(getattr(self._owner, "_icon_color", QColor("#c9d1d9")))
+            painter.save()
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            pen = QPen(color, 1.6)
+            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+            painter.setPen(pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            rect = self._chevron_rect(option)
+            cx = rect.left() + (rect.width() // 2)
+            cy = rect.top() + (rect.height() // 2)
+            expanded = self._view.isExpanded(index)
+            if expanded:
+                points = QPolygonF(
+                    [
+                        QPoint(cx - 3, cy - 1),
+                        QPoint(cx, cy + 2),
+                        QPoint(cx + 3, cy - 1),
+                    ]
+                )
+            else:
+                points = QPolygonF(
+                    [
+                        QPoint(cx - 1, cy - 3),
+                        QPoint(cx + 2, cy),
+                        QPoint(cx - 1, cy + 3),
+                    ]
+                )
+            painter.drawPolyline(points)
+            painter.restore()
+
+        def editorEvent(self, event, model, option, index):  # type: ignore[override]
+            if index.column() == 0 and bool(model.hasChildren(index)):
+                if event.type() == QEvent.Type.MouseButtonRelease:
+                    pos = event.pos()
+                    if self._chevron_rect(option).contains(pos):
+                        if self._view.isExpanded(index):
+                            self._view.collapse(index)
+                        else:
+                            self._view.expand(index)
+                        return True
+            return super().editorEvent(event, model, option, index)
+
     @staticmethod
     def _normalize_tags(raw: list[str] | tuple[str, ...] | str) -> list[str]:
         if isinstance(raw, str):
@@ -183,6 +279,197 @@ class MiscMixin(
             seen.add(key)
             deduped.append(token)
         return deduped
+
+    def _init_gamification_system(self) -> None:
+        self.gamification = GamificationSystem(self.settings)
+        self.gamification.quests_snapshot()
+        self._gamification_prev_text_len = 0
+        self._focus_sprint_deadline_ts = 0.0
+        self._focus_sprint_timer = QTimer(self)
+        self._focus_sprint_timer.setSingleShot(True)
+        self._focus_sprint_timer.timeout.connect(self._finish_focus_sprint)
+        self._sync_seasonal_events()
+        self._update_gamification_status_labels()
+
+    def _gamification_enabled(self) -> bool:
+        return bool(self.settings.get("gamification_enabled", True))
+
+    def _sync_seasonal_events(self) -> None:
+        if not self._gamification_enabled():
+            return
+        events = self.gamification.active_events()
+        if not events:
+            return
+        state = self.gamification.state()
+        badges = set(state.get("event_badges", []))
+        for event in events:
+            badge = str(event.get("badge", "")).strip()
+            if badge:
+                badges.add(badge)
+        state["event_badges"] = sorted(badges)
+
+    def _update_gamification_status_labels(self) -> None:
+        if not hasattr(self, "gamification") or not self._gamification_enabled():
+            return
+        state = self.gamification.state()
+        txt = (
+            f"LVL {state.get('level', 1)} | XP {state.get('xp', 0)} | "
+            f"{state.get('companion', {}).get('name', 'Byte')}:{state.get('companion', {}).get('stage', 'Seed')}"
+        )
+        if hasattr(self, "gamification_status_label"):
+            self.gamification_status_label.setText(txt)
+        if hasattr(self, "status_panel_gamification_label"):
+            self.status_panel_gamification_label.setText(txt)
+
+    def _show_gamification_progress(self, result: XPResult | None, notes: list[str] | None = None) -> None:
+        if not self._gamification_enabled():
+            return
+        self._update_gamification_status_labels()
+        if result is None:
+            return
+        msg = f"+{result.xp_added} XP"
+        if result.leveled_up:
+            msg += f" | Level {result.level_after}"
+        if notes:
+            msg += f" | {notes[0]}"
+        self.show_status_message(msg, 3000)
+
+    def _gamification_on_text_changed(self) -> None:
+        if not self._gamification_enabled() or not hasattr(self, "gamification"):
+            return
+        tab = self.active_tab()
+        if tab is None:
+            return
+        text = tab.text_edit.get_text()
+        curr_len = len(text)
+        prev_len = int(getattr(self, "_gamification_prev_text_len", curr_len))
+        prev_todo_count = int(getattr(tab, "_gamification_prev_todo_count", len(re.findall(r"TODO", text, flags=re.IGNORECASE))))
+        curr_todo_count = len(re.findall(r"TODO", text, flags=re.IGNORECASE))
+        if curr_len < prev_len:
+            mode = self.gamification.state().get("challenge_modes", {}).get("no_backspace", {})
+            if isinstance(mode, dict) and bool(mode.get("active", False)):
+                self.gamification.set_challenge_state("no_backspace", False, {"failed": True})
+                self.show_status_message("No-backspace challenge failed.", 2500)
+        elif curr_len > prev_len:
+            added = text[prev_len:curr_len]
+            words = len([w for w in re.findall(r"\b\w+\b", added) if w.strip()])
+            if words > 0:
+                result, notes = self.gamification.add_written_words(words)
+                self._show_gamification_progress(result, notes)
+        todo_removed = max(0, prev_todo_count - curr_todo_count)
+        if todo_removed > 0:
+            result, notes = self.gamification.add_todo_fixed(todo_removed)
+            self._show_gamification_progress(result, notes)
+        self._gamification_prev_text_len = curr_len
+        tab._gamification_prev_todo_count = curr_todo_count
+
+    def open_gamification_dashboard(self) -> None:
+        if not self._gamification_enabled():
+            QMessageBox.information(self, "Gamification", "Gamification is disabled in settings.")
+            return
+        dlg = GamificationDashboardDialog(self, self.gamification)
+        dlg.exec()
+
+    def start_focus_sprint_mode(self) -> None:
+        if not self._gamification_enabled():
+            return
+        minutes, ok = QInputDialog.getInt(self, "Focus Sprint", "Minutes:", value=15, minValue=1, maxValue=120)
+        if not ok:
+            return
+        self.gamification.set_challenge_state("focus_sprint", True, {"minutes": int(minutes), "started_at": time.time()})
+        self._focus_sprint_deadline_ts = time.time() + (int(minutes) * 60)
+        self._focus_sprint_timer.start(int(minutes) * 60 * 1000)
+        self.show_status_message(f"Focus sprint started: {minutes}m", 2500)
+
+    def _finish_focus_sprint(self) -> None:
+        mode = self.gamification.state().get("challenge_modes", {}).get("focus_sprint", {})
+        if not isinstance(mode, dict) or not bool(mode.get("active", False)):
+            return
+        self.gamification.set_challenge_state("focus_sprint", False, {"completed": True})
+        result, notes = self.gamification.mark_focus_sprint_completed()
+        self._show_gamification_progress(result, notes)
+
+    def toggle_no_backspace_challenge(self) -> None:
+        if not self._gamification_enabled():
+            return
+        state = self.gamification.state().get("challenge_modes", {}).get("no_backspace", {})
+        active = bool(isinstance(state, dict) and state.get("active", False))
+        next_state = not active
+        self.gamification.set_challenge_state("no_backspace", next_state, {"failed": False, "started_at": time.time()})
+        self.show_status_message("No-backspace challenge started." if next_state else "No-backspace challenge stopped.", 2500)
+
+    def start_bug_hunt_mode(self) -> None:
+        if not self._gamification_enabled():
+            return
+        root = self._workspace_root()
+        if not root:
+            QMessageBox.information(self, "Bug Hunt", "Set a workspace folder first.")
+            return
+        files = self._workspace_files()
+        issues = 0
+        for path in files[:200]:
+            try:
+                text = Path(path).read_text(encoding="utf-8", errors="ignore")
+            except Exception:
+                continue
+            issues += len(re.findall(r"TODO|FIXME|BUG", text, flags=re.IGNORECASE))
+        self.gamification.set_challenge_state("bug_hunt", True, {"workspace_root": root, "found_markers": issues})
+        self.show_status_message(f"Bug hunt mode ready: {issues} marker(s) found.", 3500)
+
+    def craft_template_tool(self) -> None:
+        if not self._gamification_enabled():
+            return
+        name, ok = QInputDialog.getText(self, "Craft Tool", "Tool name:")
+        if not ok or not name.strip():
+            return
+        components, ok = QInputDialog.getMultiLineText(
+            self,
+            "Craft Tool",
+            "Components (snippet/macro/prompt per line):",
+            "snippet:Meeting Notes\nmacro:Trim Trailing Spaces\nprompt:Summarize section",
+        )
+        if not ok:
+            return
+        state = self.gamification.state()
+        row = {
+            "name": name.strip(),
+            "components": [line.strip() for line in components.splitlines() if line.strip()],
+            "starred": False,
+            "created_at": datetime.now().isoformat(timespec="seconds"),
+        }
+        state["crafted_tools"].append(row)
+        self.gamification.award_xp(20, "Crafted template tool", skill_branch="ai_workflow")
+        self._update_gamification_status_labels()
+        self.show_status_message(f'Crafted tool "{row["name"]}".', 2500)
+
+    def export_crafted_tools_pack(self) -> None:
+        if not self._gamification_enabled():
+            return
+        state = self.gamification.state()
+        rows = state.get("crafted_tools", [])
+        if not isinstance(rows, list) or not rows:
+            QMessageBox.information(self, "Crafted Tools", "No crafted tools to export.")
+            return
+        path, _ = QFileDialog.getSaveFileName(self, "Export Crafted Tools Pack", "crafted_tools.pluginpack.json", "JSON (*.json)")
+        if not path:
+            return
+        payload = {
+            "pack_type": "pypad-crafted-tools",
+            "version": 1,
+            "tools": rows,
+        }
+        try:
+            Path(path).write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        except Exception as exc:
+            QMessageBox.warning(self, "Crafted Tools", f"Failed to export pack:\n{exc}")
+            return
+        self.show_status_message(f"Crafted tool pack exported: {path}", 3000)
+
+    def mark_plugin_feature_used(self) -> None:
+        if not self._gamification_enabled():
+            return
+        result, notes = self.gamification.mark_plugin_used()
+        self._show_gamification_progress(result, notes)
 
     def enable_note_encryption(self) -> None:
         self.security_controller.enable_note_encryption()
@@ -1601,25 +1888,21 @@ class MiscMixin(
             if str(answer_map.get(number, "")).strip():
                 continue
             anchor = int(item.get("user_anchor_line", -1))
-            if 0 <= anchor < len(lines):
-                try:
-                    widget.annotationSetText(anchor, "Your answer...")
-                except Exception:
-                    pass
-                continue
             start = int(item.get("block_start", -1))
             end = int(item.get("block_end", start + 1))
             option_lines = set(int(x) for x in item.get("option_lines", []))
             line = -1
-            # Prefer first non-option line under the question for cleaner alignment.
+            # Only place placeholders on empty lines to avoid drawing over question text.
+            if 0 <= anchor < len(lines) and anchor not in option_lines and not str(lines[anchor]).strip():
+                line = anchor
             for ln in range(start + 1, min(end, len(lines))):
+                if line >= 0:
+                    break
                 if ln in option_lines:
                     continue
-                if str(lines[ln]).strip():
+                if not str(lines[ln]).strip():
                     line = ln
                     break
-            if line < 0:
-                line = start
             if line < 0:
                 continue
             try:
@@ -1637,7 +1920,14 @@ class MiscMixin(
         tab = self.active_tab()
         if tab is None:
             return
-        original = tab.text_edit.get_text()
+        was_active = bool(getattr(tab, "quiz_mode_enabled", False))
+        # Restarting quiz mode should always rebuild from the true source text,
+        # not from the already-stripped quiz view.
+        original = (
+            str(getattr(tab, "quiz_original_text", ""))
+            if was_active and isinstance(getattr(tab, "quiz_original_text", None), str)
+            else tab.text_edit.get_text()
+        )
         items = self._parse_quiz_blocks(original)
         if not items:
             QMessageBox.information(self, "Quiz Mode", "No quiz blocks detected in this document.")
@@ -1653,7 +1943,7 @@ class MiscMixin(
         self._refresh_quiz_placeholders_for_tab(tab)
         self._sync_quiz_controls()
         self.update_action_states()
-        self.show_status_message("Quiz mode started.", 2500)
+        self.show_status_message("Quiz mode restarted." if was_active else "Quiz mode started.", 2500)
 
     def quit_quiz_mode(self) -> None:
         tab = self.active_tab()
@@ -1685,6 +1975,9 @@ class MiscMixin(
         result = self._score_quiz_items(tab.quiz_items, tab.quiz_user_answers)
         tab.quiz_score_result = result
         self._show_quiz_score_dialog(result)
+        if hasattr(self, "gamification") and self._gamification_enabled():
+            xp_result, notes = self.gamification.mark_quiz_finished()
+            self._show_gamification_progress(xp_result, notes)
         self.quit_quiz_mode()
 
     def ai_commit_message_generator(self) -> None:
@@ -2196,6 +2489,9 @@ class MiscMixin(
             + "\n\n".join(f"FILE: {s.path}\n{s.excerpt}" for s in snippets)
         )
         self._send_ai_chat_prompt(prompt=prompt, visible_prompt="Review Workspace Snippets (Citations)")
+        if hasattr(self, "gamification") and self._gamification_enabled():
+            xp_result, notes = self.gamification.mark_workspace_review()
+            self._show_gamification_progress(xp_result, notes)
 
     def ai_rewrite_selection(self, mode: str) -> None:
         tab = self.active_tab()
@@ -3177,6 +3473,8 @@ class MiscMixin(
             self._apply_format_icons()
             if hasattr(self, "_apply_ai_feature_icons"):
                 self._apply_ai_feature_icons()
+            if hasattr(self, "_refresh_explorer_dock"):
+                self._refresh_explorer_dock()
             if hasattr(self, "show_symbol_toolbar_button") and self.show_symbol_toolbar_button is not None:
                 self.show_symbol_toolbar_button.setIcon(self._svg_icon("show-symbol"))
             if hasattr(self, "_schedule_main_toolbar_overflow_update"):
@@ -4470,6 +4768,7 @@ class MiscMixin(
             return
         self._layout_docks_ready = True
         self._build_workspace_dock()
+        self._build_explorer_dock()
         self._build_search_results_dock()
         self._build_status_panel_dock()
         self._ensure_default_layout()
@@ -4519,6 +4818,138 @@ class MiscMixin(
         if hasattr(self, "log_event"):
             self.log_event("Info", "[Startup] Dock created: Workspace")
 
+    def _build_explorer_dock(self) -> None:
+        if hasattr(self, "explorer_dock"):
+            return
+        dock = QDockWidget("Explorer", self)
+        dock.setObjectName("explorerDock")
+        dock.setAllowedAreas(Qt.AllDockWidgetAreas)
+        dock.setFeatures(QDockWidget.DockWidgetMovable | QDockWidget.DockWidgetFloatable | QDockWidget.DockWidgetClosable)
+        dock.setMinimumWidth(0)
+        dock.setMinimumSize(0, 0)
+        container = QWidget(dock)
+        container.setMinimumSize(0, 0)
+        container.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(6, 6, 6, 6)
+
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        self.explorer_title_label = QLabel("EXPLORER", container)
+        self.explorer_title_label.setObjectName("explorerTitleLabel")
+        self.explorer_title_label.setMinimumWidth(0)
+        self.explorer_title_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        header.addWidget(self.explorer_title_label, 1)
+
+        self.explorer_set_btn = QToolButton(container)
+        self.explorer_set_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        self.explorer_set_btn.setToolTip("Set Workspace")
+        self.explorer_set_btn.setIcon(self._svg_icon("document-open"))
+        self.explorer_set_btn.clicked.connect(self.open_workspace_folder)
+        header.addWidget(self.explorer_set_btn)
+
+        self.explorer_new_file_btn = QToolButton(container)
+        self.explorer_new_file_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        self.explorer_new_file_btn.setToolTip("New File")
+        self.explorer_new_file_btn.setIcon(self._svg_icon("document-new"))
+        self.explorer_new_file_btn.clicked.connect(self.explorer_new_file)
+        header.addWidget(self.explorer_new_file_btn)
+        self.explorer_new_folder_btn = QToolButton(container)
+        self.explorer_new_folder_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        self.explorer_new_folder_btn.setToolTip("New Folder")
+        self.explorer_new_folder_btn.setIcon(self._svg_icon("document-list"))
+        self.explorer_new_folder_btn.clicked.connect(self.explorer_new_folder)
+        header.addWidget(self.explorer_new_folder_btn)
+        self.explorer_rename_btn = QToolButton(container)
+        self.explorer_rename_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        self.explorer_rename_btn.setToolTip("Rename")
+        self.explorer_rename_btn.setIcon(self._svg_icon("edit-find-replace"))
+        self.explorer_rename_btn.clicked.connect(self.explorer_rename_selected)
+        header.addWidget(self.explorer_rename_btn)
+        self.explorer_delete_btn = QToolButton(container)
+        self.explorer_delete_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        self.explorer_delete_btn.setToolTip("Delete")
+        self.explorer_delete_btn.setIcon(self._standard_style_icon("SP_TrashIcon"))
+        self.explorer_delete_btn.clicked.connect(self.explorer_delete_selected)
+        header.addWidget(self.explorer_delete_btn)
+        layout.addLayout(header)
+
+        self.explorer_path_label = QLabel("No workspace selected", container)
+        self.explorer_path_label.setMinimumWidth(0)
+        self.explorer_path_label.setObjectName("explorerPathLabel")
+        self.explorer_path_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        layout.addWidget(self.explorer_path_label)
+
+        self.explorer_tree = QTreeView(container)
+        self.explorer_tree.setHeaderHidden(True)
+        self.explorer_tree.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.explorer_tree.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.explorer_tree.setAlternatingRowColors(False)
+        self.explorer_tree.setDragEnabled(True)
+        self.explorer_tree.setAcceptDrops(True)
+        self.explorer_tree.setDropIndicatorShown(True)
+        self.explorer_tree.setDragDropMode(QAbstractItemView.DragDropMode.DragDrop)
+        self.explorer_tree.setDefaultDropAction(Qt.DropAction.MoveAction)
+        self.explorer_tree.setAnimated(True)
+        self.explorer_tree.setUniformRowHeights(True)
+        self.explorer_tree.setIndentation(14)
+        self.explorer_tree.setExpandsOnDoubleClick(True)
+        self.explorer_tree.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.explorer_tree.setMinimumWidth(0)
+        self.explorer_tree.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.explorer_tree.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.explorer_tree.customContextMenuRequested.connect(self._on_explorer_tree_context_menu)
+        self.explorer_model = QFileSystemModel(self.explorer_tree)
+        self.explorer_model.setIconProvider(self._ExplorerIconProvider(self))
+        self.explorer_model.setRootPath("")
+        self.explorer_tree.setModel(self.explorer_model)
+        self.explorer_tree.setItemDelegate(self._ExplorerItemDelegate(self.explorer_tree, self))
+        self.explorer_tree.doubleClicked.connect(self._on_explorer_tree_open)
+        self.explorer_tree.setObjectName("explorerTree")
+        self.explorer_tree.setStyleSheet(
+            """
+            QTreeView#explorerTree {
+                border: none;
+                padding: 0px;
+                show-decoration-selected: 1;
+            }
+            QLabel#explorerTitleLabel {
+                font-weight: 600;
+                letter-spacing: 0.5px;
+            }
+            QLabel#explorerPathLabel {
+                opacity: 0.8;
+                padding-left: 2px;
+            }
+            QTreeView#explorerTree::item {
+                height: 20px;
+                padding-left: 2px;
+            }
+            QTreeView#explorerTree::item:selected {
+                border-radius: 4px;
+            }
+            QTreeView#explorerTree::branch {
+                background: transparent;
+            }
+            QTreeView#explorerTree::branch:has-siblings:!adjoins-item,
+            QTreeView#explorerTree::branch:has-siblings:adjoins-item,
+            QTreeView#explorerTree::branch:!has-children:!has-siblings:adjoins-item {
+                border-image: none;
+                image: none;
+            }
+            """
+        )
+        layout.addWidget(self.explorer_tree, 1)
+        dock.setWidget(container)
+        self.explorer_dock = dock
+        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, dock)
+        dock.hide()
+        dock.visibilityChanged.connect(lambda _visible: self._sync_layout_panel_actions())
+        self._install_explorer_shortcuts()
+        self._refresh_explorer_dock()
+        if hasattr(self, "log_event"):
+            self.log_event("Info", "[Startup] Dock created: Explorer")
+
     def _refresh_workspace_dock(self) -> None:
         if not hasattr(self, "workspace_dock"):
             return
@@ -4526,17 +4957,90 @@ class MiscMixin(
         if not root or not Path(root).exists():
             self.workspace_path_label.setText("No workspace selected")
             self.workspace_tree.setRootIndex(self.workspace_model.index(""))
+            self._refresh_explorer_dock()
             return
         self.workspace_path_label.setText(f"{root}{self._workspace_git_status_suffix(root)}")
         self.workspace_model.setRootPath(root)
         self.workspace_tree.setRootIndex(self.workspace_model.index(root))
         for col in range(1, self.workspace_model.columnCount()):
             self.workspace_tree.hideColumn(col)
+        self._refresh_explorer_dock()
+
+    def _refresh_explorer_dock(self) -> None:
+        if not hasattr(self, "explorer_dock"):
+            return
+        # Reattach icon provider so icons re-render with current theme tint.
+        try:
+            self.explorer_model.setIconProvider(self._ExplorerIconProvider(self))
+        except Exception:
+            pass
+        root = str(self.settings.get("workspace_root", "") or "").strip()
+        if not root or not Path(root).exists():
+            self.explorer_path_label.setText("No workspace selected")
+            self.explorer_tree.setRootIndex(self.explorer_model.index(""))
+            return
+        self.explorer_path_label.setText(f"{root}{self._workspace_git_status_suffix(root)}")
+        self.explorer_model.setRootPath(root)
+        self.explorer_tree.setRootIndex(self.explorer_model.index(root))
+        for col in range(1, self.explorer_model.columnCount()):
+            self.explorer_tree.hideColumn(col)
+
+    def _explorer_icon_name_for_info(self, info: QFileInfo) -> str:
+        if info.isDir():
+            return "document-list"
+        suffix = str(info.suffix() or "").lower()
+        mapping = {
+            "py": "file-python",
+            "js": "file-javascript",
+            "ts": "file-typescript",
+            "tsx": "file-typescript",
+            "json": "file-json",
+            "md": "file-markdown",
+            "txt": "file-text",
+            "xml": "file-xml",
+            "yaml": "file-yaml",
+            "yml": "file-yaml",
+            "html": "file-html",
+            "css": "file-css",
+            "cpp": "file-cpp",
+            "c": "file-c",
+            "cs": "file-csharp",
+            "java": "file-java",
+            "go": "file-go",
+            "rs": "file-rust",
+            "php": "file-php",
+            "rb": "file-ruby",
+            "lua": "file-lua",
+            "sql": "file-sql",
+            "sh": "file-shell",
+            "ps1": "file-powershell",
+            "csv": "file-csv",
+            "tsv": "file-tsv",
+            "log": "file-log",
+            "kt": "file-kotlin",
+            "swift": "file-swift",
+            "bat": "file-batch",
+            "conf": "file-config",
+            "ini": "file-config",
+            "toml": "file-config",
+            "svg": "file-generic",
+            "png": "file-generic",
+            "jpg": "file-generic",
+            "jpeg": "file-generic",
+        }
+        return mapping.get(suffix, "file-generic")
 
     def _on_workspace_tree_open(self, index) -> None:
         if not hasattr(self, "workspace_model"):
             return
         path = self.workspace_model.filePath(index)
+        if path and Path(path).is_file():
+            self._open_file_path(path)
+
+    def _on_explorer_tree_open(self, index) -> None:
+        if not hasattr(self, "explorer_model"):
+            return
+        path = self.explorer_model.filePath(index)
         if path and Path(path).is_file():
             self._open_file_path(path)
 
@@ -4576,6 +5080,31 @@ class MiscMixin(
             return str(self.workspace_model.filePath(index) or "")
         except Exception:
             return ""
+
+    def _explorer_tree_path_from_index(self, index) -> str:
+        if not hasattr(self, "explorer_model"):
+            return ""
+        try:
+            return str(self.explorer_model.filePath(index) or "")
+        except Exception:
+            return ""
+
+    def _selected_explorer_path(self) -> str:
+        if not hasattr(self, "explorer_tree"):
+            return ""
+        index = self.explorer_tree.currentIndex()
+        path = self._explorer_tree_path_from_index(index)
+        if path:
+            return path
+        root = str(self.settings.get("workspace_root", "") or "").strip()
+        return root
+
+    def _explorer_target_dir(self) -> Path | None:
+        path = self._selected_explorer_path().strip()
+        if not path:
+            return None
+        selected = Path(path)
+        return selected if selected.is_dir() else selected.parent
 
     def _on_workspace_tree_context_menu(self, pos: QPoint) -> None:
         if not hasattr(self, "workspace_tree"):
@@ -4676,6 +5205,244 @@ class MiscMixin(
             return
         if chosen == refresh_action:
             self._refresh_workspace_dock()
+
+    def _on_explorer_tree_context_menu(self, pos: QPoint) -> None:
+        if not hasattr(self, "explorer_tree"):
+            return
+        index = self.explorer_tree.indexAt(pos)
+        selected_path = self._explorer_tree_path_from_index(index)
+        workspace_root = str(self.settings.get("workspace_root", "") or "").strip()
+        if not workspace_root:
+            return
+        if not selected_path:
+            selected_path = workspace_root
+        selected = Path(selected_path)
+
+        menu = QMenu(self)
+        edit_action = menu.addAction(self._svg_icon("document-open"), "Edit/Open")
+        reveal_action = menu.addAction(self._standard_style_icon("SP_DirOpenIcon"), "Reveal in File Explorer")
+        shell_menu_action = menu.addAction(self._standard_style_icon("SP_DirOpenIcon"), "Open Shell Menu")
+        menu.addSeparator()
+        new_file_action = menu.addAction(self._svg_icon("document-new"), "New File")
+        new_folder_action = menu.addAction(self._svg_icon("document-list"), "New Folder")
+        rename_action = menu.addAction(self._svg_icon("edit-find-replace"), "Rename")
+        delete_action = menu.addAction(self._standard_style_icon("SP_TrashIcon"), "Delete")
+        menu.addSeparator()
+        copy_action = menu.addAction(self._svg_icon("edit-copy"), "Copy")
+        cut_action = menu.addAction(self._svg_icon("edit-cut"), "Cut")
+        paste_action = menu.addAction(self._svg_icon("edit-paste"), "Paste")
+        copy_path_action = menu.addAction("Copy Path")
+        menu.addSeparator()
+        refresh_action = menu.addAction("Refresh")
+        edit_action.setEnabled(selected.exists() and selected.is_file())
+        rename_action.setEnabled(selected.exists())
+        delete_action.setEnabled(selected.exists() and selected != Path(workspace_root))
+        copy_action.setEnabled(selected.exists())
+        cut_action.setEnabled(selected.exists() and selected != Path(workspace_root))
+        paste_action.setEnabled(bool(getattr(self, "_explorer_clipboard", {}).get("paths")))
+        copy_path_action.setEnabled(selected.exists())
+        reveal_action.setEnabled(selected.exists())
+        shell_menu_action.setEnabled(selected.exists())
+
+        chosen = menu.exec(self.explorer_tree.viewport().mapToGlobal(pos))
+        if chosen is None:
+            return
+        if chosen == edit_action:
+            self.explorer_edit_selected()
+        elif chosen == reveal_action:
+            self.explorer_reveal_selected()
+        elif chosen == shell_menu_action:
+            self.explorer_open_shell_menu()
+        elif chosen == new_file_action:
+            self.explorer_new_file()
+        elif chosen == new_folder_action:
+            self.explorer_new_folder()
+        elif chosen == rename_action:
+            self.explorer_rename_selected()
+        elif chosen == delete_action:
+            self.explorer_delete_selected()
+        elif chosen == copy_action:
+            self.explorer_copy_selected()
+        elif chosen == cut_action:
+            self.explorer_cut_selected()
+        elif chosen == paste_action:
+            self.explorer_paste()
+        elif chosen == copy_path_action:
+            QApplication.clipboard().setText(str(selected))
+        elif chosen == refresh_action:
+            self._refresh_explorer_dock()
+
+    def _install_explorer_shortcuts(self) -> None:
+        if not hasattr(self, "explorer_tree"):
+            return
+        self._explorer_shortcuts = []
+        entries = [
+            ("F2", self.explorer_rename_selected),
+            ("Delete", self.explorer_delete_selected),
+            ("Ctrl+C", self.explorer_copy_selected),
+            ("Ctrl+X", self.explorer_cut_selected),
+            ("Ctrl+V", self.explorer_paste),
+            ("Ctrl+E", self.explorer_edit_selected),
+            ("Alt+R", self.explorer_reveal_selected),
+            ("Alt+S", self.explorer_open_shell_menu),
+            ("Alt+N", self.explorer_new_file),
+            ("Alt+Shift+N", self.explorer_new_folder),
+        ]
+        for key, handler in entries:
+            shortcut = QShortcut(QKeySequence(key), self.explorer_tree)
+            shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+            shortcut.activated.connect(handler)
+            self._explorer_shortcuts.append(shortcut)
+
+    def explorer_new_file(self) -> None:
+        target_dir = self._explorer_target_dir()
+        if target_dir is None:
+            return
+        name, ok = QInputDialog.getText(self, "Explorer: New File", "File name:", text="new_file.txt")
+        if not ok or not name.strip():
+            return
+        path = target_dir / name.strip()
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.touch(exist_ok=False)
+        except Exception as exc:
+            QMessageBox.warning(self, "Explorer", f"Could not create file:\n{exc}")
+            return
+        self._refresh_workspace_dock()
+        self._open_file_path(str(path))
+
+    def explorer_new_folder(self) -> None:
+        target_dir = self._explorer_target_dir()
+        if target_dir is None:
+            return
+        name, ok = QInputDialog.getText(self, "Explorer: New Folder", "Folder name:", text="new_folder")
+        if not ok or not name.strip():
+            return
+        path = target_dir / name.strip()
+        try:
+            path.mkdir(parents=True, exist_ok=False)
+        except Exception as exc:
+            QMessageBox.warning(self, "Explorer", f"Could not create folder:\n{exc}")
+            return
+        self._refresh_workspace_dock()
+
+    def explorer_edit_selected(self) -> None:
+        path = self._selected_explorer_path().strip()
+        if not path:
+            return
+        if Path(path).is_file():
+            self._open_file_path(path)
+
+    def explorer_reveal_selected(self) -> None:
+        path = self._selected_explorer_path().strip()
+        if not path:
+            return
+        selected = Path(path)
+        try:
+            if os.name == "nt" and selected.exists() and selected.is_file():
+                subprocess.run(["explorer", "/select,", str(selected)], check=False)
+            else:
+                os.startfile(str(selected if selected.is_dir() else selected.parent))
+        except Exception as exc:
+            QMessageBox.warning(self, "Explorer", f"Could not open location:\n{exc}")
+
+    def explorer_open_shell_menu(self) -> None:
+        if not hasattr(self, "explorer_tree"):
+            return
+        index = self.explorer_tree.currentIndex()
+        if not index.isValid():
+            return
+        rect = self.explorer_tree.visualRect(index)
+        pos = rect.center() if not rect.isNull() else QPoint(8, 8)
+        try:
+            self._on_explorer_tree_context_menu(pos)
+        except Exception as exc:
+            QMessageBox.warning(self, "Explorer", f"Could not open context menu:\n{exc}")
+
+    def explorer_rename_selected(self) -> None:
+        path = self._selected_explorer_path().strip()
+        if not path:
+            return
+        selected = Path(path)
+        if not selected.exists():
+            return
+        old_name = selected.name
+        name, ok = QInputDialog.getText(self, "Explorer: Rename", "New name:", text=old_name)
+        if not ok or not name.strip() or name.strip() == old_name:
+            return
+        try:
+            selected.rename(selected.parent / name.strip())
+        except Exception as exc:
+            QMessageBox.warning(self, "Explorer", f"Could not rename:\n{exc}")
+            return
+        self._refresh_workspace_dock()
+
+    def explorer_delete_selected(self) -> None:
+        path = self._selected_explorer_path().strip()
+        if not path:
+            return
+        selected = Path(path)
+        workspace_root = Path(str(self.settings.get("workspace_root", "") or "").strip() or ".")
+        if not selected.exists() or selected == workspace_root:
+            return
+        ret = QMessageBox.question(self, "Explorer: Delete", f"Delete '{selected.name}'?", QMessageBox.Yes | QMessageBox.No)
+        if ret != QMessageBox.Yes:
+            return
+        try:
+            if selected.is_dir():
+                shutil.rmtree(selected)
+            else:
+                selected.unlink(missing_ok=True)
+        except Exception as exc:
+            QMessageBox.warning(self, "Explorer", f"Could not delete:\n{exc}")
+            return
+        self._refresh_workspace_dock()
+
+    def explorer_copy_selected(self) -> None:
+        path = self._selected_explorer_path().strip()
+        if not path:
+            return
+        self._explorer_clipboard = {"mode": "copy", "paths": [path]}
+        self.show_status_message("Explorer copied selection.", 1800)
+
+    def explorer_cut_selected(self) -> None:
+        path = self._selected_explorer_path().strip()
+        if not path:
+            return
+        self._explorer_clipboard = {"mode": "cut", "paths": [path]}
+        self.show_status_message("Explorer cut selection.", 1800)
+
+    def explorer_paste(self) -> None:
+        clip = getattr(self, "_explorer_clipboard", {})
+        if not isinstance(clip, dict):
+            return
+        paths = clip.get("paths", [])
+        if not isinstance(paths, list) or not paths:
+            return
+        mode = str(clip.get("mode", "copy"))
+        target_dir = self._explorer_target_dir()
+        if target_dir is None:
+            return
+        for raw in paths:
+            src = Path(str(raw))
+            if not src.exists():
+                continue
+            dst = target_dir / src.name
+            if dst.exists():
+                QMessageBox.warning(self, "Explorer", f"Destination already exists:\n{dst}")
+                continue
+            try:
+                if mode == "cut":
+                    shutil.move(str(src), str(dst))
+                elif src.is_dir():
+                    shutil.copytree(src, dst)
+                else:
+                    shutil.copy2(src, dst)
+            except Exception as exc:
+                QMessageBox.warning(self, "Explorer", f"Paste failed:\n{exc}")
+        if mode == "cut":
+            self._explorer_clipboard = {"mode": "copy", "paths": []}
+        self._refresh_workspace_dock()
 
     def _build_search_results_dock(self) -> None:
         if hasattr(self, "search_results_dock"):
@@ -4894,6 +5661,7 @@ class MiscMixin(
         self.status_panel_breadcrumb_label = QLabel("-", container)
         self.status_panel_ruler_label = QLabel("", container)
         self.status_panel_ai_usage_label = QLabel("AI: 0 req | ~0 tok | ~$0.0000", container)
+        self.status_panel_gamification_label = QLabel("LVL 1 | XP 0 | Byte:Seed", container)
         for label in (
             self.status_panel_position_label,
             self.status_panel_zoom_label,
@@ -4903,6 +5671,7 @@ class MiscMixin(
             self.status_panel_breadcrumb_label,
             self.status_panel_ruler_label,
             self.status_panel_ai_usage_label,
+            self.status_panel_gamification_label,
         ):
             label.setMargin(3)
             layout.addWidget(label)
@@ -4920,6 +5689,10 @@ class MiscMixin(
             self.workspace_panel_action.blockSignals(True)
             self.workspace_panel_action.setChecked(self.workspace_dock.isVisible())
             self.workspace_panel_action.blockSignals(False)
+        if hasattr(self, "explorer_panel_action") and hasattr(self, "explorer_dock"):
+            self.explorer_panel_action.blockSignals(True)
+            self.explorer_panel_action.setChecked(self.explorer_dock.isVisible())
+            self.explorer_panel_action.blockSignals(False)
         if hasattr(self, "search_results_panel_action") and hasattr(self, "search_results_dock"):
             self.search_results_panel_action.blockSignals(True)
             self.search_results_panel_action.setChecked(self.search_results_dock.isVisible())
@@ -4951,6 +5724,7 @@ class MiscMixin(
             "editor_dock",
             "ai_chat_dock",
             "workspace_dock",
+            "explorer_dock",
             "search_results_dock",
             "status_panel_dock",
             "minimap_dock",
@@ -5044,6 +5818,11 @@ class MiscMixin(
             return
         self.workspace_dock.setVisible(bool(checked))
 
+    def toggle_explorer_panel(self, checked: bool) -> None:
+        if not hasattr(self, "explorer_dock"):
+            return
+        self.explorer_dock.setVisible(bool(checked))
+
     def toggle_search_results_panel(self, checked: bool) -> None:
         if not hasattr(self, "search_results_dock"):
             return
@@ -5073,6 +5852,7 @@ class MiscMixin(
             "editor_dock",
             "ai_chat_dock",
             "workspace_dock",
+            "explorer_dock",
             "search_results_dock",
             "status_panel_dock",
             "minimap_dock",

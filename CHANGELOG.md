@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on Keep a Changelog, and this project uses Semantic Versioning.
 
 
+## [1.7.8-prerelease] - 2026-03-06
+
+### Added
+- In-tab media experience for non-text files:
+  - image/audio/video now open inside the editor tab instead of popup dialogs
+  - media controls include play/pause/stop, seek/progress bar, elapsed/total time, and volume slider
+  - `Open Raw in Editor` is available in the media header and reuses the same tab
+- Gamification dashboard promoted to a full visual dialog with tabs:
+  - Quests
+  - Skill Tree
+  - Companion
+  - Crafted Tools
+  - Seasonal Events
+
+### Changed
+- Explorer panel visual style aligned closer to VSCode:
+  - compact header/action strip
+  - custom chevron glyph delegate
+  - tighter row density and cleaner branch rendering
+  - theme-aware dark/light icon tint refresh
+- Explorer interactions expanded:
+  - richer context menu commands
+  - keyboard shortcuts for file operations
+  - `Open Shell Menu` now opens in-app context menu instead of launching system Explorer
+- Workspace open behavior now persists selected root immediately and no longer auto-opens files/dialogs.
+
+### Fixed
+- `Open Raw in Editor` no longer leaves media tab in a blank/disconnected state or forces an extra tab.
+
 ## [1.7.7-prerelease] - 2026-03-06
 
 ### Added

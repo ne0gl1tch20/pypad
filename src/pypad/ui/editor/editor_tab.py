@@ -1,6 +1,16 @@
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QIcon, QPixmap
-from PySide6.QtWidgets import QHBoxLayout, QMenu, QSplitter, QTextEdit, QToolButton, QVBoxLayout, QWidget, QWidgetAction
+from PySide6.QtWidgets import (
+    QHBoxLayout,
+    QMenu,
+    QSplitter,
+    QStackedWidget,
+    QTextEdit,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
+    QWidgetAction,
+)
 import re
 from typing import Any
 
@@ -70,10 +80,16 @@ class EditorTab(QWidget):
         self.editor_splitter = QSplitter(Qt.Horizontal, self)
         self.editor_splitter.addWidget(self.text_edit.widget)
         self.editor_splitter.setStretchFactor(0, 1)
+        self._main_stack = QStackedWidget(self)
+        self._main_stack.addWidget(self.editor_splitter)
+        self._media_page = QWidget(self)
+        self._media_page_layout = QVBoxLayout(self._media_page)
+        self._media_page_layout.setContentsMargins(0, 0, 0, 0)
+        self._main_stack.addWidget(self._media_page)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self.editor_splitter)
+        layout.addWidget(self._main_stack)
 
         self.current_file: str | None = None
         self.zoom_steps = 0
@@ -120,8 +136,27 @@ class EditorTab(QWidget):
         self.quiz_user_answers: dict[int, str] = {}
         self.quiz_score_result: dict[str, Any] | None = None
         self.quiz_original_text: str | None = None
+        self.media_mode_enabled = False
+        self.media_path: str | None = None
 
         self._setup_editor_context_menu()
+
+    def clear_media_mode(self) -> None:
+        while self._media_page_layout.count():
+            item = self._media_page_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        self.media_mode_enabled = False
+        self.media_path = None
+        self._main_stack.setCurrentWidget(self.editor_splitter)
+
+    def set_media_widget(self, widget: QWidget, path: str) -> None:
+        self.clear_media_mode()
+        self._media_page_layout.addWidget(widget)
+        self.media_mode_enabled = True
+        self.media_path = path
+        self._main_stack.setCurrentWidget(self._media_page)
 
     def _setup_editor_context_menu(self) -> None:
         widget = self.text_edit.widget
