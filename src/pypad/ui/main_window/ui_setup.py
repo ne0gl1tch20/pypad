@@ -3,9 +3,12 @@ import getpass
 import base64
 import hashlib
 import json
+import locale
 import os
+import platform
 import random
 import re
+import subprocess
 import sys
 import time
 import webbrowser
@@ -89,7 +92,11 @@ from pypad.logging_utils import (
 )
 from pypad.app_settings.scintilla_profile import ScintillaProfile
 from pypad.ui.theme.theme_tokens import build_tokens_from_settings
-from .notepadpp_pref_runtime import apply_indentation_defaults_to_tab, new_document_defaults
+from .notepadpp_pref_runtime import (
+    apply_indentation_defaults_to_tab,
+    new_document_defaults,
+    search_engine_display_name,
+)
 
 
 
@@ -150,7 +157,7 @@ class UiSetupMixin:
         layout = QVBoxLayout(holder)
         layout.setContentsMargins(24, 24, 24, 24)
         layout.addStretch(1)
-        label = QLabel("You don't have any tabs ;( Just click File > New!", holder)
+        label = QLabel("You don't have any tabs :( Just click File > New!", holder)
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         label.setWordWrap(True)
         label.setProperty("i18n_skip", True)
@@ -179,11 +186,11 @@ class UiSetupMixin:
         return tab.text_edit
 
     @property
-    def markdown_preview(self) -> QTextEdit:
-        tab = self.active_tab()
-        if tab is None:
-            raise RuntimeError("No active tab")
-        return tab.markdown_preview
+    def markdown_preview(self):
+        pane = getattr(self, "markdown_preview_pane", None)
+        if pane is None:
+            raise RuntimeError("Markdown preview pane unavailable")
+        return pane
 
     @property
     def editor_splitter(self) -> QSplitter:
@@ -312,6 +319,219 @@ class UiSetupMixin:
         self.log_event("Info", "Opened debug logs dialog")
 
     @staticmethod
+    def _on_off(value: bool) -> str:
+        return "ON" if bool(value) else "OFF"
+
+    @staticmethod
+    def _debug_target_path() -> Path:
+        if getattr(sys, "frozen", False):
+            return Path(sys.executable).resolve()
+        try:
+            return Path(sys.argv[0]).resolve()
+        except Exception:
+            return Path(__file__).resolve()
+
+    def _windows_display_adapters(self) -> list[tuple[str, str]]:
+        if os.name != "nt":
+            return []
+        command = (
+            "Get-CimInstance Win32_VideoController | "
+            "Select-Object -Property Name,DriverVersion | ConvertTo-Json -Compress"
+        )
+        try:
+            completed = subprocess.run(
+                ["powershell", "-NoProfile", "-Command", command],
+                capture_output=True,
+                text=True,
+                timeout=3,
+            )
+        except Exception:
+            return []
+        if completed.returncode != 0:
+            return []
+        raw = str(completed.stdout or "").strip()
+        if not raw:
+            return []
+        try:
+            parsed = json.loads(raw)
+        except Exception:
+            return []
+        rows = parsed if isinstance(parsed, list) else [parsed]
+        out: list[tuple[str, str]] = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            name = str(row.get("Name", "") or "").strip()
+            drv = str(row.get("DriverVersion", "") or "").strip()
+            if name:
+                out.append((name, drv))
+        return out
+
+    def _installed_plugins_for_debug(self) -> list[str]:
+        host = getattr(getattr(self, "advanced_features", None), "plugin_host", None)
+        if host is None:
+            return []
+        try:
+            records = list(host.discover())
+        except Exception:
+            records = list(getattr(host, "records", []))
+        lines: list[str] = []
+        for rec in records:
+            name = str(getattr(rec, "name", "") or getattr(rec, "plugin_id", "") or "").strip()
+            if not name:
+                continue
+            version = ""
+            try:
+                manifest_path = Path(getattr(rec, "path", "")) / "plugin.json"
+                if manifest_path.exists():
+                    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+                    if isinstance(payload, dict):
+                        version = str(payload.get("version", "") or "").strip()
+            except Exception:
+                version = ""
+            lines.append(f"{name} ({version})" if version else name)
+        return sorted(set(lines), key=str.lower)
+
+    def build_debug_info_text(self) -> str:
+        app_bits = "64-bit" if sys.maxsize > 2**32 else "32-bit"
+        app_mode = "frozen" if getattr(sys, "frozen", False) else "development"
+        version_path = resolve_asset_path("version.txt")
+        app_version = "v?.?.?"
+        if version_path is not None:
+            try:
+                app_version = version_path.read_text(encoding="utf-8").strip() or app_version
+            except Exception:
+                pass
+        build_target = self._debug_target_path()
+        try:
+            build_time = datetime.fromtimestamp(build_target.stat().st_mtime).strftime("%b %d %Y - %H:%M:%S")
+        except Exception:
+            build_time = "unknown"
+        if os.name == "nt":
+            cmd_line = subprocess.list2cmdline(sys.argv[1:]) if len(sys.argv) > 1 else ""
+        else:
+            cmd_line = " ".join(sys.argv[1:]).strip()
+
+        scintilla_mode = "compat-backend"
+        tab = self.active_tab()
+        if tab is not None and getattr(tab.text_edit, "is_native_scintilla", False):
+            scintilla_mode = "QScintilla native"
+        elif tab is not None:
+            scintilla_mode = "ScintillaCompat (PySide6)"
+
+        cloud_mode_raw = str(self.settings.get("npp_cloud_mode", "no_cloud") or "no_cloud").strip().lower()
+        cloud_on = cloud_mode_raw not in {"", "no_cloud", "off", "false", "0"}
+        periodic_backup_on = bool(
+            self.settings.get(
+                "npp_backup_enable_session_snapshot",
+                self.settings.get("autosave_enabled", True),
+            )
+        )
+        multi_instance = str(self.settings.get("npp_multi_instance_mode", "default") or "default")
+        auto_detect = "enabled" if bool(self.settings.get("npp_recent_dont_check_exists", False)) else "basic"
+        dark_mode_on = bool(self.settings.get("dark_mode", False))
+
+        admin_mode = False
+        if os.name == "nt":
+            try:
+                import ctypes
+
+                admin_mode = bool(ctypes.windll.shell32.IsUserAnAdmin())
+            except Exception:
+                admin_mode = False
+
+        monitor_lines: list[str] = []
+        screens = QApplication.screens()
+        primary = QApplication.primaryScreen()
+        if primary is not None:
+            size = primary.size()
+            dpi = float(primary.logicalDotsPerInch() or 96.0)
+            scaling = int(round((dpi / 96.0) * 100))
+            monitor_lines.append(f"    primary monitor: {size.width()}x{size.height()}, scaling {scaling}%")
+        monitor_lines.append(f"    visible monitors count: {len(screens)}")
+        adapters = self._windows_display_adapters()
+        monitor_lines.append("    installed Display Class adapters:")
+        if adapters:
+            for idx, (name, drv) in enumerate(adapters):
+                monitor_lines.append(f"        {idx:04d}: Description - {name}")
+                monitor_lines.append(f"        {idx:04d}: DriverVersion - {drv or 'unknown'}")
+        else:
+            monitor_lines.append("        (not available)")
+
+        os_name = platform.platform()
+        os_version = platform.version()
+        os_build = ""
+        if os.name == "nt":
+            try:
+                ver = sys.getwindowsversion()
+                os_version = f"{ver.major}.{ver.minor}"
+                os_build = str(ver.build)
+            except Exception:
+                os_build = ""
+        ansi_codepage = "unknown"
+        if os.name == "nt":
+            try:
+                import ctypes
+
+                ansi_codepage = str(int(ctypes.windll.kernel32.GetACP()))
+            except Exception:
+                ansi_codepage = "unknown"
+        else:
+            ansi_codepage = locale.getpreferredencoding(False)
+
+        plugin_lines = self._installed_plugins_for_debug()
+        lines = [
+            f"Pypad {app_version}   ({app_bits})",
+            f"Build mode: {app_mode}",
+            f"Build time: {build_time}",
+            f"Scintilla Mode: {scintilla_mode}",
+            f"Path: {build_target}",
+            f"Command Line: {cmd_line}",
+            f"Admin mode: {self._on_off(admin_mode)}",
+            "Local Conf mode: OFF",
+            f"Cloud Config: {self._on_off(cloud_on)}",
+            f"Periodic Backup: {self._on_off(periodic_backup_on)}",
+            "Placeholders: OFF",
+            f"Multi-instance Mode: {multi_instance}",
+            "asNotepad: OFF",
+            f"File Status Auto-Detection: {auto_detect}",
+            f"Dark Mode: {self._on_off(dark_mode_on)}",
+            "Display Info:",
+            *monitor_lines,
+            f"OS Name: {os_name}",
+            f"OS Version: {os_version}",
+            f"OS Build: {os_build or 'unknown'}",
+            f"Current ANSI codepage: {ansi_codepage}",
+            "Plugins:",
+        ]
+        if plugin_lines:
+            lines.extend([f"    {name}" for name in plugin_lines])
+        else:
+            lines.append("    (none)")
+        return "\n".join(lines)
+
+    def show_debug_info(self) -> None:
+        text = self.build_debug_info_text()
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Debug Info")
+        dialog.resize(920, 640)
+        layout = QVBoxLayout(dialog)
+        output = QTextEdit(dialog)
+        output.setReadOnly(True)
+        output.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
+        output.setPlainText(text)
+        layout.addWidget(output, 1)
+        buttons = QDialogButtonBox(QDialogButtonBox.Close, Qt.Horizontal, dialog)
+        copy_btn = QPushButton("Copy", dialog)
+        buttons.addButton(copy_btn, QDialogButtonBox.ActionRole)
+        copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(output.toPlainText()))
+        buttons.rejected.connect(dialog.reject)
+        buttons.accepted.connect(dialog.accept)
+        layout.addWidget(buttons)
+        dialog.exec()
+        self.log_event("Info", "Opened debug info dialog")
+
+    @staticmethod
     def _default_style_name() -> str:
         available = {name.lower(): name for name in QStyleFactory.keys()}
         for candidate in ("windows", "windowsvista", "windows 11", "windows11"):
@@ -376,10 +596,61 @@ class UiSetupMixin:
 
     def _file_icon_for_tab(self, tab: EditorTab, fallback: QIcon) -> QIcon:
         if tab.markdown_mode_enabled:
+            markdown_icon = self._svg_icon_colored("file-markdown", size=18)
+            if not markdown_icon.isNull():
+                return markdown_icon
             return QIcon.fromTheme("text-markdown", fallback)
         suffix = ""
         if tab.current_file:
             suffix = Path(tab.current_file).suffix.lower()
+        extension_svg_names = {
+            ".py": "file-python",
+            ".md": "file-markdown",
+            ".markdown": "file-markdown",
+            ".txt": "file-text",
+            ".log": "file-log",
+            ".ini": "file-config",
+            ".cfg": "file-config",
+            ".conf": "file-config",
+            ".env": "file-config",
+            ".json": "file-json",
+            ".js": "file-javascript",
+            ".ts": "file-typescript",
+            ".java": "file-java",
+            ".cpp": "file-cpp",
+            ".cxx": "file-cpp",
+            ".cc": "file-cpp",
+            ".c": "file-c",
+            ".cs": "file-csharp",
+            ".go": "file-go",
+            ".rs": "file-rust",
+            ".kt": "file-kotlin",
+            ".swift": "file-swift",
+            ".php": "file-php",
+            ".rb": "file-ruby",
+            ".lua": "file-lua",
+            ".sh": "file-shell",
+            ".bat": "file-batch",
+            ".cmd": "file-batch",
+            ".ps1": "file-powershell",
+            ".html": "file-html",
+            ".htm": "file-html",
+            ".css": "file-css",
+            ".xml": "file-xml",
+            ".yml": "file-yaml",
+            ".yaml": "file-yaml",
+            ".toml": "file-config",
+            ".properties": "file-config",
+            ".pro": "file-config",
+            ".csv": "file-csv",
+            ".tsv": "file-tsv",
+            ".sql": "file-sql",
+            ".pypadquiz": "file-text",
+        }
+        svg_name = extension_svg_names.get(suffix, "file-generic")
+        svg_icon = self._svg_icon_colored(svg_name, size=18)
+        if not svg_icon.isNull():
+            return svg_icon
         icon_by_ext = {
             ".py": "text-x-python",
             ".md": "text-markdown",
@@ -398,6 +669,7 @@ class UiSetupMixin:
             ".ini": "text-x-ini",
             ".toml": "text-x-ini",
             ".log": "text-x-log",
+            ".pypadquiz": "text-plain",
         }
         theme_name = icon_by_ext.get(suffix, "text-x-generic")
         return QIcon.fromTheme(theme_name, fallback)
@@ -586,6 +858,8 @@ class UiSetupMixin:
         self._maybe_snapshot_version(tab)
         if hasattr(self, "_record_change_history_line"):
             self._record_change_history_line()
+        if hasattr(self, "_refresh_quiz_placeholders_for_tab"):
+            self._refresh_quiz_placeholders_for_tab(tab)
         self._emit_plugin_event("change", tab=tab)
 
     def _handle_selection_changed(self) -> None:
@@ -640,6 +914,7 @@ class UiSetupMixin:
                 ".md": "markdown",
                 ".markdown": "markdown",
                 ".mdown": "markdown",
+                ".pypadquiz": "plain",
             }
             if suffix in ext_map:
                 return ext_map[suffix]
@@ -658,6 +933,11 @@ class UiSetupMixin:
             tab.syntax_highlighter = None
             return
         profile = ScintillaProfile.from_settings(self.settings)
+        effective_style_theme = str(profile.style_theme or "default")
+        if effective_style_theme == "default" and bool(self.settings.get("dark_mode", False)):
+            # The "default" syntax palette is tuned for light backgrounds.
+            # In dark mode, use a higher-contrast preset unless user chose explicitly.
+            effective_style_theme = "high_contrast"
         language = self._detect_language_for_tab(tab)
         if tab.syntax_highlighter is None:
             tab.syntax_highlighter = cast(
@@ -665,13 +945,13 @@ class UiSetupMixin:
                 CodeSyntaxHighlighter(
                     tab.text_edit.widget.document(),
                     language=language,
-                    style_theme=profile.style_theme,
+                    style_theme=effective_style_theme,
                     style_overrides=profile.style_overrides,
                 ),
             )
         else:
             tab.syntax_highlighter.set_style_profile(
-                style_theme=profile.style_theme,
+                style_theme=effective_style_theme,
                 style_overrides=profile.style_overrides,
             )
             tab.syntax_highlighter.set_language(language)
@@ -813,6 +1093,14 @@ class UiSetupMixin:
             QEvent.Type.Show,
         }:
             self._schedule_main_toolbar_overflow_update()
+        if source in getattr(self, "_layout_autosave_watch_widgets", set()) and event.type() in {
+            QEvent.Type.Resize,
+            QEvent.Type.Move,
+            QEvent.Type.Show,
+            QEvent.Type.Hide,
+        }:
+            if hasattr(self, "_schedule_layout_auto_save"):
+                self._schedule_layout_auto_save()
         if event.type() == QEvent.Type.Wheel:
             if bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier):
                 tab = self._tab_for_editor(source)
@@ -978,7 +1266,6 @@ class UiSetupMixin:
         self._apply_file_metadata_to_tab(tab)
         tab.markdown_mode_enabled = self._is_markdown_path(file_path)
         tab.track_changes_enabled = bool(self.settings.get("track_changes_enabled", False))
-        tab.markdown_preview.setVisible(tab.markdown_mode_enabled)
         tab.column_mode = bool(profile.column_mode)
         tab.multi_caret = bool(profile.multi_caret)
         tab.code_folding = bool(profile.code_folding)
@@ -1002,8 +1289,8 @@ class UiSetupMixin:
             self.tab_widget.setCurrentIndex(index)
         tab.text_edit.set_modified(False)
         self._refresh_tab_title(tab)
-        if tab.markdown_mode_enabled:
-            tab.markdown_preview.setMarkdown(tab.text_edit.get_text())
+        if make_current and hasattr(self, "_sync_markdown_preview_for_active_tab"):
+            self._sync_markdown_preview_for_active_tab()
         self._apply_syntax_highlighting(tab)
         self._seed_version_history(tab, label="New")
         if tab.pinned:
@@ -1027,6 +1314,12 @@ class UiSetupMixin:
             self.md_toggle_preview_action.blockSignals(True)
             self.md_toggle_preview_action.setChecked(tab.markdown_mode_enabled)
             self.md_toggle_preview_action.blockSignals(False)
+        if hasattr(self, "md_math_preview_action"):
+            self.md_math_preview_action.blockSignals(True)
+            self.md_math_preview_action.setChecked(bool(self.settings.get("markdown_math_preview_enabled", False)))
+            self.md_math_preview_action.blockSignals(False)
+        if hasattr(self, "_sync_markdown_preview_for_active_tab"):
+            self._sync_markdown_preview_for_active_tab()
         if hasattr(self, "track_changes_toggle_action"):
             self.track_changes_toggle_action.blockSignals(True)
             self.track_changes_toggle_action.setChecked(bool(tab.track_changes_enabled))
@@ -1055,6 +1348,8 @@ class UiSetupMixin:
             self.show_line_numbers_action.blockSignals(True)
             self.show_line_numbers_action.setChecked(bool(getattr(tab, "show_line_numbers", True)))
             self.show_line_numbers_action.blockSignals(False)
+        if hasattr(self, "_sync_quiz_controls"):
+            self._sync_quiz_controls()
         if hasattr(self, "auto_completion_group"):
             mode = (tab.auto_completion_mode or "all").lower()
             if mode in {"none", "off"}:
@@ -1085,6 +1380,9 @@ class UiSetupMixin:
     def close_tab(self, index: int) -> None:
         widget = self.tab_widget.widget(index)
         if not isinstance(widget, EditorTab):
+            return
+        if bool(getattr(widget, "pinned", False)):
+            self.show_status_message("Pinned tab cannot be closed. Unpin it first.", 2500)
             return
         self.log_event("Info", f'Requested tab close: "{self._tab_display_name(widget)}"')
         if not self.maybe_save_tab(widget):
@@ -1296,7 +1594,7 @@ class UiSetupMixin:
             "Copy All File Paths to Clipboard": "Copy file paths of all open tabs",
             "Open Selection as File": "Open the selected path if it exists",
             "Open Selection Folder": "Open the folder for the selected path",
-            "Search Selection on Bing": "Search selected text on Bing",
+            "Search Selection on Internet": "Search selected text on the configured search engine",
             "Off": "Disable auto-completion",
             "All": "Complete using all available sources",
             "Words in Document": "Complete using words from the document",
@@ -1396,7 +1694,7 @@ class UiSetupMixin:
             "Text Direction RTL": "Set right-to-left text direction for this tab",
             "Text Direction LTR": "Set left-to-right text direction for this tab",
             "Reminders & Alarms": "Manage reminders for this note",
-            "Search with Bing": "Search selected text on Bing",
+            "Search with Internet": "Search selected text on the configured search engine",
             "Word Wrap": "Toggle wrapping long lines",
             "Font": "Change editor font",
             "Text Size (Selection)": "Wrap selected text with a specific font size",
@@ -1447,6 +1745,7 @@ class UiSetupMixin:
             "Live Markdown Preview": "Toggle side-by-side Markdown preview",
             "About Pypad": "Show app information",
             "Show Debug Logs": "Open a live debug log console",
+            "Show Debug Info": "Show environment and runtime debug information",
             "Windows...": "Open the window manager for all documents",
             "Name A to Z": "Sort document tabs by name ascending",
             "Name Z to A": "Sort document tabs by name descending",
@@ -1547,13 +1846,30 @@ class UiSetupMixin:
             except RuntimeError:
                 continue
 
+    def _refresh_search_engine_action_labels(self) -> None:
+        provider = search_engine_display_name(getattr(self, "settings", {}) or {})
+        provider_text = provider.replace("&", "&&")
+        if hasattr(self, "search_selection_web_action"):
+            self.search_selection_web_action.setText(f"Search Selection on {provider_text}")
+        if hasattr(self, "search_bing_action"):
+            self.search_bing_action.setText(f"Search with &{provider_text}")
+
     def update_action_states(self, *_args) -> None:
         if not hasattr(self, "save_action"):
             return
+        self._refresh_search_engine_action_labels()
         tab = self.active_tab()
         has_tab = tab is not None
         has_text = bool(tab and tab.text_edit.get_text())
         has_selection = bool(tab and tab.text_edit.has_selection())
+        selected_text = str(tab.text_edit.selected_text() or "") if tab and has_selection else ""
+        has_math_selection = bool(
+            has_selection
+            and re.search(
+                r"\$[^$]+\$|\$\$[\s\S]+\$\$|\\\([^\)]+\\\)|\\\[[\s\S]+\\\]|\\begin\{[a-zA-Z*]+\}|[A-Za-z]\s*=\s*[^=\n]+|\d+\s*[-+*/=^]\s*\d+|[A-Za-z0-9\)\]]\s*[-+*/=]\s*[A-Za-z0-9\(\[]|\b(sin|cos|tan|log|ln|exp|sqrt)\b|\^|_|\\frac|\\sqrt|\\sum|\\int|\\alpha|\\beta|\\theta|\\pi",
+                selected_text,
+            )
+        )
         can_undo = bool(tab and tab.text_edit.is_undo_available())
         can_redo = bool(tab and tab.text_edit.is_redo_available())
         is_modified = bool(tab and tab.text_edit.is_modified())
@@ -1578,6 +1894,10 @@ class UiSetupMixin:
         self.print_action.setEnabled(has_tab)
         self.print_preview_action.setEnabled(has_tab)
         self.save_all_action.setEnabled(has_tab)
+        if has_tab and bool(getattr(tab, "quiz_mode_enabled", False)):
+            self.save_action.setEnabled(False)
+            self.save_as_action.setEnabled(False)
+            self.save_all_action.setEnabled(False)
         self.save_session_action.setEnabled(True)
         self.save_session_as_action.setEnabled(True)
         self.load_session_action.setEnabled(True)
@@ -1627,6 +1947,9 @@ class UiSetupMixin:
         self.ai_attach_current_file_chat_action.setEnabled(has_tab and not ai_private_mode)
         self.ai_attach_selection_chat_action.setEnabled(has_tab and has_selection and not ai_private_mode)
         self.ai_attach_workspace_search_chat_action.setEnabled(not ai_private_mode)
+        self.homework_solve_ai_action.setEnabled(has_tab and has_math_selection and not ai_private_mode)
+        self.homework_solve_solutions_ai_action.setEnabled(has_tab and has_math_selection and not ai_private_mode)
+        self.homework_answer_ai_action.setEnabled(has_tab and has_math_selection and not ai_private_mode)
         self.ai_collab_merge_action.setEnabled(has_tab and not ai_private_mode and not is_read_only)
         self.ai_run_template_action.setEnabled(has_tab and not ai_private_mode)
         self.ai_save_template_action.setEnabled(True)
@@ -1910,6 +2233,10 @@ class UiSetupMixin:
         self.diagnostics_bundle_action.setEnabled(True)
         self.lan_collaboration_action.setEnabled(True)
         self.annotation_layer_action.setEnabled(has_tab)
+        if hasattr(self, "quiz_action"):
+            self.quiz_action.setEnabled(has_tab)
+        if hasattr(self, "quiz_format_help_action"):
+            self.quiz_format_help_action.setEnabled(True)
         if hasattr(self, "show_symbol_toolbar_button"):
             self.show_symbol_toolbar_button.setEnabled(has_scintilla)
         self.keyboard_only_mode_action.blockSignals(True)
@@ -1966,7 +2293,11 @@ class UiSetupMixin:
             self.md_image_action,
             self.md_hr_action,
             self.md_table_action,
+            self.md_latex_inline_action,
+            self.md_latex_block_action,
+            self.md_latex_align_action,
             self.md_toggle_preview_action,
+            self.md_math_preview_action,
         ):
             action.setEnabled(has_tab and not is_large_file)
 
@@ -2150,6 +2481,12 @@ class UiSetupMixin:
         self.ai_rewrite_grammar_action.triggered.connect(lambda: self.ai_rewrite_selection("fix_grammar"))
         self.ai_rewrite_summarize_action = QAction("Rewrite Selection: Summarize (AI Chat Apply)", self)
         self.ai_rewrite_summarize_action.triggered.connect(lambda: self.ai_rewrite_selection("summarize"))
+        self.homework_solve_ai_action = QAction("Homework: Solve with AI", self)
+        self.homework_solve_ai_action.triggered.connect(self.homework_solve_with_ai)
+        self.homework_solve_solutions_ai_action = QAction("Homework: Solve with Solutions with AI", self)
+        self.homework_solve_solutions_ai_action.triggered.connect(self.homework_solve_with_solutions_with_ai)
+        self.homework_answer_ai_action = QAction("Homework: Answer with AI", self)
+        self.homework_answer_ai_action.triggered.connect(self.homework_answer_with_ai)
         self.ai_ask_context_action = QAction("Ask About This File (AI Chat)...", self)
         self.ai_ask_context_action.triggered.connect(self.ask_ai_about_current_context)
         self.ai_workspace_citations_action = QAction("Ask Workspace (Citations)...", self)
@@ -2312,7 +2649,7 @@ class UiSetupMixin:
         self.open_selection_file_action.triggered.connect(self.edit_open_selection_file)
         self.open_selection_folder_action = QAction("Open Selection Folder", self)
         self.open_selection_folder_action.triggered.connect(self.edit_open_selection_folder)
-        self.search_selection_web_action = QAction("Search Selection on Bing", self)
+        self.search_selection_web_action = QAction("Search Selection on Internet", self)
         self.search_selection_web_action.triggered.connect(self.edit_search_selection_internet)
 
         self.column_editor_action = QAction("Column Editor...", self)
@@ -2637,7 +2974,7 @@ class UiSetupMixin:
         self.reminders_action.setShortcut(QKeySequence("Ctrl+Alt+R"))
         self.reminders_action.triggered.connect(self.show_reminders)
 
-        self.search_bing_action = QAction("Search with &Bing", self)
+        self.search_bing_action = QAction("Search with &Internet", self)
         self.search_bing_action.setShortcut(QKeySequence("Ctrl+E"))
         self.search_bing_action.triggered.connect(self.edit_search_bing)
 
@@ -3006,10 +3343,24 @@ class UiSetupMixin:
         self.md_table_action = QAction("Table", self)
         self.md_table_action.triggered.connect(self.markdown_table)
 
+        self.md_latex_inline_action = QAction("LaTeX Inline Math", self)
+        self.md_latex_inline_action.triggered.connect(self.markdown_latex_inline)
+
+        self.md_latex_block_action = QAction("LaTeX Block Math", self)
+        self.md_latex_block_action.triggered.connect(self.markdown_latex_block)
+
+        self.md_latex_align_action = QAction("LaTeX Aligned Equation", self)
+        self.md_latex_align_action.triggered.connect(self.markdown_latex_align)
+
         self.md_toggle_preview_action = QAction("Live Markdown Preview", self)
         self.md_toggle_preview_action.setCheckable(True)
         self.md_toggle_preview_action.setShortcut(QKeySequence("Ctrl+Shift+M"))
         self.md_toggle_preview_action.triggered.connect(self.toggle_markdown_preview)
+
+        self.md_math_preview_action = QAction("Use MathJax Preview (Web)", self)
+        self.md_math_preview_action.setCheckable(True)
+        self.md_math_preview_action.setChecked(bool(self.settings.get("markdown_math_preview_enabled", False)))
+        self.md_math_preview_action.triggered.connect(self.toggle_markdown_math_preview)
 
         self.md_toolbar_visible_action = QAction("Show Markdown Toolbar", self)
         self.md_toolbar_visible_action.setCheckable(True)
@@ -3032,6 +3383,8 @@ class UiSetupMixin:
         self.check_updates_action.triggered.connect(lambda _checked=False: self.check_for_updates(manual=True))
         self.show_debug_logs_action = QAction("Show Debug Logs", self)
         self.show_debug_logs_action.triggered.connect(self.show_debug_logs)
+        self.show_debug_info_action = QAction("Show Debug Info", self)
+        self.show_debug_info_action.triggered.connect(self.show_debug_info)
         self.open_source_licenses_action = QAction("Open Source Licenses...", self)
         self.open_source_licenses_action.triggered.connect(self.show_open_source_licenses)
         self.shortcut_mapper_action = QAction("Shortcut Mapper...", self)
@@ -3108,6 +3461,10 @@ class UiSetupMixin:
         self.collab_resolve_conflict_action.triggered.connect(self.resolve_collaboration_conflict)
         self.annotation_layer_action = QAction("Comment/Annotation Layer...", self)
         self.annotation_layer_action.triggered.connect(self.open_annotation_layer)
+        self.quiz_action = QAction("Quiz Mode", self)
+        self.quiz_action.triggered.connect(self.start_quiz_mode)
+        self.quiz_format_help_action = QAction("Quiz Format Help...", self)
+        self.quiz_format_help_action.triggered.connect(self.show_quiz_format_help)
 
         self._apply_ai_feature_icons()
         if hasattr(self, "_sync_layout_panel_actions"):
@@ -3457,6 +3814,10 @@ class UiSetupMixin:
         self.ai_menu.addAction(self.ai_rewrite_grammar_action)
         self.ai_menu.addAction(self.ai_rewrite_summarize_action)
         self.ai_menu.addSeparator()
+        self.ai_menu.addAction(self.homework_solve_ai_action)
+        self.ai_menu.addAction(self.homework_solve_solutions_ai_action)
+        self.ai_menu.addAction(self.homework_answer_ai_action)
+        self.ai_menu.addSeparator()
         self.ai_menu.addAction(self.ai_ask_context_action)
         self.ai_menu.addAction(self.ai_workspace_citations_action)
         self.ai_menu.addAction(self.ai_review_file_citations_action)
@@ -3516,15 +3877,16 @@ class UiSetupMixin:
         indent_menu.addAction(self.indent_action)
         indent_menu.addAction(self.unindent_action)
         self.edit_menu.addSeparator()
-        self.edit_menu.addAction(self.clipboard_history_action)
-        convert_case_menu = self.edit_menu.addMenu("Convert Case to")
+        edit_advanced_menu = self.edit_menu.addMenu("Advanced")
+        edit_advanced_menu.addAction(self.clipboard_history_action)
+        convert_case_menu = edit_advanced_menu.addMenu("Convert Case to")
         convert_case_menu.addAction(self.convert_uppercase_action)
         convert_case_menu.addAction(self.convert_lowercase_action)
         convert_case_menu.addAction(self.convert_propercase_action)
         convert_case_menu.addAction(self.convert_sentencecase_action)
         convert_case_menu.addAction(self.convert_invertcase_action)
         convert_case_menu.addAction(self.convert_randomcase_action)
-        line_ops_menu = self.edit_menu.addMenu("Line Operations")
+        line_ops_menu = edit_advanced_menu.addMenu("Line Operations")
         line_ops_menu.addAction(self.line_duplicate_action)
         line_ops_menu.addAction(self.line_remove_duplicates_action)
         line_ops_menu.addAction(self.line_remove_consecutive_duplicates_action)
@@ -3546,7 +3908,7 @@ class UiSetupMixin:
         line_ops_menu.addAction(self.line_sort_asc_icase_action)
         line_ops_menu.addAction(self.line_sort_desc_action)
         line_ops_menu.addAction(self.line_sort_desc_icase_action)
-        blank_ops_menu = self.edit_menu.addMenu("Blank Operations")
+        blank_ops_menu = edit_advanced_menu.addMenu("Blank Operations")
         blank_ops_menu.addAction(self.blank_trim_trailing_action)
         blank_ops_menu.addAction(self.blank_trim_leading_action)
         blank_ops_menu.addSeparator()
@@ -3555,32 +3917,32 @@ class UiSetupMixin:
         blank_ops_menu.addSeparator()
         blank_ops_menu.addAction(self.line_remove_empty_action)
         blank_ops_menu.addAction(self.line_remove_empty_ws_action)
-        comment_menu = self.edit_menu.addMenu("Comment/Uncomment")
+        comment_menu = edit_advanced_menu.addMenu("Comment/Uncomment")
         comment_menu.addAction(self.comment_toggle_action)
         comment_menu.addAction(self.comment_single_action)
         comment_menu.addAction(self.comment_single_un_action)
         comment_menu.addAction(self.comment_block_action)
         comment_menu.addAction(self.comment_block_un_action)
-        auto_completion_menu = self.edit_menu.addMenu("Auto-Completion")
+        auto_completion_menu = edit_advanced_menu.addMenu("Auto-Completion")
         auto_completion_menu.addAction(self.auto_completion_off_action)
         auto_completion_menu.addAction(self.auto_completion_all_action)
         auto_completion_menu.addAction(self.auto_completion_doc_action)
         auto_completion_menu.addAction(self.auto_completion_api_action)
         auto_completion_menu.addAction(self.auto_completion_open_docs_action)
-        eol_menu = self.edit_menu.addMenu("EOL Conversion")
+        eol_menu = edit_advanced_menu.addMenu("EOL Conversion")
         eol_menu.addAction(self.eol_crlf_action)
         eol_menu.addAction(self.eol_lf_action)
         eol_menu.addAction(self.eol_cr_action)
-        on_selection_menu = self.edit_menu.addMenu("On Selection")
+        on_selection_menu = edit_advanced_menu.addMenu("On Selection")
         on_selection_menu.addAction(self.open_selection_file_action)
         on_selection_menu.addAction(self.open_selection_folder_action)
         on_selection_menu.addSeparator()
         on_selection_menu.addAction(self.search_selection_web_action)
-        self.edit_menu.addSeparator()
-        self.edit_menu.addAction(self.column_mode_action)
-        self.edit_menu.addAction(self.multi_caret_action)
-        self.edit_menu.addAction(self.column_editor_action)
-        self.edit_menu.addAction(self.character_panel_action)
+        edit_advanced_menu.addSeparator()
+        edit_advanced_menu.addAction(self.column_mode_action)
+        edit_advanced_menu.addAction(self.multi_caret_action)
+        edit_advanced_menu.addAction(self.column_editor_action)
+        edit_advanced_menu.addAction(self.character_panel_action)
 
         # Search
         self.search_menu = menu_bar.addMenu("&Search")
@@ -3613,42 +3975,43 @@ class UiSetupMixin:
         self.search_menu.addAction(self.select_in_between_braces_action)
         self.search_menu.addAction(self.mark_action)
         self.search_menu.addSeparator()
-        change_history_menu = self.search_menu.addMenu("Change History")
+        search_advanced_menu = self.search_menu.addMenu("Advanced")
+        change_history_menu = search_advanced_menu.addMenu("Change History")
         change_history_menu.addAction(self.change_history_next_action)
         change_history_menu.addAction(self.change_history_prev_action)
         change_history_menu.addAction(self.change_history_clear_action)
-        style_all_menu = self.search_menu.addMenu("Style All Occurrences of Token")
+        style_all_menu = search_advanced_menu.addMenu("Style All Occurrences of Token")
         style_all_menu.addAction(self.style_all_1_action)
         style_all_menu.addAction(self.style_all_2_action)
         style_all_menu.addAction(self.style_all_3_action)
         style_all_menu.addAction(self.style_all_4_action)
         style_all_menu.addAction(self.style_all_5_action)
         style_all_menu.addAction(self.style_all_find_action)
-        style_one_menu = self.search_menu.addMenu("Style One Token")
+        style_one_menu = search_advanced_menu.addMenu("Style One Token")
         style_one_menu.addAction(self.style_one_1_action)
         style_one_menu.addAction(self.style_one_2_action)
         style_one_menu.addAction(self.style_one_3_action)
         style_one_menu.addAction(self.style_one_4_action)
         style_one_menu.addAction(self.style_one_5_action)
         style_one_menu.addAction(self.style_one_find_action)
-        clear_style_menu = self.search_menu.addMenu("Clear Style")
+        clear_style_menu = search_advanced_menu.addMenu("Clear Style")
         clear_style_menu.addAction(self.clear_style_1_action)
         clear_style_menu.addAction(self.clear_style_2_action)
         clear_style_menu.addAction(self.clear_style_3_action)
         clear_style_menu.addAction(self.clear_style_4_action)
         clear_style_menu.addAction(self.clear_style_5_action)
         clear_style_menu.addAction(self.clear_style_all_action)
-        self.search_menu.addAction(self.jump_up_action)
-        self.search_menu.addAction(self.jump_down_action)
-        copy_styled_menu = self.search_menu.addMenu("Copy Styled Text")
+        search_advanced_menu.addAction(self.jump_up_action)
+        search_advanced_menu.addAction(self.jump_down_action)
+        copy_styled_menu = search_advanced_menu.addMenu("Copy Styled Text")
         copy_styled_menu.addAction(self.copy_styled_1_action)
         copy_styled_menu.addAction(self.copy_styled_2_action)
         copy_styled_menu.addAction(self.copy_styled_3_action)
         copy_styled_menu.addAction(self.copy_styled_4_action)
         copy_styled_menu.addAction(self.copy_styled_5_action)
         copy_styled_menu.addAction(self.copy_styled_all_action)
-        self.search_menu.addSeparator()
-        bookmark_menu = self.search_menu.addMenu("Bookmark")
+        search_advanced_menu.addSeparator()
+        bookmark_menu = search_advanced_menu.addMenu("Bookmark")
         bookmark_menu.addAction(self.toggle_bookmark_action)
         bookmark_menu.addAction(self.next_bookmark_action)
         bookmark_menu.addAction(self.prev_bookmark_action)
@@ -3661,8 +4024,8 @@ class UiSetupMixin:
         bookmark_menu.addAction(self.remove_bookmarked_lines_action)
         bookmark_menu.addAction(self.remove_non_bookmarked_lines_action)
         bookmark_menu.addAction(self.inverse_bookmarks_action)
-        self.search_menu.addSeparator()
-        self.search_menu.addAction(self.find_chars_in_range_action)
+        search_advanced_menu.addSeparator()
+        search_advanced_menu.addAction(self.find_chars_in_range_action)
 
         # Format
         self.format_menu = menu_bar.addMenu("F&ormat")
@@ -3708,7 +4071,13 @@ class UiSetupMixin:
         markdown_menu.addAction(self.md_table_action)
         markdown_menu.addAction(self.md_hr_action)
         markdown_menu.addSeparator()
+        markdown_latex_menu = markdown_menu.addMenu("LaTeX Markdown")
+        markdown_latex_menu.addAction(self.md_latex_inline_action)
+        markdown_latex_menu.addAction(self.md_latex_block_action)
+        markdown_latex_menu.addAction(self.md_latex_align_action)
+        markdown_menu.addSeparator()
         markdown_menu.addAction(self.md_toggle_preview_action)
+        markdown_menu.addAction(self.md_math_preview_action)
         markdown_menu.addAction(self.md_toolbar_visible_action)
         self.format_menu.addSeparator()
 
@@ -3786,7 +4155,8 @@ class UiSetupMixin:
         self.view_menu.addSeparator()
         self.view_menu.addAction(self.summary_action)
         self.view_menu.addSeparator()
-        project_panels_menu = self.view_menu.addMenu("Project Panels")
+        view_advanced_menu = self.view_menu.addMenu("Advanced")
+        project_panels_menu = view_advanced_menu.addMenu("Project Panels")
         project_panels_menu.addAction(self.document_map_action)
         project_panels_menu.addAction(self.document_list_action)
         project_panels_menu.addAction(self.function_list_action)
@@ -3797,26 +4167,26 @@ class UiSetupMixin:
         project_panels_menu.addAction(self.workspace_panel_action)
         project_panels_menu.addAction(self.search_results_panel_action)
         project_panels_menu.addAction(self.editor_panel_action)
-        self.view_menu.addAction(self.define_language_action)
-        self.view_menu.addAction(self.open_workspace_action)
-        self.view_menu.addSeparator()
-        self.view_menu.addAction(self.sync_vertical_action)
-        self.view_menu.addAction(self.sync_horizontal_action)
-        self.view_menu.addAction(self.monitor_tail_action)
-        self.view_menu.addSeparator()
-        self.view_menu.addAction(self.text_direction_rtl_action)
-        self.view_menu.addAction(self.text_direction_ltr_action)
-        self.view_menu.addSeparator()
-        self.view_menu.addAction(self.ai_chat_panel_action)
-        self.view_menu.addSeparator()
-        self.view_menu.addAction(self.status_bar_action)
-        self.view_menu.addAction(self.status_panel_action)
-        self.view_menu.addSeparator()
-        snap_menu = self.view_menu.addMenu("Snap Dock")
+        view_advanced_menu.addAction(self.define_language_action)
+        view_advanced_menu.addAction(self.open_workspace_action)
+        view_advanced_menu.addSeparator()
+        view_advanced_menu.addAction(self.sync_vertical_action)
+        view_advanced_menu.addAction(self.sync_horizontal_action)
+        view_advanced_menu.addAction(self.monitor_tail_action)
+        view_advanced_menu.addSeparator()
+        view_advanced_menu.addAction(self.text_direction_rtl_action)
+        view_advanced_menu.addAction(self.text_direction_ltr_action)
+        view_advanced_menu.addSeparator()
+        view_advanced_menu.addAction(self.ai_chat_panel_action)
+        view_advanced_menu.addSeparator()
+        view_advanced_menu.addAction(self.status_bar_action)
+        view_advanced_menu.addAction(self.status_panel_action)
+        view_advanced_menu.addSeparator()
+        snap_menu = view_advanced_menu.addMenu("Snap Dock")
         snap_menu.addAction(self.snap_dock_left_action)
         snap_menu.addAction(self.snap_dock_right_action)
         snap_menu.addAction(self.snap_dock_bottom_action)
-        layout_menu = self.view_menu.addMenu("Layouts")
+        layout_menu = view_advanced_menu.addMenu("Layouts")
         layout_menu.addAction(self.layout_save_action)
         layout_menu.addAction(self.layout_save_as_action)
         layout_menu.addAction(self.layout_load_action)
@@ -3824,12 +4194,12 @@ class UiSetupMixin:
         layout_menu.addAction(self.layout_reset_action)
         layout_menu.addSeparator()
         layout_menu.addAction(self.lock_layout_action)
-        self.view_menu.addAction(self.focus_mode_action)
-        self.view_menu.addAction(self.column_mode_action)
-        self.view_menu.addAction(self.multi_caret_action)
-        self.view_menu.addAction(self.code_folding_action)
-        self.view_menu.addSeparator()
-        self.view_menu.addAction(self.keyboard_only_mode_action)
+        view_advanced_menu.addAction(self.focus_mode_action)
+        view_advanced_menu.addAction(self.column_mode_action)
+        view_advanced_menu.addAction(self.multi_caret_action)
+        view_advanced_menu.addAction(self.code_folding_action)
+        view_advanced_menu.addSeparator()
+        view_advanced_menu.addAction(self.keyboard_only_mode_action)
 
         # Settings
         self.settings_menu = menu_bar.addMenu("&Settings")
@@ -3865,6 +4235,9 @@ class UiSetupMixin:
         self.tools_menu.addAction(self.collab_presence_action)
         self.tools_menu.addAction(self.collab_resolve_conflict_action)
         self.tools_menu.addAction(self.annotation_layer_action)
+        self.tools_menu.addSeparator()
+        self.tools_menu.addAction(self.quiz_action)
+        self.tools_menu.addAction(self.quiz_format_help_action)
 
         # Macros
         self.macros_menu = menu_bar.addMenu("&Macro")
@@ -3916,6 +4289,7 @@ class UiSetupMixin:
         self.help_menu.addAction(self.check_updates_action)
         self.help_menu.addSeparator()
         self.help_menu.addAction(self.show_debug_logs_action)
+        self.help_menu.addAction(self.show_debug_info_action)
         self.help_menu.addAction(self.open_source_licenses_action)
         self.help_menu.addSeparator()
         self.help_menu.addAction(self.about_action)
@@ -4074,6 +4448,7 @@ class UiSetupMixin:
         markdown_toolbar.addAction(self.md_inline_code_action)
         markdown_toolbar.addAction(self.md_code_block_action)
         markdown_toolbar.addAction(self.md_link_action)
+        markdown_toolbar.addAction(self.md_latex_inline_action)
         markdown_toolbar.addSeparator()
         markdown_toolbar.addAction(self.md_toggle_preview_action)
         if hasattr(self, "log_event"):

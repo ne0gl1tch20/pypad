@@ -33,6 +33,8 @@ class DetachableTabBar(QTabBar):
             close_btn = existing.findChild(QToolButton, "pypadTabCloseButton")
             if close_btn is not None:
                 self._style_close_button(close_btn)
+                close_btn.setVisible(not pinned)
+                close_btn.setEnabled(not pinned)
             self._set_pin_badge(pin_label, pinned)
             self._set_favorite_badge(favorite_label, favorite)
             return
@@ -63,6 +65,8 @@ class DetachableTabBar(QTabBar):
         container.setFixedWidth((self._badge_size * 2) + 14 + 6)
         self._set_pin_badge(pin_label, pinned)
         self._set_favorite_badge(favorite_label, favorite)
+        close_btn.setVisible(not pinned)
+        close_btn.setEnabled(not pinned)
         self.setTabButton(index, QTabBar.RightSide, container)
 
     def refresh_tab_accessory(self, index: int) -> None:
@@ -160,7 +164,7 @@ class DetachableTabBar(QTabBar):
             return
         center = button.mapTo(self, button.rect().center())
         index = self.tabAt(center)
-        if index >= 0:
+        if index >= 0 and not self._tab_is_pinned(index):
             self.tabCloseRequested.emit(index)
 
     def mousePressEvent(self, event) -> None:  # type: ignore[override]
@@ -239,7 +243,7 @@ class DetachableTabBar(QTabBar):
     def mouseReleaseEvent(self, event) -> None:  # type: ignore[override]
         if event.button() == Qt.MiddleButton:
             index = self.tabAt(event.pos())
-            if index >= 0:
+            if index >= 0 and not self._tab_is_pinned(index):
                 host_window = self.window()
                 close_fn = getattr(host_window, "close_tab", None)
                 if callable(close_fn):

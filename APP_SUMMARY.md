@@ -1,7 +1,7 @@
 ﻿# Pypad - App Summary
 
-Last updated: 2026-02-27
-Release target: `1.7.5-prerelease`
+Last updated: 2026-03-06
+Release target: `1.7.7-prerelease`
 
 ## Product Snapshot
 
@@ -11,6 +11,9 @@ Current release focus:
 - Hardened LSP go-to-definition pipeline (timeouts/retries/verbose logs and per-language server preference settings in UI)
 - Added confirmed factory-reset action in Settings
 - QScintilla-style PySide6 compatibility editor engine with advanced fallback behavior
+- Quiz mode restoration and expansion (MCQ/TF/short-answer, `{user}` anchor support, detailed scoring dialog, `.pypadquiz`)
+- Settings-save stability hardening (no unintended close on preferences save/theme change)
+- AI panel quick-action UX restoration (`+` menu, Add Files picker, status row)
 
 ## Major Capabilities
 

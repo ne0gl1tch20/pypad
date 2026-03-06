@@ -6,6 +6,30 @@ hiddenimports = []
 if find_spec("PySide6.Qsci") is not None:
     hiddenimports.append("PySide6.Qsci")
 
+# Exclude heavyweight optional/dev stacks that are not required at runtime.
+# They can be pulled in transitively by optional AI SDK dependencies.
+excludes = [
+    "IPython",
+    "ipykernel",
+    "ipywidgets",
+    "jupyter",
+    "jupyter_client",
+    "jupyter_core",
+    "matplotlib",
+    "matplotlib_inline",
+    "pytest",
+    "_pytest",
+    "black",
+    "setuptools",
+    "wheel",
+    "pip",
+    "mypy",
+    "PySide6.QtQuick",
+    "PySide6.QtQuickWidgets",
+    "PySide6.QtQml",
+    "PySide6.QtPositioning",
+]
+
 a = Analysis(
     ['src\\run.py'],
     pathex=['src'],
@@ -18,18 +42,18 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=excludes,
     noarchive=False,
-    optimize=0,
+    optimize=1,
 )
 pyz = PYZ(a.pure)
 
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
+    [],
+    exclude_binaries=True,
     name='run',
     debug=False,
     version='assets\\version_info.txt',
@@ -44,4 +68,14 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name='run',
 )

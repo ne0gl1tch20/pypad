@@ -2,8 +2,8 @@
 setlocal
 cd /d "%~dp0"
 
-if not exist "dist\run.exe" (
-    echo [ERROR] dist\run.exe was not found.
+if not exist "dist\run\run.exe" (
+    echo [ERROR] dist\run\run.exe was not found.
     echo Build the app first, for example by running compile.bat.
     exit /b 1
 )
@@ -34,4 +34,10 @@ if errorlevel 1 (
     exit /b %errorlevel%
 )
 
-echo [DONE] Installer output is in dist\installer
+set "INSTALLER_EXE=dist\installer\PyPad-Setup-%APP_VERSION%.exe"
+if exist "%INSTALLER_EXE%" (
+    echo [DONE] Installer output: %INSTALLER_EXE%
+) else (
+    echo [WARN] Installer completed but expected output was not found: %INSTALLER_EXE%
+    echo [INFO] Check dist\installer\ for generated files.
+)

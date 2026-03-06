@@ -4,11 +4,34 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, and this project uses Semantic Versioning.
 
-## [Unreleased]
 
-## [1.7.5-prerelease] - 2026-02-27
+## [1.7.7-prerelease] - 2026-03-06
 
-- Another big update!!
+### Added
+- Quiz mode restored and expanded in the editor:
+  - mixed-format parser for MCQ, True/False, and short-answer blocks
+  - metadata formats accepted: `{answer:X}`, `[answer=X]`, `(correct: X)`, `{keywords: ...}`
+  - `{user}` / `[user]` answer anchors (above or below question)
+  - status-bar quiz controls: `Quit` and `Finish`
+  - detailed scoring dialog (totals, type totals, per-question rows)
+- Quiz format help dialog restored to a full detailed guide with examples and scoring notes.
+- Dedicated quiz tests added (`tests/test_quiz_mode.py`) covering parser/scoring/placeholder behavior.
+- AI panel quick-action UX restored:
+  - `+` action menu with SVG icons
+  - Add Files file-picker attachment flow
+  - inline status row (`Status: Idle/Thinking/Streaming/Error`)
+
+### Changed
+- Quiz placeholder placement now prefers the first non-option line under each question for cleaner alignment.
+- Parser now avoids non-gradable help bullets and marker-only sample lines to prevent visual ghost artifacts.
+- Theme restart behavior remains explicit-only (`Reload App`) instead of automatic app-close restart.
+
+### Fixed
+- Preferences save/theme changes no longer trigger unintended app close.
+- Cached settings-dialog reset flag is now cleared before each open to prevent accidental factory-reset close path.
+- Added temporary close-event trace logging to capture shutdown trigger path in logs.
+
+## [1.7.6-prerelease] - 2026-02-27
 
 ### Added
 - Settings dialog: LSP server preference fields for Python/JavaScript/TypeScript.

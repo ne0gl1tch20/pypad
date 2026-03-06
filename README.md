@@ -3,7 +3,9 @@
 Pypad is a PySide6 desktop text editor focused on fast note-taking and power-user workflows.
 
 Creator's Thoughts
-- You might wonder why my naming is like the other repos, i think i named it on my own since its a great way despite all the mess...
+- You might wonder why my naming is like the other project with same names, i think i named it on my own since it's a great way despite all the mess...
+- Warning: This project is only maintained during my free time, so please expect some delays or even makes the project being abondoned over 12 months.
+- I know some features are experimental, so please expect bugs, unresponsive apps, tracebacks, and errors. It's on prerelease state in my project actually.
 
 Highlights:
 - Soft modern rounded UI overhaul with token-based theming
@@ -13,6 +15,17 @@ Highlights:
 - Markdown tools + live preview, syntax modes, workspace search, autosave/recovery, version history
 - Preferences with unified PyPad + Notepad++ compatibility pages
 - Visual UI regression tooling (screenshot smoke tests + baseline compare CI)
+
+## Preview
+
+### Splash
+![Pypad Splash](assets/splash.png)
+
+### Main Window
+![Pypad Main Window](pictures/mainwindow.png)
+
+### Settings Dialog
+![Pypad Settings Dialog](pictures/settingsdialog.png)
 
 ## Install / Run
 
@@ -48,4 +61,4 @@ Highlights:
 - `tests_tmp/visual_smoke_phase2/index.html` is generated during visual smoke runs for quick review.
 
 ## Credits
-I use codex to turbo boost the codebase, however, i still use my coding skills for that.
+I use OpenAI Codex to turbo-boost my productivity. However, I still have to use my coding skills, ideas and any decisions for that.

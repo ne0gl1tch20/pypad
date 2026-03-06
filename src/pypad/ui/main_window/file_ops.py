@@ -106,8 +106,9 @@ class FileOpsMixin:
             "Open",
             "",
             (
-                "All Supported (*.md *.markdown *.mdown *.txt *.html *.htm *.docx *.odt *.pdf *.encnote);;"
+                "All Supported (*.md *.markdown *.mdown *.txt *.html *.htm *.docx *.odt *.pdf *.encnote *.pypadquiz);;"
                 "Markdown Documents (*.md *.markdown *.mdown);;"
+                "PyPad Quiz Files (*.pypadquiz);;"
                 "Text Documents (*.txt);;"
                 "Web Documents (*.html *.htm);;"
                 "Word Documents (*.docx);;"
@@ -131,6 +132,58 @@ class FileOpsMixin:
     def _load_text_from_path(self, path: str, encoding: str = "utf-8") -> tuple[str, bool, str | None]:
         return self.security_controller.load_text_from_path(path, encoding=encoding)
 
+    def _confirm_open_non_text_file(self, path: str, encoding: str, suffix: str) -> bool:
+        risky_binary_exts = {
+            ".exe",
+            ".dll",
+            ".png",
+            ".jpg",
+            ".jpeg",
+            ".mp3",
+            ".mp4",
+            ".jar",
+            ".zip",
+        }
+        reasons: list[str] = []
+        if suffix in risky_binary_exts:
+            reasons.append(f"extension {suffix} is typically binary")
+        try:
+            with open(path, "rb") as handle:
+                sample = handle.read(65536)
+        except Exception:
+            sample = b""
+        if sample:
+            if b"\x00" in sample:
+                reasons.append("contains NUL bytes")
+            # Quick binary-like signal: too many control chars in the first chunk.
+            control_chars = 0
+            for value in sample:
+                if value in (9, 10, 13):
+                    continue
+                if value < 32 or value == 127:
+                    control_chars += 1
+            if control_chars / max(1, len(sample)) > 0.10:
+                reasons.append("contains many non-text control bytes")
+            try:
+                sample.decode(encoding, errors="strict")
+            except UnicodeDecodeError:
+                reasons.append(f"cannot be decoded cleanly as {encoding}")
+        if not reasons:
+            return True
+        detail = "\n- ".join(reasons)
+        answer = QMessageBox.question(
+            self,
+            "Open Non-Text File",
+            (
+                f'The file "{path}" may be binary or corrupted and may not contain readable text.\n\n'
+                f"Detected:\n- {detail}\n\n"
+                "Do you want to open it anyway?"
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        return answer == QMessageBox.StandardButton.Yes
+
     def _open_file_path(self, path: str) -> bool:
         suffix = Path(path).suffix.lower()
         structured_import = suffix in {".docx", ".odt", ".html", ".htm", ".pdf"}
@@ -145,6 +198,10 @@ class FileOpsMixin:
             encoding,
             fast_open_enabled,
         )
+        if not structured_import and suffix != ".encnote":
+            if not self._confirm_open_non_text_file(path, encoding=encoding, suffix=suffix):
+                self.log_event("Info", f'Open cancelled (non-text warning): "{path}"')
+                return False
         try:
             size_kb = int(Path(path).stat().st_size / 1024)
         except Exception:
@@ -237,9 +294,8 @@ class FileOpsMixin:
         tab.markdown_mode_enabled = (
             imported_markdown_mode if structured_import else self._is_markdown_path(path)
         ) and not tab.large_file
-        tab.markdown_preview.setVisible(tab.markdown_mode_enabled)
-        if tab.markdown_mode_enabled:
-            tab.markdown_preview.setMarkdown(tab.text_edit.get_text())
+        if tab is self.active_tab() and hasattr(self, "_sync_markdown_preview_for_active_tab"):
+            self._sync_markdown_preview_for_active_tab()
         if hasattr(self, "_notify_large_file_mode"):
             self._notify_large_file_mode(tab)
         self._apply_syntax_highlighting(tab)
@@ -280,9 +336,15 @@ class FileOpsMixin:
         tab = self.active_tab()
         if tab is None:
             return False
+        if bool(getattr(tab, "quiz_mode_enabled", False)):
+            self.show_status_message("Saving is disabled during quiz mode.", 2500)
+            return False
         return self.file_save_tab(tab)
 
     def file_save_tab(self, tab: EditorTab) -> bool:
+        if bool(getattr(tab, "quiz_mode_enabled", False)):
+            self.show_status_message("Saving is disabled during quiz mode.", 2500)
+            return False
         if getattr(tab, "partial_large_preview", False):
             QMessageBox.information(
                 self,
@@ -316,6 +378,13 @@ class FileOpsMixin:
         if not tab.encryption_enabled and not structured_export:
             payload = self._normalize_eol(payload, tab.eol_mode or "LF")
         try:
+            # Ignore file-watcher callbacks caused by this in-app save.
+            suppress_map = getattr(self, "_self_save_suppressed_paths", None)
+            if not isinstance(suppress_map, dict):
+                suppress_map = {}
+                setattr(self, "_self_save_suppressed_paths", suppress_map)
+            suppress_key = os.path.normcase(os.path.abspath(str(tab.current_file)))
+            suppress_map[suppress_key] = time.monotonic() + 1.5
             if structured_export and not tab.encryption_enabled:
                 export_document_text(
                     tab.current_file,
@@ -386,9 +455,8 @@ class FileOpsMixin:
         tab.read_only = self._is_path_read_only(tab.current_file) if hasattr(self, "_is_path_read_only") else False
         tab.text_edit.set_read_only(bool(tab.read_only))
         tab.markdown_mode_enabled = self._is_markdown_path(tab.current_file) and not tab.large_file
-        tab.markdown_preview.setVisible(tab.markdown_mode_enabled)
-        if tab.markdown_mode_enabled:
-            tab.markdown_preview.setMarkdown(text)
+        if tab is self.active_tab() and hasattr(self, "_sync_markdown_preview_for_active_tab"):
+            self._sync_markdown_preview_for_active_tab()
         self._apply_syntax_highlighting(tab)
         self._refresh_tab_title(tab)
         self.show_status_message("Full large file loaded.", 3000)
@@ -400,6 +468,9 @@ class FileOpsMixin:
         return self.file_save_as_tab(tab)
 
     def file_save_as_tab(self, tab: EditorTab) -> bool:
+        if bool(getattr(tab, "quiz_mode_enabled", False)):
+            self.show_status_message("Save As is disabled during quiz mode.", 2500)
+            return False
         was_unsaved = tab.current_file is None
         previous_favorite = tab.favorite
         previous_tags = list(tab.tags)
@@ -408,8 +479,9 @@ class FileOpsMixin:
             "Save As",
             tab.current_file or "",
             (
-                "All Editable (*.md *.markdown *.mdown *.txt *.html *.htm *.docx *.odt *.encnote);;"
+                "All Editable (*.md *.markdown *.mdown *.txt *.html *.htm *.docx *.odt *.encnote *.pypadquiz);;"
                 "Markdown Documents (*.md *.markdown *.mdown);;"
+                "PyPad Quiz Files (*.pypadquiz);;"
                 "Text Documents (*.txt);;"
                 "Web Documents (*.html *.htm);;"
                 "Word Documents (*.docx);;"
@@ -433,9 +505,8 @@ class FileOpsMixin:
         if Path(path).suffix.lower() == ".encnote":
             tab.encryption_enabled = True
         tab.markdown_mode_enabled = self._is_markdown_path(path)
-        tab.markdown_preview.setVisible(tab.markdown_mode_enabled)
-        if tab.markdown_mode_enabled:
-            tab.markdown_preview.setMarkdown(tab.text_edit.get_text())
+        if tab is self.active_tab() and hasattr(self, "_sync_markdown_preview_for_active_tab"):
+            self._sync_markdown_preview_for_active_tab()
         self._apply_syntax_highlighting(tab)
         if path in set(self.settings.get("pinned_files", [])):
             tab.pinned = True

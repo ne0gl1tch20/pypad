@@ -1,46 +1,20 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
 
-from PySide6.QtCore import QPoint, QRect, QSize, Qt, Signal
+from PySide6.QtCore import QPoint, QRect, QSize, Qt, Signal, QTimer
 from PySide6.QtGui import QColor, QKeySequence, QMouseEvent, QPainter, QPolygon, QTextCharFormat, QTextCursor
 from PySide6.QtCore import QStringListModel
 from PySide6.QtWidgets import QCompleter, QPlainTextEdit, QTextEdit, QWidget
 from PySide6.QtWidgets import QToolTip
+from PySide6.QtGui import QPalette
+from .models import ColumnBlock, FoldRegion, HotspotRange, IndicatorRange
+from .extra_state_handlers import handle_extra_state_command
+from .movement_edit_handlers import handle_movement_edit_command
+from .selection_undo_handlers import handle_selection_undo_command
 
 # Advanced but minified scintilla engine, tailored for PySide6
 # Scintilla Recreated from scratch using QPlainTextEdit, inspired by https://doc.qt.io/qt-6/qtwidgets-widgets-codeeditor-example.html and https://github.com/pyqtgraph/pyqtgraph
-
-@dataclass
-class FoldRegion:
-    start: int
-    end: int
-    level: int
-
-
-@dataclass
-class ColumnBlock:
-    line_lo: int
-    line_hi: int
-    col_lo: int
-    col_hi: int
-
-
-@dataclass
-class HotspotRange:
-    start: int
-    end: int
-    payload: str = ""
-
-
-@dataclass
-class IndicatorRange:
-    start: int
-    end: int
-    payload: str = ""
-    value: int = 0
-
 
 class _MarginArea(QWidget):
     def __init__(self, editor: "ScintillaCompatEditor") -> None:
@@ -56,7 +30,7 @@ class _MarginArea(QWidget):
     def mousePressEvent(self, event: QMouseEvent) -> None:
         self._editor.handle_margin_click(event)
 
-
+# Lots of variables!
 class ScintillaCompatEditor(QPlainTextEdit):
     hotspotClicked = Signal(int, str)
     hotspotHovered = Signal(int, str)
@@ -105,6 +79,319 @@ class ScintillaCompatEditor(QPlainTextEdit):
     Arrow = 6
     Plus = 7
     Minus = 8
+    # Subset of Scintilla message ids used by compatibility callers.
+    SCI_GETLINECOUNT = 2154
+    SCI_GETTEXTLENGTH = 2183
+    SCI_GETLINE = 2153
+    SCI_SETLINESTATE = 2092
+    SCI_GETLINESTATE = 2093
+    SCI_GETMAXLINESTATE = 2094
+    SCI_POSITIONFROMLINE = 2167
+    SCI_GETLINEENDPOSITION = 2136
+    SCI_LINELENGTH = 2350
+    SCI_GETCHARAT = 2007
+    SCI_GETSTYLEAT = 2010
+    SCI_SETSAVEPOINT = 2014
+    SCI_CANCEL = 2325
+    SCI_CHARLEFT = 2304
+    SCI_CHARRIGHT = 2306
+    SCI_LINEUP = 2300
+    SCI_LINEDOWN = 2301
+    SCI_CHARLEFTEXTEND = 2305
+    SCI_CHARRIGHTEXTEND = 2307
+    SCI_LINEUPEXTEND = 2302
+    SCI_LINEDOWNEXTEND = 2303
+    SCI_HOMEEXTEND = 2313
+    SCI_HOMEWRAP = 2349
+    SCI_HOMEWRAPEXTEND = 2450
+    SCI_END = 2310
+    SCI_ENDEXTEND = 2311
+    SCI_LINEENDWRAP = 2451
+    SCI_LINEENDWRAPEXTEND = 2452
+    SCI_WORDLEFT = 2308
+    SCI_WORDRIGHT = 2309
+    SCI_WORDLEFTEXTEND = 2390
+    SCI_WORDRIGHTEXTEND = 2391
+    SCI_DELETEBACK = 2326
+    SCI_DELLINELEFT = 2395
+    SCI_DELLINERIGHT = 2396
+    SCI_LINECUT = 2337
+    SCI_LINEDELETE = 2338
+    SCI_LINETRANSPOSE = 2339
+    SCI_DOCUMENTSTARTEXTEND = 2317
+    SCI_DOCUMENTENDEXTEND = 2319
+    SCI_VCHOME = 2331
+    SCI_VCHOMEWRAP = 2453
+    SCI_VCHOMEWRAPEXTEND = 2454
+    SCI_PAGEUP = 2320
+    SCI_PAGEDOWN = 2321
+    SCI_PAGEUPEXTEND = 2322
+    SCI_PAGEDOWNEXTEND = 2323
+    SCI_DOCUMENTSTART = 2316
+    SCI_DOCUMENTEND = 2318
+    SCI_HOME = 2312
+    SCI_LINEEND = 2314
+    SCI_MARKERGET = 2046
+    SCI_MARKERNEXT = 2047
+    SCI_MARKERPREVIOUS = 2048
+    SCI_GETCOLUMN = 2129
+    SCI_GETCURLINE = 2027
+    SCI_GOTOLINE = 2024
+    SCI_POSITIONBEFORE = 2417
+    SCI_POSITIONAFTER = 2418
+    SCI_LINESCROLL = 2168
+    SCI_SETFIRSTVISIBLELINE = 2613
+    SCI_SETXOFFSET = 2397
+    SCI_GETXOFFSET = 2398
+    SCI_SETSCROLLWIDTH = 2274
+    SCI_GETSCROLLWIDTH = 2275
+    SCI_SETSCROLLWIDTHTRACKING = 2516
+    SCI_GETSCROLLWIDTHTRACKING = 2517
+    SCI_SETXCARETPOLICY = 2402
+    SCI_GETXCARETPOLICY = 2409
+    SCI_SETYCARETPOLICY = 2403
+    SCI_GETYCARETPOLICY = 2410
+    SCI_SETVISIBLEPOLICY = 2394
+    SCI_GETVISIBLEPOLICY = 2479
+    SCI_SETCARETPERIOD = 2076
+    SCI_GETCARETPERIOD = 2075
+    SCI_SETMOUSEDWELLTIME = 2264
+    SCI_GETMOUSEDWELLTIME = 2265
+    SCI_SETZOOM = 2373
+    SCI_GETZOOM = 2374
+    SCI_SETEDGEMODE = 2363
+    SCI_GETEDGEMODE = 2362
+    SCI_SETEDGECOLUMN = 2361
+    SCI_GETEDGECOLUMN = 2360
+    SCI_SETEDGECOLOUR = 2365
+    SCI_GETEDGECOLOUR = 2364
+    SCI_SETPRINTWRAPMODE = 2406
+    SCI_GETPRINTWRAPMODE = 2407
+    SCI_SETEXTRAASCENT = 2525
+    SCI_GETEXTRAASCENT = 2526
+    SCI_SETEXTRADESCENT = 2527
+    SCI_GETEXTRADESCENT = 2528
+    SCI_SETCARETSTICKY = 2458
+    SCI_GETCARETSTICKY = 2457
+    SCI_SETPASTECONVERTENDINGS = 2467
+    SCI_GETPASTECONVERTENDINGS = 2468
+    SCI_SETVIRTUALSPACEOPTIONS = 2596
+    SCI_GETVIRTUALSPACEOPTIONS = 2597
+    SCI_SETSTATUS = 2382
+    SCI_GETSTATUS = 2383
+    SCI_SETMODEVENTMASK = 2359
+    SCI_GETMODEVENTMASK = 30012
+    SCI_SETBUFFEREDDRAW = 2035
+    SCI_GETBUFFEREDDRAW = 2034
+    SCI_SETTWOPHASEDRAW = 2284
+    SCI_GETTWOPHASEDRAW = 2283
+    SCI_SETLAYOUTCACHE = 2272
+    SCI_GETLAYOUTCACHE = 2273
+    SCI_SETWHITESPACEFORE = 30120
+    SCI_GETWHITESPACEFORE = 30121
+    SCI_SETWHITESPACEBACK = 30122
+    SCI_GETWHITESPACEBACK = 30123
+    SCI_SETWHITESPACESIZE = 30124
+    SCI_GETWHITESPACESIZE = 30125
+    SCI_SETEXTRAFONTFLAG = 30126
+    SCI_GETEXTRAFONTFLAG = 30127
+    SCI_SETENDATLASTLINE = 30128
+    SCI_GETENDATLASTLINE = 30129
+    SCI_SETPUNCTUATIONCHARS = 30130
+    SCI_GETPUNCTUATIONCHARS = 30131
+    SCI_SETWORDCHARS = 30132
+    SCI_GETWORDCHARS = 30133
+    SCI_SETLINEENDTYPESALLOWED = 30134
+    SCI_GETLINEENDTYPESALLOWED = 30135
+    SCI_SETACCESSIBILITY = 30136
+    SCI_GETACCESSIBILITY = 30137
+    SCI_SETBIDIRECTIONAL = 30138
+    SCI_GETBIDIRECTIONAL = 30139
+    SCI_SETIDLESTYLING = 30140
+    SCI_GETIDLESTYLING = 30141
+    SCI_SETSELALPHA = 30142
+    SCI_GETSELALPHA = 30143
+    SCI_SETADDITIONALSELALPHA = 30144
+    SCI_GETADDITIONALSELALPHA = 30145
+    SCI_SETSELEOLFILLED = 30146
+    SCI_GETSELEOLFILLED = 30147
+    SCI_SETFONTLOCALE = 30148
+    SCI_GETFONTLOCALE = 30149
+    SCI_SETKEYSUNICODE = 30150
+    SCI_GETKEYSUNICODE = 30151
+    SCI_SETAUTOCASESENSITIVE = 30152
+    SCI_GETAUTOCASESENSITIVE = 30153
+    SCI_SETAUTOMAXHEIGHT = 30154
+    SCI_GETAUTOMAXHEIGHT = 30155
+    SCI_SETAUTOMAXWIDTH = 30156
+    SCI_GETAUTOMAXWIDTH = 30157
+    SCI_SETAUTODROPRESTOFWORD = 30158
+    SCI_GETAUTODROPRESTOFWORD = 30159
+    SCI_SETAUTOHIDE = 30160
+    SCI_GETAUTOHIDE = 30161
+    SCI_SETAUTOCANCELATSTART = 30162
+    SCI_GETAUTOCANCELATSTART = 30163
+    SCI_SETAUTOCURRENT = 30164
+    SCI_GETAUTOCURRENT = 30165
+    SCI_SETCARETLINEFRAME = 30166
+    SCI_GETCARETLINEFRAME = 30167
+    SCI_SETCARETLINEVISIBLEALWAYS = 30168
+    SCI_GETCARETLINEVISIBLEALWAYS = 30169
+    SCI_SETHSCROLLBAR = 30170
+    SCI_GETHSCROLLBAR = 30171
+    SCI_SETVSCROLLBAR = 30172
+    SCI_GETVSCROLLBAR = 30173
+    SCI_SETFOCUS = 30174
+    SCI_SETCARETFORE = 2069
+    SCI_GETCARETFORE = 2137
+    SCI_SETCARETSTYLE = 2512
+    SCI_GETCARETSTYLE = 2513
+    SCI_SETADDITIONALCARETFORE = 2604
+    SCI_GETADDITIONALCARETFORE = 2605
+    SCI_SETADDITIONALSELFORE = 2609
+    SCI_GETADDITIONALSELFORE = 2610
+    SCI_SETADDITIONALSELBACK = 30001
+    SCI_GETADDITIONALSELBACK = 30002
+    SCI_SETADDITIONALCARETSBLINK = 30003
+    SCI_GETADDITIONALCARETSBLINK = 30004
+    SCI_SETADDITIONALCARETSVISIBLE = 30005
+    SCI_GETADDITIONALCARETSVISIBLE = 30006
+    SCI_SETHOTSPOTACTIVEBACK = 30007
+    SCI_GETHOTSPOTACTIVEBACK = 30008
+    SCI_GETHOTSPOTACTIVEUNDERLINE = 30009
+    SCI_SETHOTSPOTSINGLELINE = 30010
+    SCI_GETHOTSPOTSINGLELINE = 30011
+    SCI_SETEOLMODE = 2031
+    SCI_GETEOLMODE = 2030
+    SCI_GETFIRSTVISIBLELINE = 2152
+    SCI_LINESONSCREEN = 2370
+    SCI_SETTABWIDTH = 2036
+    SCI_GETTABWIDTH = 2121
+    SCI_SETUSETABS = 2124
+    SCI_GETUSETABS = 2125
+    SCI_SETINDENT = 2122
+    SCI_GETINDENT = 2123
+    SCI_SETWRAPMODE = 2268
+    SCI_GETWRAPMODE = 2269
+    SCI_BRACEMATCH = 2353
+    SCI_WORDSTARTPOSITION = 2266
+    SCI_WORDENDPOSITION = 2267
+    SCI_GETBRACEHIGHLIGHT = 2355
+    SCI_GETBRACEBADLIGHT = 2498
+    SCI_GETCARETLINEVISIBLE = 2095
+    SCI_GETCARETLINEBACK = 2138
+    SCI_LINEFROMPOSITION = 2166
+    SCI_GETCURRENTPOS = 2008
+    SCI_GETANCHOR = 2009
+    SCI_GETTEXT = 2182
+    SCI_GETLENGTH = 2006
+    SCI_GETSELECTIONSTART = 2143
+    SCI_GETSELECTIONEND = 2145
+    SCI_GOTOPOS = 2025
+    SCI_SETSEL = 2160
+    SCI_SETEMPTYSELECTION = 2556
+    SCI_GETSELECTIONS = 2570
+    SCI_GETMAINSELECTION = 2571
+    SCI_SETMAINSELECTION = 2579
+    SCI_ROTATESELECTION = 2606
+    SCI_SWAPMAINANCHORCARET = 2607
+    SCI_GETMAINSELSTART = 2575
+    SCI_GETMAINSELEND = 2576
+    SCI_GETSELECTIONNSTART = 2573
+    SCI_GETSELECTIONNEND = 2574
+    SCI_SETSELECTIONNSTART = 2580
+    SCI_SETSELECTIONNEND = 2581
+    SCI_ADDSELECTION = 2572
+    SCI_DROPSELECTIONN = 2671
+    SCI_CLEARSELECTIONS = 2571 + 6
+    SCI_GETTEXTRANGE = 2162
+    SCI_REPLACESEL = 2170
+    SCI_APPENDTEXT = 2282
+    SCI_UNDO = 2176
+    SCI_REDO = 2011
+    SCI_CANUNDO = 2174
+    SCI_CANREDO = 2016
+    SCI_SETUNDOCOLLECTION = 2012
+    SCI_GETUNDOCOLLECTION = 2019
+    SCI_BEGINUNDOACTION = 2078
+    SCI_ENDUNDOACTION = 2079
+    SCI_EMPTYUNDOBUFFER = 2175
+    SCI_GETMODIFY = 2159
+    SCI_CLEAR = 2180
+    SCI_SELECTALL = 2013
+    SCI_SETREADONLY = 2171
+    SCI_GETREADONLY = 2140
+    SCI_INSERTTEXT = 2003
+    SCI_DELETERANGE = 2645
+    SCI_TARGETFROMSELECTION = 2287
+    SCI_TARGETWHOLEDOCUMENT = 2690
+    SCI_SETTARGETSTART = 2190
+    SCI_GETTARGETSTART = 2191
+    SCI_SETTARGETEND = 2192
+    SCI_GETTARGETEND = 2193
+    SCI_REPLACETARGET = 2194
+    SCI_REPLACETARGETRE = 2195
+    SCI_REPLACETARGETMINIMAL = 2779
+    SCI_SEARCHINTARGET = 2197
+    SCI_GETTARGETTEXT = 2687
+    SCI_SETSEARCHFLAGS = 2198
+    SCI_GETSEARCHFLAGS = 2199
+    SCI_SETSELBACK = 2068
+    SCI_SETSELFORE = 2067
+    SCI_SETCARETLINEVISIBLE = 2096
+    SCI_SETCARETLINEBACK = 2098
+    SCI_SETCARETWIDTH = 2188
+    SCI_GETCARETWIDTH = 2189
+    SCI_SETMARGINLEFT = 2155
+    SCI_GETMARGINLEFT = 2156
+    SCI_SETMARGINRIGHT = 2157
+    SCI_GETMARGINRIGHT = 2158
+    SCI_SETVIEWWS = 2021
+    SCI_GETVIEWWS = 2020
+    SCI_SETVIEWEOL = 2356
+    SCI_GETVIEWEOL = 2357
+    SCI_SETCONTROLCHARSYMBOL = 2388
+    SCI_GETCONTROLCHARSYMBOL = 2389
+    SCI_SETINDENTATIONGUIDES = 2132
+    SCI_GETINDENTATIONGUIDES = 2133
+    SCI_SETWRAPVISUALFLAGS = 2460
+    SCI_GETWRAPVISUALFLAGS = 2461
+    SCI_SETSELECTIONMODE = 2422
+    SCI_GETSELECTIONMODE = 2423
+    SCI_SETMULTIPLESELECTION = 2563
+    SCI_GETMULTIPLESELECTION = 2564
+    SCI_SETADDITIONALSELECTIONTYPING = 2567
+    SCI_GETADDITIONALSELECTIONTYPING = 2568
+    SCI_SETMULTIPASTE = 2614
+    SCI_SETINDICATORCURRENT = 2500
+    SCI_SETINDICATORVALUE = 2502
+    SCI_INDICSETSTYLE = 2080
+    SCI_INDICSETFORE = 2081
+    SCI_INDICATORFILLRANGE = 2504
+    SCI_INDICATORCLEARRANGE = 2505
+    SCI_STYLESETFORE = 2051
+    SCI_STYLESETBACK = 2052
+    SCI_STYLESETBOLD = 2053
+    SCI_STYLESETITALIC = 2054
+    SCI_STYLESETUNDERLINE = 2059
+    SCI_GETSTYLEBITS = 2091
+    SCI_SETSTYLEBITS = 2090
+    SCI_STYLECLEARALL = 2050
+    SCI_STARTSTYLING = 2032
+    SCI_SETSTYLING = 2033
+    SCI_GETFOLDLEVEL = 2223
+    SCI_GETFOLDPARENT = 2225
+    SCI_GETLASTCHILD = 2224
+    SCI_FOLDLINE = 2237
+    SCI_FOLDALL = 2662
+    SCI_SHOWLINES = 2226
+    SCI_HIDELINES = 2227
+    SCI_GETLINEVISIBLE = 2228
+    SC_FOLDLEVELNUMBERMASK = 0x0FFF
+    SCFIND_MATCHCASE = 0x0004
+    SCFIND_WHOLEWORD = 0x0002
+    SCFIND_WORDSTART = 0x00100000
+    SCFIND_REGEXP = 0x00200000
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -138,8 +425,12 @@ class ScintillaCompatEditor(QPlainTextEdit):
         self._view_whitespace = False
         self._view_eol = False
         self._view_control_chars = False
+        self._control_char_symbol = 0
+        self._wrap_mode = self.WrapWord
+        self._eol_mode = 0
         self._show_indent_guides = False
         self._show_wrap_symbol = False
+        self._undo_collection_enabled = True
         self._completion_words: list[str] = []
         self._completion_model = QStringListModel(self)
         self._completer = QCompleter(self._completion_model, self)
@@ -152,6 +443,67 @@ class ScintillaCompatEditor(QPlainTextEdit):
         self._margin_sensitive: dict[int, bool] = {}
         self._margin_types: dict[int, int] = {0: self.SC_MARGIN_SYMBOL, 1: self.SC_MARGIN_SYMBOL, 2: self.SC_MARGIN_NUMBER}
         self._margin_widths: dict[int, int] = {0: 14, 1: 14, 2: -1}
+        self._line_states: dict[int, int] = {}
+        self._virtual_first_visible_line = 0
+        self._x_offset = 0
+        self._scroll_width = 1
+        self._scroll_width_tracking = False
+        self._x_caret_policy = (0, 0)
+        self._y_caret_policy = (0, 0)
+        self._visible_policy = (0, 0)
+        self._caret_period_ms = 500
+        self._mouse_dwell_time_ms = 1000
+        self._zoom = 0
+        self._edge_mode = 0
+        self._edge_column = 80
+        self._edge_colour = QColor("#404040")
+        self._print_wrap_mode = 0
+        self._extra_ascent = 0
+        self._extra_descent = 0
+        self._caret_sticky = 0
+        self._paste_convert_endings = False
+        self._virtual_space_options = 0
+        self._status = 0
+        self._mod_event_mask = 0
+        self._buffered_draw = True
+        self._two_phase_draw = 0
+        self._layout_cache = 1
+        self._whitespace_fore = QColor("#6b7280")
+        self._whitespace_back = QColor("#000000")
+        self._whitespace_size = 1
+        self._extra_font_flag = 0
+        self._end_at_last_line = True
+        self._punctuation_chars = ""
+        self._word_chars = ""
+        self._line_end_types_allowed = 0
+        self._accessibility = 0
+        self._bidirectional = 0
+        self._idle_styling = 0
+        self._sel_alpha = 256
+        self._additional_sel_alpha = 256
+        self._sel_eol_filled = False
+        self._font_locale = ""
+        self._keys_unicode = True
+        self._auto_case_sensitive = False
+        self._auto_max_height = 8
+        self._auto_max_width = 0
+        self._auto_drop_rest_of_word = False
+        self._auto_hide = True
+        self._auto_cancel_at_start = True
+        self._auto_current = 0
+        self._caret_line_frame = 0
+        self._caret_line_visible_always = False
+        self._h_scrollbar = True
+        self._v_scrollbar = True
+        self._caret_fore_colour = QColor("#ffffff")
+        self._caret_style = 1
+        self._additional_caret_fore = QColor("#ffffff")
+        self._additional_sel_fore = QColor("#ffffff")
+        self._additional_sel_back = QColor("#4a90e2")
+        self._additional_carets_blink = True
+        self._additional_carets_visible = True
+        self._hotspot_active_back = QColor("#2b3a4a")
+        self._hotspot_single_line = True
         self._indicator_current = 0
         self._indicator_value_current = 0
         self._indicator_styles: dict[int, int] = {}
@@ -166,12 +518,26 @@ class ScintillaCompatEditor(QPlainTextEdit):
         self._margin_marker_masks: dict[int, int] = {0: -1}
         self._margin_left_padding = 8
         self._margin_right_padding = 4
+        self._margin_bg_color = QColor("#202228")
+        self._margin_fg_color = QColor("#8f95a1")
         self._caret_line_visible = True
         self._caret_line_color = QColor("#2f3640")
         self._style_current_pos = 0
+        self._style_bits = 8
         self._style_formats: dict[int, QTextCharFormat] = {}
         self._style_ranges: list[tuple[int, int, int]] = []
         self._lexer_ranges: list[tuple[int, int, int]] = []
+        self._background_overlays: dict[str, list[tuple[int, int, QColor]]] = {}
+        self._target_start = 0
+        self._target_end = 0
+        self._search_flags = 0
+        self._last_regex_match = None
+        self._main_selection_index = 0
+        self._rebuild_pending = False
+        self._rebuild_timer = QTimer(self)
+        self._rebuild_timer.setSingleShot(True)
+        self._rebuild_timer.setInterval(12)
+        self._rebuild_timer.timeout.connect(self._flush_deferred_rebuild)
 
         self._margin = _MarginArea(self)
         self.blockCountChanged.connect(self._update_margin_width)
@@ -251,7 +617,8 @@ class ScintillaCompatEditor(QPlainTextEdit):
         self.document().setModified(bool(value))
 
     def setWrapMode(self, mode: int) -> None:
-        self.setLineWrapMode(self.WidgetWidth if int(mode) == self.WrapWord else self.NoWrap)
+        self._wrap_mode = self.WrapWord if int(mode) == self.WrapWord else self.WrapNone
+        self.setLineWrapMode(self.WidgetWidth if self._wrap_mode == self.WrapWord else self.NoWrap)
 
     def setTabWidth(self, width: int) -> None:
         self._indent_width = max(1, int(width))
@@ -305,6 +672,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
 
     def setAPIs(self, apis) -> None:
         self._apis = apis
+        self._refresh_completion_words()
 
     def set_auto_completion_words(self, words: list[str]) -> None:
         self._completion_words = sorted({str(word).strip() for word in words if str(word).strip()})
@@ -398,6 +766,24 @@ class ScintillaCompatEditor(QPlainTextEdit):
             self._caret_line_color = QColor(str(color))
         self._refresh_extra_selections()
 
+    def setMarginsBackgroundColor(self, color) -> None:
+        if isinstance(color, QColor):
+            self._margin_bg_color = QColor(color)
+        else:
+            self._margin_bg_color = QColor(str(color))
+        self._margin.update()
+
+    def setMarginsForegroundColor(self, color) -> None:
+        if isinstance(color, QColor):
+            self._margin_fg_color = QColor(color)
+        else:
+            self._margin_fg_color = QColor(str(color))
+        self._margin.update()
+
+    def setFoldMarginColors(self, foreground, background) -> None:
+        self.setMarginsForegroundColor(foreground)
+        self.setMarginsBackgroundColor(background)
+
     def indicatorDefine(self, style: int, indicator: int) -> int:
         idx = max(0, int(indicator))
         self._indicator_styles[idx] = int(style)
@@ -480,6 +866,40 @@ class ScintillaCompatEditor(QPlainTextEdit):
         self._hotspot_ranges.append(HotspotRange(start=lo, end=hi, payload=str(payload)))
         self._refresh_extra_selections()
 
+    def set_background_overlays(self, channel: str, ranges: list[tuple[int, int, QColor | str]]) -> None:
+        key = str(channel or "").strip().lower()
+        if not key:
+            return
+        clean: list[tuple[int, int, QColor]] = []
+        doc_len = len(self.toPlainText())
+        for start, end, color in ranges:
+            lo = max(0, min(int(start), int(end)))
+            hi = max(0, max(int(start), int(end)))
+            if hi <= lo:
+                continue
+            if lo >= doc_len:
+                continue
+            qcolor = color if isinstance(color, QColor) else QColor(str(color))
+            if not qcolor.isValid():
+                continue
+            clean.append((lo, min(hi, doc_len), qcolor))
+        self._background_overlays[key] = clean
+        self._refresh_extra_selections()
+
+    def clear_background_overlays(self, channel: str | None = None) -> None:
+        if channel is None:
+            if not self._background_overlays:
+                return
+            self._background_overlays = {}
+            self._refresh_extra_selections()
+            return
+        key = str(channel or "").strip().lower()
+        if not key:
+            return
+        if key in self._background_overlays:
+            self._background_overlays.pop(key, None)
+            self._refresh_extra_selections()
+
     def setHotspotStyle(self, *, color: QColor | str | None = None, underline: bool | None = None) -> None:
         if color is not None:
             self._hotspot_color = color if isinstance(color, QColor) else QColor(str(color))
@@ -504,6 +924,17 @@ class ScintillaCompatEditor(QPlainTextEdit):
         fmt = self._style_formats.get(int(style_id), QTextCharFormat())
         fmt.setForeground(color if isinstance(color, QColor) else QColor(str(color)))
         self._style_formats[int(style_id)] = fmt
+        self._refresh_extra_selections()
+
+    def styleSetBack(self, style_id: int, color: QColor | str) -> None:
+        fmt = self._style_formats.get(int(style_id), QTextCharFormat())
+        fmt.setBackground(color if isinstance(color, QColor) else QColor(str(color)))
+        self._style_formats[int(style_id)] = fmt
+        self._refresh_extra_selections()
+
+    def styleClearAll(self) -> None:
+        self._style_formats.clear()
+        self._style_ranges = []
         self._refresh_extra_selections()
 
     def styleSetBold(self, style_id: int, bold: bool) -> None:
@@ -636,12 +1067,26 @@ class ScintillaCompatEditor(QPlainTextEdit):
         self._refresh_visibility()
         return had_hidden
 
+    def show_lines(self, start_line: int, end_line: int) -> bool:
+        lo = min(int(start_line), int(end_line))
+        hi = max(int(start_line), int(end_line))
+        if hi < lo:
+            return False
+        changed = False
+        for line in range(lo, hi + 1):
+            if line in self._hidden_lines:
+                self._hidden_lines.discard(line)
+                changed = True
+        if changed:
+            self._refresh_visibility()
+        return changed
+
     def send_scintilla_named(self, command_name: str, *args: int) -> bool:
         command = str(command_name).strip().upper()
         if command == "SCI_HIDELINES" and len(args) >= 2:
             return self.hide_lines(int(args[0]), int(args[1]))
         if command == "SCI_SHOWLINES" and len(args) >= 2:
-            return self.show_all_hidden_lines()
+            return self.show_lines(int(args[0]), int(args[1]))
         if command == "SCI_SETSELECTIONMODE" and len(args) >= 1:
             self.set_column_mode(int(args[0]) == self.SC_SEL_RECTANGLE)
             return True
@@ -663,7 +1108,8 @@ class ScintillaCompatEditor(QPlainTextEdit):
             self.viewport().update()
             return True
         if command == "SCI_SETCONTROLCHARSYMBOL" and len(args) >= 1:
-            self._view_control_chars = bool(int(args[0]))
+            self._control_char_symbol = int(args[0])
+            self._view_control_chars = bool(self._control_char_symbol)
             self.viewport().update()
             return True
         if command == "SCI_SETMARGINSENSITIVEN" and len(args) >= 2:
@@ -719,6 +1165,12 @@ class ScintillaCompatEditor(QPlainTextEdit):
         if command == "SCI_STYLESETFORE" and len(args) >= 2:
             self.styleSetFore(int(args[0]), self._qcolor_from_scintilla_rgb(int(args[1])))
             return True
+        if command == "SCI_STYLESETBACK" and len(args) >= 2:
+            self.styleSetBack(int(args[0]), self._qcolor_from_scintilla_rgb(int(args[1])))
+            return True
+        if command == "SCI_STYLECLEARALL":
+            self.styleClearAll()
+            return True
         if command == "SCI_STYLESETBOLD" and len(args) >= 2:
             self.styleSetBold(int(args[0]), bool(int(args[1])))
             return True
@@ -742,6 +1194,21 @@ class ScintillaCompatEditor(QPlainTextEdit):
             self._show_wrap_symbol = bool(int(args[0]))
             self.viewport().update()
             return True
+        if command == "SCI_SETCARETLINEBACK" and len(args) >= 1:
+            self.setCaretLineBackgroundColor(self._qcolor_from_scintilla_rgb(int(args[0])))
+            return True
+        if command == "SCI_SETSELBACK" and len(args) >= 2:
+            pal = self.palette()
+            pal.setColor(QPalette.Highlight, self._qcolor_from_scintilla_rgb(int(args[1])))
+            self.setPalette(pal)
+            self.viewport().update()
+            return True
+        if command == "SCI_SETSELFORE" and len(args) >= 2:
+            pal = self.palette()
+            pal.setColor(QPalette.HighlightedText, self._qcolor_from_scintilla_rgb(int(args[1])))
+            self.setPalette(pal)
+            self.viewport().update()
+            return True
         if command == "SCI_BRACEHIGHLIGHT" and len(args) >= 2:
             self._brace_match_pair = (int(args[0]), int(args[1]))
             self.viewport().update()
@@ -757,6 +1224,1050 @@ class ScintillaCompatEditor(QPlainTextEdit):
             self.fold_line(int(args[0]), bool(int(args[1])))
             return True
         return False
+
+    def SendScintilla(self, command, *args: int) -> int:
+        msg = int(command)
+        numeric_setters: dict[int, tuple[str, int]] = {
+            int(self.SCI_SETMARGINLEFT): ("SCI_SETMARGINLEFT", 1),
+            int(self.SCI_SETMARGINRIGHT): ("SCI_SETMARGINRIGHT", 1),
+            int(self.SCI_SETCARETWIDTH): ("SCI_SETCARETWIDTH", 1),
+            int(self.SCI_SETCARETLINEVISIBLE): ("SCI_SETCARETLINEVISIBLE", 1),
+            int(self.SCI_SETCARETLINEBACK): ("SCI_SETCARETLINEBACK", 1),
+            int(self.SCI_SETSELBACK): ("SCI_SETSELBACK", 2),
+            int(self.SCI_SETSELFORE): ("SCI_SETSELFORE", 2),
+            int(self.SCI_SETVIEWWS): ("SCI_SETVIEWWS", 1),
+            int(self.SCI_SETVIEWEOL): ("SCI_SETVIEWEOL", 1),
+            int(self.SCI_SETCONTROLCHARSYMBOL): ("SCI_SETCONTROLCHARSYMBOL", 1),
+            int(self.SCI_SETINDENTATIONGUIDES): ("SCI_SETINDENTATIONGUIDES", 1),
+            int(self.SCI_SETWRAPVISUALFLAGS): ("SCI_SETWRAPVISUALFLAGS", 1),
+            int(self.SCI_SETSELECTIONMODE): ("SCI_SETSELECTIONMODE", 1),
+            int(self.SCI_SETMULTIPLESELECTION): ("SCI_SETMULTIPLESELECTION", 1),
+            int(self.SCI_SETADDITIONALSELECTIONTYPING): ("SCI_SETADDITIONALSELECTIONTYPING", 1),
+            int(self.SCI_SETMULTIPASTE): ("SCI_SETMULTIPASTE", 1),
+            int(self.SCI_SETINDICATORCURRENT): ("SCI_SETINDICATORCURRENT", 1),
+            int(self.SCI_SETINDICATORVALUE): ("SCI_SETINDICATORVALUE", 1),
+            int(self.SCI_INDICSETSTYLE): ("SCI_INDICSETSTYLE", 2),
+            int(self.SCI_INDICSETFORE): ("SCI_INDICSETFORE", 2),
+            int(self.SCI_INDICATORFILLRANGE): ("SCI_INDICATORFILLRANGE", 2),
+            int(self.SCI_INDICATORCLEARRANGE): ("SCI_INDICATORCLEARRANGE", 2),
+            int(self.SCI_STYLESETFORE): ("SCI_STYLESETFORE", 2),
+            int(self.SCI_STYLESETBACK): ("SCI_STYLESETBACK", 2),
+            int(self.SCI_STYLESETBOLD): ("SCI_STYLESETBOLD", 2),
+            int(self.SCI_STYLESETITALIC): ("SCI_STYLESETITALIC", 2),
+            int(self.SCI_STYLESETUNDERLINE): ("SCI_STYLESETUNDERLINE", 2),
+            int(self.SCI_STYLECLEARALL): ("SCI_STYLECLEARALL", 0),
+            int(self.SCI_STARTSTYLING): ("SCI_STARTSTYLING", 1),
+            int(self.SCI_SETSTYLING): ("SCI_SETSTYLING", 2),
+            int(self.SCI_FOLDALL): ("SCI_FOLDALL", 1),
+            int(self.SCI_FOLDLINE): ("SCI_FOLDLINE", 2),
+        }
+        mapped = numeric_setters.get(msg)
+        if mapped is not None:
+            command_name, min_args = mapped
+            if len(args) < min_args:
+                return 0
+            return 1 if self.send_scintilla_named(command_name, *args) else 0
+        if msg == int(self.SCI_GETLINECOUNT):
+            return max(1, int(self.blockCount()))
+        if msg == int(self.SCI_GETTEXTLENGTH):
+            return int(len(self.toPlainText()))
+        if msg == int(self.SCI_GETLINE):
+            line = max(0, int(args[0]) if args else 0)
+            block = self.document().findBlockByNumber(line)
+            if not block.isValid():
+                return 0
+            payload = block.text() + "\n"
+            if len(args) >= 3:
+                max_len = max(0, int(args[1]))
+                clipped = payload[: max(0, max_len - 1)] if max_len else ""
+                self._write_scintilla_text_target(args[2], clipped, max_len=max_len)
+                return len(clipped)
+            return len(payload)
+        if msg == int(self.SCI_SETLINESTATE):
+            if len(args) < 2:
+                return 0
+            line = max(0, int(args[0]))
+            value = int(args[1])
+            self._line_states[line] = value
+            return int(value)
+        if msg == int(self.SCI_GETLINESTATE):
+            line = max(0, int(args[0]) if args else 0)
+            return int(self._line_states.get(line, 0))
+        if msg == int(self.SCI_GETMAXLINESTATE):
+            if not self._line_states:
+                return 0
+            return int(max(self._line_states.values()))
+        if msg == int(self.SCI_POSITIONFROMLINE):
+            line = max(0, int(args[0]) if args else 0)
+            block = self.document().findBlockByNumber(line)
+            if not block.isValid():
+                return int(len(self.toPlainText()))
+            return int(block.position())
+        if msg == int(self.SCI_GETLINEENDPOSITION):
+            line = max(0, int(args[0]) if args else 0)
+            block = self.document().findBlockByNumber(line)
+            if not block.isValid():
+                return int(len(self.toPlainText()))
+            return int(block.position() + len(block.text()))
+        if msg == int(self.SCI_LINELENGTH):
+            line = max(0, int(args[0]) if args else 0)
+            block = self.document().findBlockByNumber(line)
+            if not block.isValid():
+                return 0
+            return int(len(block.text()))
+        if msg == int(self.SCI_GETCHARAT):
+            pos = max(0, int(args[0]) if args else 0)
+            text = self.toPlainText()
+            if pos < 0 or pos >= len(text):
+                return 0
+            return int(ord(text[pos]))
+        if msg == int(self.SCI_GETSTYLEAT):
+            pos = max(0, int(args[0]) if args else 0)
+            return int(self._style_at_pos(pos))
+        if msg == int(self.SCI_SETTABWIDTH):
+            width = max(1, int(args[0])) if args else 4
+            self.setTabWidth(width)
+            return int(width)
+        if msg == int(self.SCI_GETTABWIDTH):
+            return int(self._indent_width)
+        if msg == int(self.SCI_SETUSETABS):
+            value = bool(int(args[0])) if args else False
+            self.setIndentationsUseTabs(value)
+            return 1 if value else 0
+        if msg == int(self.SCI_GETUSETABS):
+            return 1 if self._use_tabs else 0
+        if msg == int(self.SCI_SETINDENT):
+            width = max(1, int(args[0])) if args else 4
+            self.setIndentationWidth(width)
+            return int(width)
+        if msg == int(self.SCI_GETINDENT):
+            return int(self._indent_width)
+        if msg == int(self.SCI_GETMARGINLEFT):
+            return int(self._margin_left_padding)
+        if msg == int(self.SCI_GETMARGINRIGHT):
+            return int(self._margin_right_padding)
+        if msg == int(self.SCI_SETWRAPMODE):
+            mode = int(args[0]) if args else self.WrapNone
+            self.setWrapMode(mode)
+            return int(self._wrap_mode)
+        if msg == int(self.SCI_GETWRAPMODE):
+            return int(self._wrap_mode)
+        if msg == int(self.SCI_GETCARETWIDTH):
+            return int(self.cursorWidth())
+        if msg == int(self.SCI_GETVIEWWS):
+            return 1 if self._view_whitespace else 0
+        if msg == int(self.SCI_GETVIEWEOL):
+            return 1 if self._view_eol else 0
+        if msg == int(self.SCI_GETCONTROLCHARSYMBOL):
+            return int(self._control_char_symbol)
+        if msg == int(self.SCI_GETINDENTATIONGUIDES):
+            return 1 if self._show_indent_guides else 0
+        if msg == int(self.SCI_GETWRAPVISUALFLAGS):
+            return 1 if self._show_wrap_symbol else 0
+        if msg == int(self.SCI_MARKERGET):
+            line = max(0, int(args[0]) if args else 0)
+            return int(self._marker_mask_for_line(line))
+        if msg == int(self.SCI_MARKERNEXT):
+            if len(args) < 2:
+                return -1
+            line = max(0, int(args[0]))
+            mask = int(args[1])
+            return int(self._marker_next_line(line, mask))
+        if msg == int(self.SCI_MARKERPREVIOUS):
+            if len(args) < 2:
+                return -1
+            line = max(0, int(args[0]))
+            mask = int(args[1])
+            return int(self._marker_previous_line(line, mask))
+        if msg == int(self.SCI_GETCOLUMN):
+            pos = max(0, int(args[0]) if args else 0)
+            _line, col = self._line_col_from_pos(pos)
+            return int(col)
+        if msg == int(self.SCI_POSITIONBEFORE):
+            pos = max(0, min(int(args[0]) if args else 0, len(self.toPlainText())))
+            return int(max(0, pos - 1))
+        if msg == int(self.SCI_POSITIONAFTER):
+            pos = max(0, min(int(args[0]) if args else 0, len(self.toPlainText())))
+            return int(min(len(self.toPlainText()), pos + 1))
+        if msg == int(self.SCI_LINESCROLL):
+            cols = int(args[0]) if len(args) >= 1 else 0
+            lines = int(args[1]) if len(args) >= 2 else 0
+            self._x_offset = max(0, int(self._x_offset + cols))
+            self._virtual_first_visible_line = max(0, int(self._virtual_first_visible_line + lines))
+            return int(self._virtual_first_visible_line)
+        if msg == int(self.SCI_SETFIRSTVISIBLELINE):
+            line = max(0, int(args[0]) if args else 0)
+            self._virtual_first_visible_line = line
+            return int(line)
+        if msg == int(self.SCI_SETXOFFSET):
+            off = max(0, int(args[0]) if args else 0)
+            self._x_offset = off
+            return int(off)
+        if msg == int(self.SCI_GETXOFFSET):
+            return int(self._x_offset)
+        if msg == int(self.SCI_SETSCROLLWIDTH):
+            width = max(1, int(args[0]) if args else 1)
+            self._scroll_width = width
+            return int(width)
+        if msg == int(self.SCI_GETSCROLLWIDTH):
+            return int(self._scroll_width)
+        if msg == int(self.SCI_SETSCROLLWIDTHTRACKING):
+            value = bool(int(args[0])) if args else False
+            self._scroll_width_tracking = value
+            return 1 if value else 0
+        if msg == int(self.SCI_GETSCROLLWIDTHTRACKING):
+            return 1 if self._scroll_width_tracking else 0
+        if msg == int(self.SCI_SETXCARETPOLICY):
+            policy = int(args[0]) if len(args) >= 1 else 0
+            slop = int(args[1]) if len(args) >= 2 else 0
+            self._x_caret_policy = (policy, slop)
+            return int(policy)
+        if msg == int(self.SCI_GETXCARETPOLICY):
+            return int(self._x_caret_policy[0])
+        if msg == int(self.SCI_SETYCARETPOLICY):
+            policy = int(args[0]) if len(args) >= 1 else 0
+            slop = int(args[1]) if len(args) >= 2 else 0
+            self._y_caret_policy = (policy, slop)
+            return int(policy)
+        if msg == int(self.SCI_GETYCARETPOLICY):
+            return int(self._y_caret_policy[0])
+        if msg == int(self.SCI_SETVISIBLEPOLICY):
+            policy = int(args[0]) if len(args) >= 1 else 0
+            slop = int(args[1]) if len(args) >= 2 else 0
+            self._visible_policy = (policy, slop)
+            return int(policy)
+        if msg == int(self.SCI_GETVISIBLEPOLICY):
+            return int(self._visible_policy[0])
+        if msg == int(self.SCI_SETCARETPERIOD):
+            period = max(0, int(args[0])) if args else 0
+            self._caret_period_ms = period
+            return int(period)
+        if msg == int(self.SCI_GETCARETPERIOD):
+            return int(self._caret_period_ms)
+        if msg == int(self.SCI_SETMOUSEDWELLTIME):
+            dwell = int(args[0]) if args else 0
+            self._mouse_dwell_time_ms = dwell
+            return int(dwell)
+        if msg == int(self.SCI_GETMOUSEDWELLTIME):
+            return int(self._mouse_dwell_time_ms)
+        if msg == int(self.SCI_SETZOOM):
+            self._zoom = int(args[0]) if args else 0
+            return int(self._zoom)
+        if msg == int(self.SCI_GETZOOM):
+            return int(self._zoom)
+        if msg == int(self.SCI_SETEDGEMODE):
+            self._edge_mode = int(args[0]) if args else 0
+            return int(self._edge_mode)
+        if msg == int(self.SCI_GETEDGEMODE):
+            return int(self._edge_mode)
+        if msg == int(self.SCI_SETEDGECOLUMN):
+            self._edge_column = max(0, int(args[0]) if args else 0)
+            return int(self._edge_column)
+        if msg == int(self.SCI_GETEDGECOLUMN):
+            return int(self._edge_column)
+        if msg == int(self.SCI_SETEDGECOLOUR):
+            value = int(args[0]) if args else 0
+            self._edge_colour = self._qcolor_from_scintilla_rgb(value)
+            return int(value)
+        if msg == int(self.SCI_GETEDGECOLOUR):
+            c = self._edge_colour
+            return int(c.red()) | (int(c.green()) << 8) | (int(c.blue()) << 16)
+        if msg == int(self.SCI_SETPRINTWRAPMODE):
+            self._print_wrap_mode = int(args[0]) if args else 0
+            return int(self._print_wrap_mode)
+        if msg == int(self.SCI_GETPRINTWRAPMODE):
+            return int(self._print_wrap_mode)
+        if msg == int(self.SCI_SETEXTRAASCENT):
+            self._extra_ascent = max(0, int(args[0]) if args else 0)
+            return int(self._extra_ascent)
+        if msg == int(self.SCI_GETEXTRAASCENT):
+            return int(self._extra_ascent)
+        if msg == int(self.SCI_SETEXTRADESCENT):
+            self._extra_descent = max(0, int(args[0]) if args else 0)
+            return int(self._extra_descent)
+        if msg == int(self.SCI_GETEXTRADESCENT):
+            return int(self._extra_descent)
+        if msg == int(self.SCI_SETCARETSTICKY):
+            self._caret_sticky = max(0, int(args[0]) if args else 0)
+            return int(self._caret_sticky)
+        if msg == int(self.SCI_GETCARETSTICKY):
+            return int(self._caret_sticky)
+        if msg == int(self.SCI_SETPASTECONVERTENDINGS):
+            self._paste_convert_endings = bool(int(args[0])) if args else False
+            return 1 if self._paste_convert_endings else 0
+        if msg == int(self.SCI_GETPASTECONVERTENDINGS):
+            return 1 if self._paste_convert_endings else 0
+        if msg == int(self.SCI_SETVIRTUALSPACEOPTIONS):
+            self._virtual_space_options = int(args[0]) if args else 0
+            return int(self._virtual_space_options)
+        if msg == int(self.SCI_GETVIRTUALSPACEOPTIONS):
+            return int(self._virtual_space_options)
+        if msg == int(self.SCI_SETSTATUS):
+            self._status = int(args[0]) if args else 0
+            return int(self._status)
+        if msg == int(self.SCI_GETSTATUS):
+            return int(self._status)
+        if msg == int(self.SCI_SETMODEVENTMASK):
+            self._mod_event_mask = int(args[0]) if args else 0
+            return int(self._mod_event_mask)
+        if msg == int(self.SCI_GETMODEVENTMASK):
+            return int(self._mod_event_mask)
+        if msg == int(self.SCI_SETBUFFEREDDRAW):
+            self._buffered_draw = bool(int(args[0])) if args else False
+            return 1 if self._buffered_draw else 0
+        if msg == int(self.SCI_GETBUFFEREDDRAW):
+            return 1 if self._buffered_draw else 0
+        if msg == int(self.SCI_SETTWOPHASEDRAW):
+            self._two_phase_draw = max(0, int(args[0]) if args else 0)
+            return int(self._two_phase_draw)
+        if msg == int(self.SCI_GETTWOPHASEDRAW):
+            return int(self._two_phase_draw)
+        if msg == int(self.SCI_SETLAYOUTCACHE):
+            self._layout_cache = max(0, int(args[0]) if args else 0)
+            return int(self._layout_cache)
+        if msg == int(self.SCI_GETLAYOUTCACHE):
+            return int(self._layout_cache)
+        extra_state_result = handle_extra_state_command(self, msg, args)
+        if extra_state_result is not None:
+            return int(extra_state_result)
+        if msg == int(self.SCI_SETCARETFORE):
+            value = int(args[0]) if args else 0
+            self._caret_fore_colour = self._qcolor_from_scintilla_rgb(value)
+            return int(value)
+        if msg == int(self.SCI_GETCARETFORE):
+            c = self._caret_fore_colour
+            return int(c.red()) | (int(c.green()) << 8) | (int(c.blue()) << 16)
+        if msg == int(self.SCI_SETCARETSTYLE):
+            self._caret_style = max(0, int(args[0]) if args else 0)
+            return int(self._caret_style)
+        if msg == int(self.SCI_GETCARETSTYLE):
+            return int(self._caret_style)
+        if msg == int(self.SCI_SETADDITIONALCARETFORE):
+            value = int(args[0]) if args else 0
+            self._additional_caret_fore = self._qcolor_from_scintilla_rgb(value)
+            return int(value)
+        if msg == int(self.SCI_GETADDITIONALCARETFORE):
+            c = self._additional_caret_fore
+            return int(c.red()) | (int(c.green()) << 8) | (int(c.blue()) << 16)
+        if msg == int(self.SCI_SETADDITIONALSELFORE):
+            value = int(args[0]) if args else 0
+            self._additional_sel_fore = self._qcolor_from_scintilla_rgb(value)
+            return int(value)
+        if msg == int(self.SCI_GETADDITIONALSELFORE):
+            c = self._additional_sel_fore
+            return int(c.red()) | (int(c.green()) << 8) | (int(c.blue()) << 16)
+        if msg == int(self.SCI_SETADDITIONALSELBACK):
+            value = int(args[0]) if args else 0
+            self._additional_sel_back = self._qcolor_from_scintilla_rgb(value)
+            return int(value)
+        if msg == int(self.SCI_GETADDITIONALSELBACK):
+            c = self._additional_sel_back
+            return int(c.red()) | (int(c.green()) << 8) | (int(c.blue()) << 16)
+        if msg == int(self.SCI_SETADDITIONALCARETSBLINK):
+            self._additional_carets_blink = bool(int(args[0])) if args else False
+            return 1 if self._additional_carets_blink else 0
+        if msg == int(self.SCI_GETADDITIONALCARETSBLINK):
+            return 1 if self._additional_carets_blink else 0
+        if msg == int(self.SCI_SETADDITIONALCARETSVISIBLE):
+            self._additional_carets_visible = bool(int(args[0])) if args else False
+            return 1 if self._additional_carets_visible else 0
+        if msg == int(self.SCI_GETADDITIONALCARETSVISIBLE):
+            return 1 if self._additional_carets_visible else 0
+        if msg == int(self.SCI_SETHOTSPOTACTIVEBACK):
+            value = int(args[0]) if args else 0
+            self._hotspot_active_back = self._qcolor_from_scintilla_rgb(value)
+            return int(value)
+        if msg == int(self.SCI_GETHOTSPOTACTIVEBACK):
+            c = self._hotspot_active_back
+            return int(c.red()) | (int(c.green()) << 8) | (int(c.blue()) << 16)
+        if msg == int(self.SCI_GETHOTSPOTACTIVEUNDERLINE):
+            return 1 if self._hotspot_underline else 0
+        if msg == int(self.SCI_SETHOTSPOTSINGLELINE):
+            self._hotspot_single_line = bool(int(args[0])) if args else False
+            return 1 if self._hotspot_single_line else 0
+        if msg == int(self.SCI_GETHOTSPOTSINGLELINE):
+            return 1 if self._hotspot_single_line else 0
+        if msg == int(self.SCI_SETEOLMODE):
+            self._eol_mode = max(0, min(2, int(args[0]) if args else 0))
+            return int(self._eol_mode)
+        if msg == int(self.SCI_GETEOLMODE):
+            return int(self._eol_mode)
+        if msg == int(self.SCI_GETFIRSTVISIBLELINE):
+            return int(self._virtual_first_visible_line)
+        if msg == int(self.SCI_LINESONSCREEN):
+            lh = max(1, self.fontMetrics().height())
+            return max(1, int(self.viewport().height() // lh))
+        if msg == int(self.SCI_BRACEMATCH):
+            pos = max(0, int(args[0]) if args else 0)
+            text = self.toPlainText()
+            pair = self._find_brace_pair_at(text, pos)
+            if pair is None:
+                return -1
+            a, b = int(pair[0]), int(pair[1])
+            if a == pos:
+                return b
+            if b == pos:
+                return a
+            return -1
+        if msg == int(self.SCI_GETBRACEHIGHLIGHT):
+            idx = int(args[0]) if args else 0
+            pair = self._brace_match_pair
+            if pair is None:
+                return -1
+            a, b = int(pair[0]), int(pair[1])
+            if a >= 0 and b >= 0:
+                return a if idx == 0 else b
+            return -1
+        if msg == int(self.SCI_GETBRACEBADLIGHT):
+            pair = self._brace_match_pair
+            if pair is None:
+                return -1
+            a, b = int(pair[0]), int(pair[1])
+            if a == b and a >= 0:
+                return a
+            return -1
+        if msg == int(self.SCI_WORDSTARTPOSITION):
+            pos = max(0, min(int(args[0]) if args else 0, len(self.toPlainText())))
+            only_word = bool(int(args[1])) if len(args) >= 2 else True
+            return int(self._word_start_position(pos, only_word_chars=only_word))
+        if msg == int(self.SCI_WORDENDPOSITION):
+            pos = max(0, min(int(args[0]) if args else 0, len(self.toPlainText())))
+            only_word = bool(int(args[1])) if len(args) >= 2 else True
+            return int(self._word_end_position(pos, only_word_chars=only_word))
+        if msg == int(self.SCI_GETCARETLINEVISIBLE):
+            return 1 if self._caret_line_visible else 0
+        if msg == int(self.SCI_GETCARETLINEBACK):
+            c = self._caret_line_color
+            return int(c.red()) | (int(c.green()) << 8) | (int(c.blue()) << 16)
+        if msg == int(self.SCI_GETCURRENTPOS):
+            return int(self.textCursor().position())
+        if msg == int(self.SCI_GETLENGTH):
+            return int(len(self.toPlainText()))
+        if msg == int(self.SCI_SETTARGETSTART):
+            text_len = len(self.toPlainText())
+            self._target_start = max(0, min(int(args[0]) if args else 0, text_len))
+            return int(self._target_start)
+        if msg == int(self.SCI_SETTARGETEND):
+            text_len = len(self.toPlainText())
+            self._target_end = max(0, min(int(args[0]) if args else 0, text_len))
+            return int(self._target_end)
+        if msg == int(self.SCI_GETTARGETSTART):
+            return int(self._target_start)
+        if msg == int(self.SCI_GETTARGETEND):
+            return int(self._target_end)
+        if msg == int(self.SCI_GETTARGETTEXT):
+            text = self.toPlainText()
+            lo = max(0, min(int(self._target_start), int(self._target_end), len(text)))
+            hi = max(0, min(max(int(self._target_start), int(self._target_end)), len(text)))
+            seg = text[lo:hi]
+            if len(args) >= 1:
+                self._write_scintilla_text_target(args[0], seg)
+            return len(seg)
+        if msg == int(self.SCI_SETSEARCHFLAGS):
+            self._search_flags = int(args[0]) if args else 0
+            return int(self._search_flags)
+        if msg == int(self.SCI_GETSEARCHFLAGS):
+            return int(self._search_flags)
+        if msg == int(self.SCI_GETSELECTIONMODE):
+            return int(self.SC_SEL_RECTANGLE if self._column_mode else self.SC_SEL_STREAM)
+        if msg == int(self.SCI_GETMULTIPLESELECTION):
+            return 1 if self._multiple_selection_enabled else 0
+        if msg == int(self.SCI_GETADDITIONALSELECTIONTYPING):
+            return 1 if self._additional_selection_typing else 0
+        if msg == int(self.SCI_SETSTYLEBITS):
+            if args:
+                self._style_bits = max(1, min(8, int(args[0])))
+            return int(self._style_bits)
+        if msg == int(self.SCI_GETSTYLEBITS):
+            return int(self._style_bits)
+        if msg == int(self.SCI_GETTEXT):
+            text = self.toPlainText()
+            if len(args) >= 2:
+                max_len = max(0, int(args[0]))
+                clipped = text[: max(0, max_len - 1)] if max_len else ""
+                self._write_scintilla_text_target(args[1], clipped, max_len=max_len)
+                return len(clipped)
+            return len(text)
+        if msg == int(self.SCI_GETANCHOR):
+            c = self.textCursor()
+            return int(c.anchor())
+        if msg == int(self.SCI_SETSAVEPOINT):
+            self.document().setModified(False)
+            return 1
+        movement_edit_result = handle_movement_edit_command(self, msg, args)
+        if movement_edit_result is not None:
+            return int(movement_edit_result)
+        if msg == int(self.SCI_CANCEL):
+            c = self.textCursor()
+            if c.hasSelection():
+                c.setPosition(c.position())
+                self.setTextCursor(c)
+            return 1
+        selection_undo_result = handle_selection_undo_command(self, msg, args)
+        if selection_undo_result is not None:
+            return int(selection_undo_result)
+        if msg == int(self.SCI_INSERTTEXT):
+            if len(args) < 3:
+                return 0
+            if self.isReadOnly():
+                return 0
+            pos = max(0, min(int(args[0]), len(self.toPlainText())))
+            text = self._read_scintilla_text_arg(args[2], int(args[1]))
+            c = self.textCursor()
+            c.setPosition(pos)
+            c.insertText(text)
+            self.setTextCursor(c)
+            return len(text)
+        if msg == int(self.SCI_DELETERANGE):
+            if len(args) < 2:
+                return 0
+            if self.isReadOnly():
+                return 0
+            pos = max(0, min(int(args[0]), len(self.toPlainText())))
+            length = max(0, int(args[1]))
+            end = max(pos, min(pos + length, len(self.toPlainText())))
+            if end <= pos:
+                return 0
+            c = self.textCursor()
+            c.setPosition(pos)
+            c.setPosition(end, QTextCursor.KeepAnchor)
+            c.removeSelectedText()
+            self.setTextCursor(c)
+            return end - pos
+        if msg == int(self.SCI_REPLACESEL):
+            if len(args) < 2:
+                return 0
+            if self.isReadOnly():
+                return 0
+            replacement = self._read_scintilla_text_arg(args[1], int(args[0]))
+            c = self.textCursor()
+            c.insertText(replacement)
+            self.setTextCursor(c)
+            return len(replacement)
+        if msg == int(self.SCI_APPENDTEXT):
+            if len(args) < 2:
+                return 0
+            if self.isReadOnly():
+                return 0
+            append_text = self._read_scintilla_text_arg(args[1], int(args[0]))
+            c = self.textCursor()
+            c.movePosition(QTextCursor.End)
+            c.insertText(append_text)
+            self.setTextCursor(c)
+            return len(append_text)
+        if msg == int(self.SCI_GETSELECTIONSTART):
+            c = self.textCursor()
+            return int(min(c.selectionStart(), c.selectionEnd()))
+        if msg == int(self.SCI_GETSELECTIONEND):
+            c = self.textCursor()
+            return int(max(c.selectionStart(), c.selectionEnd()))
+        if msg == int(self.SCI_GETSELECTIONS):
+            if self._multiple_selection_enabled and self._additional_carets:
+                return int(len(self._additional_carets) + 1)
+            return 1
+        if msg == int(self.SCI_GETMAINSELECTION):
+            return int(self._coerce_main_selection_index(self._main_selection_index))
+        if msg == int(self.SCI_SETMAINSELECTION):
+            if not args:
+                return int(self._coerce_main_selection_index(self._main_selection_index))
+            idx = self._coerce_main_selection_index(int(args[0]))
+            self._main_selection_index = idx
+            return int(idx)
+        if msg == int(self.SCI_ROTATESELECTION):
+            self._rotate_main_selection()
+            return int(self._main_selection_index)
+        if msg == int(self.SCI_SWAPMAINANCHORCARET):
+            self._swap_main_anchor_caret()
+            return 1
+        if msg == int(self.SCI_GETMAINSELSTART):
+            start, _end = self._selection_n_range(self._coerce_main_selection_index(self._main_selection_index))
+            return int(start)
+        if msg == int(self.SCI_GETMAINSELEND):
+            _start, end = self._selection_n_range(self._coerce_main_selection_index(self._main_selection_index))
+            return int(end)
+        if msg == int(self.SCI_GETSELECTIONNSTART):
+            idx = int(args[0]) if args else 0
+            start, _end = self._selection_n_range(idx)
+            return int(start)
+        if msg == int(self.SCI_GETSELECTIONNEND):
+            idx = int(args[0]) if args else 0
+            _start, end = self._selection_n_range(idx)
+            return int(end)
+        if msg == int(self.SCI_SETSELECTIONNSTART):
+            if len(args) < 2:
+                return 0
+            self._set_selection_n_boundary(int(args[0]), int(args[1]), is_start=True)
+            return 1
+        if msg == int(self.SCI_SETSELECTIONNEND):
+            if len(args) < 2:
+                return 0
+            self._set_selection_n_boundary(int(args[0]), int(args[1]), is_start=False)
+            return 1
+        if msg == int(self.SCI_ADDSELECTION):
+            if len(args) < 2:
+                return 0
+            caret = max(0, min(int(args[0]), len(self.toPlainText())))
+            anchor = max(0, min(int(args[1]), len(self.toPlainText())))
+            self._add_selection(caret=caret, anchor=anchor)
+            return 1
+        if msg == int(self.SCI_DROPSELECTIONN):
+            if not args:
+                return 0
+            self._drop_selection_n(int(args[0]))
+            return 1
+        if msg == int(self.SCI_CLEARSELECTIONS):
+            self._clear_additional_selections()
+            return 1
+        if msg == int(self.SCI_GETTEXTRANGE):
+            if len(args) < 2:
+                return 0
+            lo = max(0, min(int(args[0]), int(args[1])))
+            hi = max(0, max(int(args[0]), int(args[1])))
+            text = self.toPlainText()
+            seg = text[lo:hi]
+            if len(args) >= 3:
+                self._write_scintilla_text_target(args[2], seg)
+            return len(seg)
+        if msg == int(self.SCI_TARGETFROMSELECTION):
+            c = self.textCursor()
+            self._target_start = int(min(c.selectionStart(), c.selectionEnd()))
+            self._target_end = int(max(c.selectionStart(), c.selectionEnd()))
+            return int(self._target_end - self._target_start)
+        if msg == int(self.SCI_TARGETWHOLEDOCUMENT):
+            self._target_start = 0
+            self._target_end = int(len(self.toPlainText()))
+            return int(self._target_end)
+        if msg == int(self.SCI_SEARCHINTARGET):
+            if len(args) < 2:
+                return -1
+            needle = self._read_scintilla_text_arg(args[1], int(args[0]))
+            if not needle:
+                return -1
+            text = self.toPlainText()
+            start = max(0, min(int(self._target_start), len(text)))
+            end = max(0, min(int(self._target_end), len(text)))
+            reverse = start > end
+            lo = min(start, end)
+            hi = max(start, end)
+            self._last_regex_match = None
+            idx = self._search_in_target(text, needle, lo, hi, reverse=reverse)
+            if idx < 0:
+                return -1
+            match_len = len(needle)
+            if self._last_regex_match is not None:
+                match_len = max(0, int(self._last_regex_match.end() - self._last_regex_match.start()))
+            self._target_start = int(idx)
+            self._target_end = int(idx + match_len)
+            return int(idx)
+        if msg == int(self.SCI_REPLACETARGET):
+            if len(args) < 2:
+                return 0
+            text = self.toPlainText()
+            lo = max(0, min(int(self._target_start), int(self._target_end), len(text)))
+            hi = max(0, min(max(int(self._target_start), int(self._target_end)), len(text)))
+            replacement = self._read_scintilla_text_arg(args[1], int(args[0]))
+            return self._replace_target_span(lo, hi, replacement)
+        if msg == int(self.SCI_REPLACETARGETRE):
+            if len(args) < 2:
+                return 0
+            text = self.toPlainText()
+            lo = max(0, min(int(self._target_start), int(self._target_end), len(text)))
+            hi = max(0, min(max(int(self._target_start), int(self._target_end)), len(text)))
+            replacement_raw = self._read_scintilla_text_arg(args[1], int(args[0]))
+            if self._last_regex_match is not None:
+                try:
+                    replacement = self._last_regex_match.expand(replacement_raw)
+                except Exception:
+                    replacement = replacement_raw
+            else:
+                replacement = replacement_raw
+            return self._replace_target_span(lo, hi, replacement)
+        if msg == int(self.SCI_REPLACETARGETMINIMAL):
+            if len(args) < 2:
+                return 0
+            text = self.toPlainText()
+            lo = max(0, min(int(self._target_start), int(self._target_end), len(text)))
+            hi = max(0, min(max(int(self._target_start), int(self._target_end)), len(text)))
+            replacement = self._read_scintilla_text_arg(args[1], int(args[0]))
+            original = text[lo:hi]
+            prefix = 0
+            max_prefix = min(len(original), len(replacement))
+            while prefix < max_prefix and original[prefix] == replacement[prefix]:
+                prefix += 1
+            suffix = 0
+            max_suffix = min(len(original) - prefix, len(replacement) - prefix)
+            while suffix < max_suffix and original[len(original) - 1 - suffix] == replacement[len(replacement) - 1 - suffix]:
+                suffix += 1
+            new_lo = lo + prefix
+            new_hi = hi - suffix
+            new_text = replacement[prefix : len(replacement) - suffix if suffix > 0 else len(replacement)]
+            return self._replace_target_span(new_lo, new_hi, new_text)
+        if msg == int(self.SCI_LINEFROMPOSITION):
+            pos = max(0, min(int(args[0]) if args else 0, len(self.toPlainText())))
+            block = self.document().findBlock(pos)
+            return int(block.blockNumber()) if block.isValid() else 0
+        if msg == int(self.SCI_GETLINEVISIBLE):
+            line = max(0, int(args[0]) if args else 0)
+            block = self.document().findBlockByNumber(line)
+            if not block.isValid():
+                return 0
+            return 1 if block.isVisible() else 0
+        if msg == int(self.SCI_GETFOLDLEVEL):
+            line = max(0, int(args[0]) if args else 0)
+            region = self._fold_regions.get(line)
+            if region is not None:
+                return int(region.level) & int(self.SC_FOLDLEVELNUMBERMASK)
+            block = self.document().findBlockByNumber(line)
+            if not block.isValid():
+                return 0
+            return int(self._indent_of_line(block.text())) & int(self.SC_FOLDLEVELNUMBERMASK)
+        if msg == int(self.SCI_GETFOLDPARENT):
+            line = max(0, int(args[0]) if args else 0)
+            self._rebuild_fold_regions()
+            return int(self._fold_parent_for_line(line))
+        if msg == int(self.SCI_GETLASTCHILD):
+            line = max(0, int(args[0]) if args else 0)
+            level = int(args[1]) if len(args) >= 2 else -1
+            self._rebuild_fold_regions()
+            return int(self._fold_last_child_for_line(line, level))
+        if msg == int(self.SCI_HIDELINES) and len(args) >= 2:
+            return 1 if self.hide_lines(int(args[0]), int(args[1])) else 0
+        if msg == int(self.SCI_SHOWLINES) and len(args) >= 2:
+            return 1 if self.show_lines(int(args[0]), int(args[1])) else 0
+        return 0
+
+    @staticmethod
+    def _write_scintilla_text_target(target, text: str, *, max_len: int | None = None) -> None:
+        payload = str(text)
+        if isinstance(target, dict):
+            target["text"] = payload
+            return
+        if isinstance(target, list):
+            target.clear()
+            target.append(payload)
+            return
+        if isinstance(target, bytearray):
+            encoded = payload.encode("utf-8")
+            if max_len is not None and max_len > 0:
+                encoded = encoded[: max(0, max_len - 1)]
+                write_len = min(len(target), len(encoded))
+                if write_len > 0:
+                    target[:write_len] = encoded[:write_len]
+                if write_len < len(target):
+                    target[write_len] = 0
+                return
+            write_len = min(len(target), len(encoded))
+            if write_len > 0:
+                target[:write_len] = encoded[:write_len]
+            return
+
+    @staticmethod
+    def _read_scintilla_text_arg(source, max_len: int | None = None) -> str:
+        if isinstance(source, dict):
+            value = source.get("text", "")
+            text = str(value)
+        elif isinstance(source, list):
+            text = str(source[0]) if source else ""
+        elif isinstance(source, (bytes, bytearray)):
+            raw = bytes(source)
+            zero = raw.find(b"\x00")
+            if zero >= 0:
+                raw = raw[:zero]
+            text = raw.decode("utf-8", errors="ignore")
+        else:
+            text = str(source or "")
+        if max_len is None:
+            return text
+        limit = int(max_len)
+        if limit < 0:
+            return text
+        return text[:limit]
+
+    def _search_in_target(self, text: str, needle: str, lo: int, hi: int, *, reverse: bool = False) -> int:
+        match_case = bool(int(self._search_flags) & int(self.SCFIND_MATCHCASE))
+        whole_word = bool(int(self._search_flags) & int(self.SCFIND_WHOLEWORD))
+        word_start = bool(int(self._search_flags) & int(self.SCFIND_WORDSTART))
+        regex_mode = bool(int(self._search_flags) & int(self.SCFIND_REGEXP))
+        if regex_mode:
+            return self._regex_search_in_target(
+                text,
+                needle,
+                lo,
+                hi,
+                reverse=reverse,
+                whole_word=whole_word,
+                word_start=word_start,
+                match_case=match_case,
+            )
+        hay = text if match_case else text.lower()
+        ndl = needle if match_case else needle.lower()
+        if not ndl:
+            return -1
+        start = max(0, min(int(lo), len(hay)))
+        end = max(start, min(int(hi), len(hay)))
+        if reverse:
+            idx = hay.rfind(ndl, start, end)
+            while idx >= 0:
+                if self._matches_word_constraints(text, idx, idx + len(needle), whole_word=whole_word, word_start=word_start):
+                    return int(idx)
+                idx = hay.rfind(ndl, start, idx)
+            return -1
+        idx = hay.find(ndl, start, end)
+        while idx >= 0:
+            if self._matches_word_constraints(text, idx, idx + len(needle), whole_word=whole_word, word_start=word_start):
+                return int(idx)
+            idx = hay.find(ndl, idx + 1, end)
+        return -1
+
+    def _regex_search_in_target(
+        self,
+        text: str,
+        pattern: str,
+        lo: int,
+        hi: int,
+        *,
+        reverse: bool,
+        whole_word: bool,
+        word_start: bool,
+        match_case: bool,
+    ) -> int:
+        flags = 0 if match_case else re.IGNORECASE
+        try:
+            regex = re.compile(pattern, flags)
+        except re.error:
+            return -1
+        matches = []
+        for m in regex.finditer(text, lo, hi):
+            s = int(m.start())
+            e = int(m.end())
+            if e <= s:
+                continue
+            if not self._matches_word_constraints(text, s, e, whole_word=whole_word, word_start=word_start):
+                continue
+            matches.append(m)
+        if not matches:
+            return -1
+        match = matches[-1] if reverse else matches[0]
+        self._last_regex_match = match
+        return int(match.start())
+
+    @staticmethod
+    def _is_word_char(ch: str) -> bool:
+        return ch.isalnum() or ch == "_"
+
+    def _is_whole_word_match(self, text: str, start: int, end: int) -> bool:
+        left_ok = start <= 0 or not self._is_word_char(text[start - 1])
+        right_ok = end >= len(text) or not self._is_word_char(text[end])
+        return bool(left_ok and right_ok)
+
+    def _is_word_start_match(self, text: str, start: int) -> bool:
+        return bool(start <= 0 or not self._is_word_char(text[start - 1]))
+
+    def _matches_word_constraints(self, text: str, start: int, end: int, *, whole_word: bool, word_start: bool) -> bool:
+        if whole_word:
+            return self._is_whole_word_match(text, start, end)
+        if word_start:
+            return self._is_word_start_match(text, start)
+        return True
+
+    def _replace_target_span(self, lo: int, hi: int, replacement: str) -> int:
+        cursor = self.textCursor()
+        cursor.setPosition(max(0, int(lo)))
+        cursor.setPosition(max(0, int(hi)), QTextCursor.KeepAnchor)
+        cursor.insertText(str(replacement))
+        self.setTextCursor(cursor)
+        self._target_start = int(lo)
+        self._target_end = int(lo + len(str(replacement)))
+        return len(str(replacement))
+
+    def _page_move(self, *, up: bool, extend: bool) -> int:
+        steps = max(1, int(self.SendScintilla(self.SCI_LINESONSCREEN)) - 1)
+        c = self.textCursor()
+        op = QTextCursor.Up if up else QTextCursor.Down
+        mode = QTextCursor.KeepAnchor if extend else QTextCursor.MoveAnchor
+        for _ in range(steps):
+            c.movePosition(op, mode)
+        self.setTextCursor(c)
+        return int(c.position())
+
+    def _word_start_position(self, pos: int, *, only_word_chars: bool) -> int:
+        text = self.toPlainText()
+        p = max(0, min(int(pos), len(text)))
+        if p <= 0:
+            return 0
+        while p > 0:
+            ch = text[p - 1]
+            if only_word_chars:
+                if not self._is_word_char(ch):
+                    break
+            else:
+                if ch.isspace():
+                    break
+            p -= 1
+        return int(p)
+
+    def _word_end_position(self, pos: int, *, only_word_chars: bool) -> int:
+        text = self.toPlainText()
+        p = max(0, min(int(pos), len(text)))
+        n = len(text)
+        while p < n:
+            ch = text[p]
+            if only_word_chars:
+                if not self._is_word_char(ch):
+                    break
+            else:
+                if ch.isspace():
+                    break
+            p += 1
+        return int(p)
+
+    def _selection_n_range(self, idx: int) -> tuple[int, int]:
+        index = max(0, int(idx))
+        c = self.textCursor()
+        main = (int(min(c.selectionStart(), c.selectionEnd())), int(max(c.selectionStart(), c.selectionEnd())))
+        if index == 0:
+            return main
+        if not self._multiple_selection_enabled:
+            return main
+        extra_i = index - 1
+        if 0 <= extra_i < len(self._additional_carets):
+            p = int(self._additional_carets[extra_i])
+            return p, p
+        return main
+
+    def _coerce_main_selection_index(self, idx: int) -> int:
+        total = 1
+        if self._multiple_selection_enabled and self._additional_carets:
+            total = len(self._additional_carets) + 1
+        return max(0, min(int(idx), max(0, total - 1)))
+
+    def _rotate_main_selection(self) -> None:
+        total = 1
+        if self._multiple_selection_enabled and self._additional_carets:
+            total = len(self._additional_carets) + 1
+        if total <= 1:
+            self._main_selection_index = 0
+            return
+        self._main_selection_index = (int(self._main_selection_index) + 1) % int(total)
+
+    def _swap_main_anchor_caret(self) -> None:
+        main_idx = self._coerce_main_selection_index(self._main_selection_index)
+        if main_idx != 0:
+            return
+        c = self.textCursor()
+        pos = int(c.position())
+        anc = int(c.anchor())
+        if pos == anc:
+            return
+        c.setPosition(pos)
+        c.setPosition(anc, QTextCursor.KeepAnchor)
+        self.setTextCursor(c)
+
+    def _set_selection_n_boundary(self, idx: int, pos: int, *, is_start: bool) -> None:
+        index = max(0, int(idx))
+        p = max(0, min(int(pos), len(self.toPlainText())))
+        if index == 0:
+            c = self.textCursor()
+            other = c.selectionEnd() if is_start else c.selectionStart()
+            c.setPosition(p)
+            c.setPosition(max(0, min(int(other), len(self.toPlainText()))), QTextCursor.KeepAnchor)
+            self.setTextCursor(c)
+            return
+        if not self._multiple_selection_enabled:
+            return
+        extra_i = index - 1
+        if extra_i < 0:
+            return
+        while len(self._additional_carets) <= extra_i:
+            self._additional_carets.append(int(self.textCursor().position()))
+        self._additional_carets[extra_i] = p
+        self.viewport().update()
+
+    def _add_selection(self, *, caret: int, anchor: int) -> None:
+        # Compat model stores additional selections as carets; selection ranges are not fully tracked yet.
+        self._multiple_selection_enabled = True
+        cp = int(caret)
+        if cp not in self._additional_carets and cp != int(self.textCursor().position()):
+            self._additional_carets.append(cp)
+        self.viewport().update()
+
+    def _drop_selection_n(self, idx: int) -> None:
+        index = int(idx)
+        if index <= 0:
+            return
+        if not self._multiple_selection_enabled:
+            return
+        extra_i = index - 1
+        if 0 <= extra_i < len(self._additional_carets):
+            del self._additional_carets[extra_i]
+        self._main_selection_index = self._coerce_main_selection_index(self._main_selection_index)
+        self.viewport().update()
+
+    def _clear_additional_selections(self) -> None:
+        self._additional_carets = []
+        self._multiple_selection_enabled = False
+        self._additional_selection_typing = False
+        self._main_selection_index = 0
+        self.viewport().update()
+
+    def _style_at_pos(self, pos: int) -> int:
+        p = max(0, int(pos))
+        for lo, hi, style_id in reversed([*self._lexer_ranges, *self._style_ranges]):
+            if int(lo) <= p < int(hi):
+                return int(style_id)
+        return 0
+
+    def _marker_mask_for_line(self, line: int) -> int:
+        ln = max(0, int(line))
+        mask = 0
+        for marker_id, lines in self._markers.items():
+            try:
+                bit = int(marker_id)
+            except Exception:
+                continue
+            if bit < 0 or bit > 30:
+                continue
+            if ln in lines:
+                mask |= (1 << bit)
+        return int(mask)
+
+    def _marker_line_matches_mask(self, line: int, mask: int) -> bool:
+        line_mask = self._marker_mask_for_line(line)
+        if int(mask) < 0:
+            return line_mask != 0
+        return (line_mask & int(mask)) != 0
+
+    def _marker_next_line(self, line: int, mask: int) -> int:
+        max_line = max(0, self.blockCount() - 1)
+        for ln in range(max(0, int(line)), max_line + 1):
+            if self._marker_line_matches_mask(ln, int(mask)):
+                return int(ln)
+        return -1
+
+    def _marker_previous_line(self, line: int, mask: int) -> int:
+        max_line = max(0, self.blockCount() - 1)
+        start = min(max_line, max(0, int(line)))
+        for ln in range(start, -1, -1):
+            if self._marker_line_matches_mask(ln, int(mask)):
+                return int(ln)
+        return -1
+
+    def _fold_parent_for_line(self, line: int) -> int:
+        best_parent = -1
+        best_span = None
+        for header, region in self._fold_regions.items():
+            if int(region.start) < int(line) <= int(region.end):
+                span = int(region.end) - int(region.start)
+                if best_span is None or span < best_span or (span == best_span and int(region.start) > best_parent):
+                    best_span = span
+                    best_parent = int(header)
+        return int(best_parent)
+
+    def _fold_last_child_for_line(self, line: int, level: int) -> int:
+        region = self._fold_regions.get(int(line))
+        if region is None:
+            return int(line)
+        return int(region.end)
 
     def margin_width(self) -> int:
         return sum(width for _idx, _kind, _x, width in self._margin_segments()) + self._margin_left_padding + self._margin_right_padding
@@ -929,7 +2440,9 @@ class ScintillaCompatEditor(QPlainTextEdit):
         painter.end()
     def paint_margin(self, event) -> None:
         painter = QPainter(self._margin)
-        painter.fillRect(event.rect(), QColor("#202228"))
+        bg = QColor(self._margin_bg_color)
+        fg = QColor(self._margin_fg_color)
+        painter.fillRect(event.rect(), bg)
         segments = self._margin_segments()
 
         block = self.firstVisibleBlock()
@@ -938,9 +2451,9 @@ class ScintillaCompatEditor(QPlainTextEdit):
         while block.isValid() and top <= event.rect().bottom():
             if block.isVisible() and bottom >= event.rect().top():
                 line = block.blockNumber()
-                text_color = QColor("#8f95a1")
+                text_color = QColor(fg)
                 if line == self.textCursor().blockNumber():
-                    text_color = QColor("#c8ced9")
+                    text_color = fg.lighter(135) if fg.lightness() < 128 else fg.darker(135)
                 for idx, kind, x, width in segments:
                     if kind == "number":
                         painter.setPen(text_color)
@@ -1356,11 +2869,9 @@ class ScintillaCompatEditor(QPlainTextEdit):
             return ""
 
     def _on_text_changed(self) -> None:
-        self._rebuild_fold_regions()
-        self._rebuild_lexer_ranges()
-        self._refresh_visibility()
-        self._refresh_extra_selections()
-        self._margin.update()
+        self._rebuild_pending = True
+        if not self._rebuild_timer.isActive():
+            self._rebuild_timer.start()
 
     def _on_cursor_changed(self) -> None:
         self._auto_brace_match()
@@ -1682,9 +3193,40 @@ class ScintillaCompatEditor(QPlainTextEdit):
         words = set(self._completion_words)
         if self._auto_completion_source in {self.AcsDocument, self.AcsAll}:
             words.update(self._document_words())
-        if self._auto_completion_source in {self.AcsAPIs, self.AcsAll} and self._completion_words:
-            words.update(self._completion_words)
+        if self._auto_completion_source in {self.AcsAPIs, self.AcsAll}:
+            words.update(self._api_words())
+            if self._completion_words:
+                words.update(self._completion_words)
         self._completion_model.setStringList(sorted(words))
+
+    def _api_words(self) -> set[str]:
+        apis = self._apis
+        if apis is None:
+            return set()
+        for attr in ("api_list", "words", "_words", "_api"):
+            value = getattr(apis, attr, None)
+            if callable(value):
+                try:
+                    value = value()
+                except Exception:
+                    continue
+            if value is None:
+                continue
+            try:
+                return {str(item).strip() for item in value if str(item).strip()}
+            except Exception:
+                continue
+        return set()
+
+    def _flush_deferred_rebuild(self) -> None:
+        if not self._rebuild_pending:
+            return
+        self._rebuild_pending = False
+        self._rebuild_fold_regions()
+        self._rebuild_lexer_ranges()
+        self._refresh_visibility()
+        self._refresh_extra_selections()
+        self._margin.update()
 
     def _document_words(self) -> set[str]:
         return {m.group(0) for m in re.finditer(r"[A-Za-z_][A-Za-z0-9_]{1,}", self.toPlainText())}
@@ -1887,6 +3429,16 @@ class ScintillaCompatEditor(QPlainTextEdit):
             fmt.setFontUnderline(self._hotspot_underline)
             sel.format = fmt
             selections.append(sel)
+        for ranges in self._background_overlays.values():
+            for lo, hi, color in ranges:
+                sel = QTextEdit.ExtraSelection()
+                sel.cursor = self.textCursor()
+                sel.cursor.setPosition(max(0, min(lo, doc_len)))
+                sel.cursor.setPosition(max(0, min(hi, doc_len)), QTextCursor.KeepAnchor)
+                fmt = QTextCharFormat()
+                fmt.setBackground(color)
+                sel.format = fmt
+                selections.append(sel)
         self.setExtraSelections(selections)
 
     @staticmethod

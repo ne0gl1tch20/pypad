@@ -10,7 +10,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from notepadclone.ui.ai_controller import AIController, _generate_sync, sanitize_prompt_text
+from notepadclone.ui.ai.ai_controller import AIController, _generate_sync, sanitize_prompt_text
 
 
 class _WindowStub:

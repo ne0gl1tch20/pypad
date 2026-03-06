@@ -22,4 +22,4 @@ if errorlevel 1 (
     exit /b %errorlevel%
 )
 
-echo [4/4] Done. Output: dist\run.exe
+echo [4/4] Done. Output: dist\run\run.exe

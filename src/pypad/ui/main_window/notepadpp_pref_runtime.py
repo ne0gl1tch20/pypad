@@ -58,6 +58,25 @@ def build_search_internet_url(settings: dict, query: str) -> str:
     return template.replace("$(CURRENT_WORD)", quote_plus(query))
 
 
+def search_engine_display_name(settings: dict) -> str:
+    provider = str(settings.get("npp_search_engine_provider", "Bing") or "Bing").strip()
+    if not provider:
+        return "Bing"
+    if provider == "Custom":
+        custom_url = str(settings.get("npp_search_engine_custom_url", "") or "").strip()
+        if "://" in custom_url:
+            host = custom_url.split("://", 1)[1].split("/", 1)[0]
+            if host:
+                host = host.split(":")[0]
+                if host.startswith("www."):
+                    host = host[4:]
+                base = host.split(".")[0].strip()
+                if base:
+                    return base.capitalize()
+        return "Custom"
+    return provider
+
+
 def allowed_clickable_schemes(settings: dict) -> set[str]:
     if not bool(settings.get("npp_clickable_links_enabled", True)):
         return set()
@@ -289,4 +308,3 @@ def apply_npp_print_preferences_to_page_layout(settings: dict, tab, page_cfg) ->
             value = 0
         if value > 0:
             setattr(page_cfg, attr, max(5, value))
-

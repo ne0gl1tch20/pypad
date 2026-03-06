@@ -63,9 +63,8 @@ class MiscFileStateMixin:
         tab.large_file_total_lines = max(1, text.count("\n") + 1)
         tab.large_file_total_chars = len(text)
         tab.markdown_mode_enabled = self._is_markdown_path(tab.current_file) and not tab.large_file
-        tab.markdown_preview.setVisible(tab.markdown_mode_enabled)
-        if tab.markdown_mode_enabled:
-            tab.markdown_preview.setMarkdown(text)
+        if tab is self.active_tab() and hasattr(self, "_sync_markdown_preview_for_active_tab"):
+            self._sync_markdown_preview_for_active_tab()
         self._notify_large_file_mode(tab)
         tab.text_edit.set_modified(False)
         self._apply_file_metadata_to_tab(tab)

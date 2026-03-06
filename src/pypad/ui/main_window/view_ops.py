@@ -105,6 +105,49 @@ from pypad.ui.document.document_review import (
 
 
 class ViewOpsMixin:
+    def _on_markdown_preview_dock_visibility_changed(self, visible: bool) -> None:
+        tab = self.active_tab()
+        if tab is None:
+            return
+        tab.markdown_mode_enabled = bool(visible)
+        if hasattr(self, "md_toggle_preview_action"):
+            self.md_toggle_preview_action.blockSignals(True)
+            self.md_toggle_preview_action.setChecked(bool(visible))
+            self.md_toggle_preview_action.blockSignals(False)
+        if visible:
+            # Populate preview immediately when the dock is shown (including app startup).
+            self._sync_markdown_preview_for_active_tab()
+
+    def _sync_markdown_preview_for_active_tab(self) -> None:
+        tab = self.active_tab()
+        dock = getattr(self, "markdown_preview_dock", None)
+        pane = getattr(self, "markdown_preview_pane", None)
+        if dock is None or pane is None:
+            return
+        if tab is None:
+            return
+        if not bool(getattr(tab, "markdown_mode_enabled", False)):
+            # Keep preview dock open if already visible, but always reflect the
+            # currently active tab content.
+            if dock.isVisible():
+                source_markdown = self.text_edit.get_text()
+                use_mathjax = bool(self.settings.get("markdown_math_preview_enabled", False))
+                supports_mathjax = bool(
+                    hasattr(self.markdown_preview, "supports_mathjax")
+                    and self.markdown_preview.supports_mathjax()
+                )
+                if hasattr(self.markdown_preview, "set_markdown"):
+                    self.markdown_preview.set_markdown(
+                        source_markdown,
+                        enable_mathjax=bool(use_mathjax and supports_mathjax),
+                        dark_mode=bool(self.settings.get("dark_mode", False)),
+                    )
+                else:
+                    self.markdown_preview.setMarkdown(source_markdown)
+            return
+        dock.show()
+        self.update_markdown_preview()
+
     if TYPE_CHECKING:
         def __getattr__(self, name: str) -> Any: ...
 
@@ -181,18 +224,17 @@ class ViewOpsMixin:
         styles = getattr(self, "_print_view_editor_styles", {})
         if not isinstance(styles, dict):
             styles = {}
+        markdown_widget = getattr(self, "markdown_preview_pane", None)
         for idx in range(self.tab_widget.count()):
             tab = self.tab_widget.widget(idx)
             if not isinstance(tab, EditorTab):
                 continue
             editor_widget = tab.text_edit.widget
-            markdown_widget = tab.markdown_preview
             tab_id = id(tab)
             if enabled:
                 if tab_id not in styles:
                     styles[tab_id] = {
                         "editor": editor_widget.styleSheet(),
-                        "preview": markdown_widget.styleSheet(),
                     }
                 editor_widget.setStyleSheet(
                     "QTextEdit, QPlainTextEdit {"
@@ -202,6 +244,14 @@ class ViewOpsMixin:
                     "selection-color: #111111;"
                     "}"
                 )
+            else:
+                old = styles.get(tab_id, {})
+                if isinstance(old, dict):
+                    editor_widget.setStyleSheet(str(old.get("editor", "")))
+        if markdown_widget is not None:
+            if enabled:
+                if "_preview" not in styles:
+                    styles["_preview"] = {"preview": markdown_widget.styleSheet()}
                 markdown_widget.setStyleSheet(
                     "QTextEdit {"
                     "background-color: #ffffff;"
@@ -209,10 +259,9 @@ class ViewOpsMixin:
                     "}"
                 )
             else:
-                old = styles.get(tab_id, {})
-                if isinstance(old, dict):
-                    editor_widget.setStyleSheet(str(old.get("editor", "")))
-                    markdown_widget.setStyleSheet(str(old.get("preview", "")))
+                old_preview = styles.get("_preview", {})
+                if isinstance(old_preview, dict):
+                    markdown_widget.setStyleSheet(str(old_preview.get("preview", "")))
         if enabled:
             self._print_view_editor_styles = styles
         else:
@@ -279,8 +328,10 @@ class ViewOpsMixin:
         if tab.clone_editor is not None and tab.clone_editor.widget.isVisible():
             tab.clone_editor.widget.setFocus()
             return
-        if tab.markdown_preview.isVisible():
-            tab.markdown_preview.setFocus()
+        dock = getattr(self, "markdown_preview_dock", None)
+        pane = getattr(self, "markdown_preview_pane", None)
+        if dock is not None and pane is not None and dock.isVisible():
+            pane.setFocus()
             return
         tab.text_edit.widget.setFocus()
 
@@ -374,7 +425,11 @@ class ViewOpsMixin:
             return
         folder = str(Path(tab.current_file).parent)
         try:
-            subprocess.Popen(f'cmd.exe /K cd /d "{folder}"', shell=True)
+            creation_flags = int(getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
+            subprocess.Popen(
+                ["cmd.exe", "/K", f'cd /d "{folder}"'],
+                creationflags=creation_flags,
+            )
         except Exception as exc:
             QMessageBox.warning(self, "View Current File in", f"Could not open command prompt:\n{exc}")
 
@@ -549,14 +604,14 @@ class ViewOpsMixin:
         if tab is None:
             return
         tab.text_edit.widget.setLayoutDirection(Qt.RightToLeft)
-        tab.markdown_preview.setLayoutDirection(Qt.RightToLeft)
+        self.markdown_preview.setLayoutDirection(Qt.RightToLeft)
 
     def set_text_direction_ltr(self) -> None:
         tab = self.active_tab()
         if tab is None:
             return
         tab.text_edit.widget.setLayoutDirection(Qt.LeftToRight)
-        tab.markdown_preview.setLayoutDirection(Qt.LeftToRight)
+        self.markdown_preview.setLayoutDirection(Qt.LeftToRight)
 
     def open_document_map(self) -> None:
         if hasattr(self, "minimap_action"):
@@ -677,7 +732,9 @@ class ViewOpsMixin:
         if tab.clone_editor.widget not in [tab.editor_splitter.widget(i) for i in range(tab.editor_splitter.count())]:
             tab.editor_splitter.insertWidget(1, tab.clone_editor.widget)
         tab.clone_editor.widget.show()
-        tab.markdown_preview.hide()
+        dock = getattr(self, "markdown_preview_dock", None)
+        if dock is not None:
+            dock.hide()
         self._apply_split_scroll_sync(tab)
 
     def close_split_view(self) -> None:
@@ -703,7 +760,7 @@ class ViewOpsMixin:
         tab.clone_editor.widget.setParent(None)
         tab.clone_editor = None
         if tab.markdown_mode_enabled:
-            tab.markdown_preview.show()
+            self._sync_markdown_preview_for_active_tab()
 
     def toggle_column_mode(self, checked: bool) -> None:
         if not self._require_scintilla_feature("Column mode"):
@@ -1187,6 +1244,19 @@ class ViewOpsMixin:
     def markdown_table(self) -> None:
         self.text_edit.insert_text("| Column 1 | Column 2 |\n| --- | --- |\n| Value 1 | Value 2 |\n")
 
+    def markdown_latex_inline(self) -> None:
+        self.insert_markdown_wrapper("$", "$", "x^2 + y^2 = z^2")
+
+    def markdown_latex_block(self) -> None:
+        if self.text_edit.has_selection():
+            selected = self.text_edit.selected_text()
+            self.text_edit.replace_selection(f"$$\n{selected}\n$$")
+            return
+        self.text_edit.insert_text("$$\nE = mc^2\n$$")
+
+    def markdown_latex_align(self) -> None:
+        self.text_edit.insert_text("$$\n\\\\begin{aligned}\na &= b + c \\\\\nE &= mc^2\n\\\\end{aligned}\n$$")
+
     def insert_page_break_marker(self) -> None:
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
@@ -1519,11 +1589,13 @@ class ViewOpsMixin:
     def set_markdown_mode(self, enabled: bool) -> None:
         self.markdown_mode_enabled = enabled
         self.md_toggle_preview_action.setChecked(enabled)
-        self.markdown_preview.setVisible(enabled)
         if enabled:
-            self.update_markdown_preview()
+            self._sync_markdown_preview_for_active_tab()
         else:
             self.markdown_preview.clear()
+            dock = getattr(self, "markdown_preview_dock", None)
+            if dock is not None:
+                dock.hide()
         tab = self.active_tab()
         if tab is not None:
             self._apply_syntax_highlighting(tab)
@@ -1535,10 +1607,36 @@ class ViewOpsMixin:
         else:
             self.show_status_message("Markdown preview disabled", 2000)
 
+    def toggle_markdown_math_preview(self, checked: bool) -> None:
+        self.settings["markdown_math_preview_enabled"] = bool(checked)
+        if hasattr(self, "save_settings_to_disk"):
+            self.save_settings_to_disk()
+        self.update_markdown_preview()
+        supports = bool(hasattr(self.markdown_preview, "supports_mathjax") and self.markdown_preview.supports_mathjax())
+        if checked and not supports:
+            self.show_status_message("MathJax preview requires Qt WebEngine; using plain Markdown preview.", 3500)
+            return
+        self.show_status_message(
+            "MathJax Markdown preview enabled" if checked else "MathJax Markdown preview disabled",
+            2200,
+        )
+
     def update_markdown_preview(self) -> None:
         if not self.markdown_mode_enabled:
             return
         source_markdown = self.text_edit.get_text()
+        use_mathjax = bool(self.settings.get("markdown_math_preview_enabled", False))
+        supports_mathjax = bool(
+            hasattr(self.markdown_preview, "supports_mathjax")
+            and self.markdown_preview.supports_mathjax()
+        )
+        if hasattr(self.markdown_preview, "set_markdown"):
+            self.markdown_preview.set_markdown(
+                source_markdown,
+                enable_mathjax=bool(use_mathjax and supports_mathjax),
+                dark_mode=bool(self.settings.get("dark_mode", False)),
+            )
+            return
         self.markdown_preview.setMarkdown(source_markdown)
 
     def toggle_status_bar(self, checked: bool) -> None:
@@ -1586,6 +1684,8 @@ class ViewOpsMixin:
                 self.status_panel_eol_label.setText(self._translate_text("No EOL", lang_code))
                 self.status_panel_encoding_label.setText("UTF-8")
                 self.status_panel_ruler_label.setVisible(False)
+            if hasattr(self, "_apply_status_layout_visibility"):
+                self._apply_status_layout_visibility()
             self.update_action_states()
             return
 
@@ -1598,7 +1698,11 @@ class ViewOpsMixin:
         self.position_label.setText(f"{ln_label} {line}, {col_label} {column}")
         self.update_markdown_preview()
         if hasattr(self, "ruler_label"):
-            show_ruler = bool(getattr(self, "_page_layout_view_enabled", False) and self.settings.get("page_layout_show_ruler", True))
+            show_ruler = bool(
+                self.settings.get("status_show_ruler", True)
+                and getattr(self, "_page_layout_view_enabled", False)
+                and self.settings.get("page_layout_show_ruler", True)
+            )
             self.ruler_label.setVisible(show_ruler)
             if show_ruler:
                 self.ruler_label.setText(build_ruler_text(column, width=100))
@@ -1620,7 +1724,11 @@ class ViewOpsMixin:
             if hasattr(self, "status_panel_zoom_label"):
                 self.status_panel_zoom_label.setText(self.zoom_label.text() if hasattr(self, "zoom_label") else "100%")
             if hasattr(self, "status_panel_ruler_label"):
-                show_ruler = bool(getattr(self, "_page_layout_view_enabled", False) and self.settings.get("page_layout_show_ruler", True))
+                show_ruler = bool(
+                    self.settings.get("status_show_ruler", True)
+                    and getattr(self, "_page_layout_view_enabled", False)
+                    and self.settings.get("page_layout_show_ruler", True)
+                )
                 self.status_panel_ruler_label.setVisible(show_ruler)
                 if show_ruler:
                     self.status_panel_ruler_label.setText(build_ruler_text(column, width=100))
@@ -1636,6 +1744,8 @@ class ViewOpsMixin:
             self.full_screen_action.blockSignals(False)
         if hasattr(self, "advanced_features"):
             self.advanced_features.refresh_views()
+        if hasattr(self, "_apply_status_layout_visibility"):
+            self._apply_status_layout_visibility()
         self.update_action_states()
 
 

@@ -25,6 +25,10 @@ def normalize_ui_visibility_settings(settings: dict) -> dict:
         settings.get("show_markdown_toolbar", False),
         default=False,
     )
+    settings["markdown_math_preview_enabled"] = coerce_bool(
+        settings.get("markdown_math_preview_enabled", False),
+        default=False,
+    )
     settings["show_find_panel"] = coerce_bool(
         settings.get("show_find_panel", False),
         default=False,
@@ -262,6 +266,23 @@ def migrate_settings(settings: dict) -> dict:
         1200,
         0,
         15000,
+    )
+    current["status_show_position"] = coerce_bool(current.get("status_show_position", True), True)
+    current["status_show_zoom"] = coerce_bool(current.get("status_show_zoom", True), True)
+    current["status_show_eol"] = coerce_bool(current.get("status_show_eol", True), True)
+    current["status_show_encoding"] = coerce_bool(current.get("status_show_encoding", True), True)
+    current["status_show_syntax"] = coerce_bool(current.get("status_show_syntax", True), True)
+    current["status_show_breadcrumb"] = coerce_bool(current.get("status_show_breadcrumb", True), True)
+    current["status_show_ruler"] = coerce_bool(current.get("status_show_ruler", True), True)
+    current["status_show_ai_usage"] = coerce_bool(current.get("status_show_ai_usage", True), True)
+    current["status_show_autosave"] = coerce_bool(current.get("status_show_autosave", True), True)
+    current["accessibility_reduce_motion"] = coerce_bool(current.get("accessibility_reduce_motion", False), False)
+    current["accessibility_cursor_blink"] = coerce_bool(current.get("accessibility_cursor_blink", True), True)
+    current["accessibility_cursor_blink_rate_ms"] = _coerce_int_clamped(
+        current.get("accessibility_cursor_blink_rate_ms", 1000),
+        1000,
+        200,
+        2500,
     )
 
     current["ai_send_redact_emails"] = coerce_bool(current.get("ai_send_redact_emails", False), False)

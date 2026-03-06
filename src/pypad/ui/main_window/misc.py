@@ -14,6 +14,7 @@ import time
 import webbrowser
 import subprocess
 import threading
+import traceback
 from typing import TYPE_CHECKING, Any
 from datetime import datetime
 from pathlib import Path
@@ -78,6 +79,18 @@ from PySide6.QtPrintSupport import QPrintDialog, QPrintPreviewDialog, QPrinter
 from pypad.logging_utils import get_logger
 
 _LOGGER = get_logger(__name__)
+
+THEME_SETTINGS_KEYS: tuple[str, ...] = (
+    "theme",
+    "app_style",
+    "dark_mode",
+    "use_custom_colors",
+    "custom_editor_bg",
+    "custom_editor_fg",
+    "custom_chrome_bg",
+    "accent_color",
+    "ui_density",
+)
 
 from pypad.ui.debug.debug_logs_dialog import DebugLogsDialog
 from pypad.ui.editor.detachable_tab_bar import DetachableTabBar
@@ -1178,6 +1191,502 @@ class MiscMixin(
     def open_annotation_layer(self) -> None:
         self.advanced_features.open_annotations()
 
+    def _sync_quiz_controls(self) -> None:
+        tab = self.active_tab()
+        enabled = bool(tab and getattr(tab, "quiz_mode_enabled", False))
+        if hasattr(self, "quiz_quit_button"):
+            self.quiz_quit_button.setVisible(enabled)
+        if hasattr(self, "quiz_finish_button"):
+            self.quiz_finish_button.setVisible(enabled)
+        if hasattr(self, "quiz_action"):
+            self.quiz_action.setText("Restart Quiz" if enabled else "Quiz Mode")
+
+    def show_quiz_format_help(self) -> None:
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Quiz Format Help")
+        root = QVBoxLayout(dlg)
+        root.addWidget(
+            QLabel(
+                "Accepted formats (v1): MCQ, True/False, and Short Answer.\n"
+                "You can mix these in one document.",
+                dlg,
+            )
+        )
+        details = QTextEdit(dlg)
+        details.setReadOnly(True)
+        details.setPlainText(
+            "1) Multiple Choice (MCQ)\n"
+            "- Question can start with: 1.  / Q1: / -\n"
+            "- Options can be: A. / B. / C. ... or A) / B)\n"
+            "- Answer metadata accepted:\n"
+            "  {answer:A}\n"
+            "  [answer=B]\n"
+            "  (correct: C)\n\n"
+            "Example:\n"
+            "1. What is the capital of France? {answer:B}\n"
+            "A. Berlin\n"
+            "B. Paris\n"
+            "C. Rome\n\n"
+            "2) True / False\n"
+            "- Accepted tokens (case-insensitive): T / F / True / False\n"
+            "- Metadata accepted:\n"
+            "  {answer:true}\n"
+            "  [answer=F]\n"
+            "  (correct: T)\n"
+            "- Options may be explicit or implicit.\n\n"
+            "Example:\n"
+            "Q2: The sky is blue. [answer=true]\n"
+            "A) True\n"
+            "B) False\n\n"
+            "3) Short Answer\n"
+            "- Single exact answer:\n"
+            "  {answer:photosynthesis}\n"
+            "- Keyword grading (partial credit):\n"
+            "  {keywords: chlorophyll|sunlight|glucose}\n\n"
+            "User anchor (optional):\n"
+            "- Place {user} or [user] where answer should be typed.\n"
+            "- Can be above or below the question text.\n\n"
+            "Anchor examples:\n"
+            "{user}\n"
+            "Q3: Explain photosynthesis {keywords: chlorophyll|sunlight|glucose}\n\n"
+            "Q4: Define inertia {answer:resistance to change in motion}\n"
+            "[user]\n\n"
+            "Example:\n"
+            "- Explain photosynthesis {keywords: chlorophyll|sunlight|glucose}\n\n"
+            "Scoring defaults:\n"
+            "- MCQ = 1 point\n"
+            "- True/False = 1 point\n"
+            "- Short Answer = 2 points (keyword partial credit)\n\n"
+            "Quiz mode behavior:\n"
+            "- Metadata markers ({answer:...}, [answer=...], etc.) are hidden while quizzing.\n"
+            "- They are restored after Finish or Quit.\n"
+            "- Save/autosave is disabled during active quiz mode."
+        )
+        root.addWidget(details, 1)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok, Qt.Horizontal, dlg)
+        buttons.accepted.connect(dlg.accept)
+        root.addWidget(buttons)
+        dlg.resize(760, 620)
+        dlg.exec()
+
+    @staticmethod
+    def _quiz_strip_metadata_text(text: str) -> str:
+        out = re.sub(r"\{(?:answer|keywords|user)\s*:[^{}]*\}", "", text, flags=re.IGNORECASE)
+        out = re.sub(r"\[(?:answer|keywords|user)\s*=[^\[\]]*\]", "", out, flags=re.IGNORECASE)
+        out = re.sub(r"\{user\}|\[user\]", "", out, flags=re.IGNORECASE)
+        out = re.sub(r"\((?:correct)\s*:\s*[^()]*\)", "", out, flags=re.IGNORECASE)
+        out = re.sub(r"[ \t]{2,}", " ", out)
+        out = re.sub(r" +\n", "\n", out)
+        return out
+
+    def _parse_quiz_blocks(self, text: str) -> list[dict[str, Any]]:
+        lines = text.splitlines()
+        start_re = re.compile(r"^\s*(?:\d+[\.\)]|Q\d+\s*:|-|\*)\s+")
+        option_re = re.compile(r"^\s*([A-Z])[\.\)]\s+(.+)\s*$")
+        meta_re = re.compile(r"\{(?:answer|keywords)\s*:[^{}]+\}|\[(?:answer|keywords)\s*=[^\[\]]+\]|\(correct\s*:\s*[^)]+\)", re.IGNORECASE)
+        marker_only_re = re.compile(
+            r"^\s*(?:\{(?:answer|keywords)\s*:[^{}]+\}|\[(?:answer|keywords)\s*=[^\[\]]+\]|\(correct\s*:\s*[^)]+\)|\{user\}|\[user\])\s*$",
+            re.IGNORECASE,
+        )
+        user_anchor_re = re.compile(r"\{user\}|\[user\]", re.IGNORECASE)
+        answer_curly = re.compile(r"\{answer\s*:\s*([^{}]+)\}", re.IGNORECASE)
+        answer_square = re.compile(r"\[answer\s*=\s*([^\[\]]+)\]", re.IGNORECASE)
+        answer_paren = re.compile(r"\(correct\s*:\s*([^)]+)\)", re.IGNORECASE)
+        keywords_re = re.compile(r"\{keywords\s*:\s*([^{}]+)\}", re.IGNORECASE)
+        starts: list[int] = []
+        for idx, line in enumerate(lines):
+            if start_re.match(line):
+                starts.append(idx)
+                continue
+            if meta_re.search(line) and not option_re.match(line) and not marker_only_re.match(line):
+                starts.append(idx)
+        if not starts:
+            return []
+        items: list[dict[str, Any]] = []
+        for i, start in enumerate(starts):
+            end = starts[i + 1] if i + 1 < len(starts) else len(lines)
+            block_lines = lines[start:end]
+            block_text = "\n".join(block_lines)
+            options: list[tuple[str, str, int]] = []
+            option_lines: list[int] = []
+            user_anchor_line = -1
+            for offset, row in enumerate(block_lines):
+                m = option_re.match(row)
+                if not m:
+                    if user_anchor_line < 0 and user_anchor_re.search(row):
+                        user_anchor_line = start + offset
+                    continue
+                options.append((m.group(1).upper(), m.group(2).strip(), start + offset))
+                option_lines.append(start + offset)
+            answer = ""
+            for pattern in (answer_curly, answer_square, answer_paren):
+                m = pattern.search(block_text)
+                if m:
+                    answer = str(m.group(1) or "").strip()
+                    break
+            keywords: list[str] = []
+            m_keywords = keywords_re.search(block_text)
+            if m_keywords:
+                keywords = [p.strip().lower() for p in str(m_keywords.group(1)).split("|") if p.strip()]
+            has_answer_meta = bool(answer.strip()) or bool(keywords)
+            has_structured_options = len(options) >= 2
+            # Avoid treating generic bullet-list help text as quiz questions.
+            # v1 quiz blocks are expected to be gradable via metadata or option structure.
+            first_line = block_lines[0] if block_lines else ""
+            prompt_text = self._quiz_strip_metadata_text(first_line).strip()
+            has_prompt_words = len(re.findall(r"[A-Za-z]{2,}", prompt_text)) >= 2
+            if not (has_answer_meta or has_structured_options):
+                continue
+            if not has_structured_options and not has_prompt_words:
+                # Reject marker-only/reference lines in help docs.
+                continue
+            prompt = self._quiz_strip_metadata_text(block_lines[0]).strip()
+            qtype = "short"
+            answer_norm = answer.strip().lower()
+            if options:
+                qtype = "mcq"
+                if answer_norm in {"t", "f", "true", "false"}:
+                    qtype = "tf"
+                elif len(options) == 2:
+                    optset = {o[1].strip().lower() for o in options}
+                    if optset <= {"true", "false"}:
+                        qtype = "tf"
+            elif answer_norm in {"t", "f", "true", "false"}:
+                qtype = "tf"
+            points = 2.0 if qtype == "short" else 1.0
+            items.append(
+                {
+                    "number": len(items) + 1,
+                    "type": qtype,
+                    "prompt": prompt,
+                    "block_start": start,
+                    "block_end": end,
+                    "option_lines": option_lines,
+                    "user_anchor_line": user_anchor_line,
+                    "options": options,
+                    "answer": answer,
+                    "keywords": keywords,
+                    "points": points,
+                }
+            )
+        return items
+
+    def _collect_user_answers(self, tab: EditorTab) -> dict[int, str]:
+        text = tab.text_edit.get_text()
+        lines = text.splitlines()
+        out: dict[int, str] = {}
+        prompt_prefix_re = re.compile(r"^\s*(?:\d+[\.\)]|Q\d+\s*:|-|\*)\s*")
+        for item in getattr(tab, "quiz_items", []):
+            idx = int(item.get("number", 0))
+            start = int(item.get("block_start", 0))
+            end = int(item.get("block_end", start + 1))
+            option_lines = set(int(x) for x in item.get("option_lines", []))
+            user_anchor_line = int(item.get("user_anchor_line", -1))
+            qtype = str(item.get("type", "short"))
+            if start >= len(lines):
+                out[idx] = ""
+                continue
+            if 0 <= user_anchor_line < len(lines):
+                anchored = self._quiz_strip_metadata_text(lines[user_anchor_line]).strip()
+                out[idx] = anchored
+                continue
+            answer_parts: list[str] = []
+            line_start = start
+            line_end = min(end, len(lines))
+            for ln in range(line_start, line_end):
+                if ln in option_lines:
+                    continue
+                line_text = lines[ln]
+                if ln == start:
+                    clean = re.sub(r"^\s*(?:\d+[\.\)]|Q\d+\s*:|-|\*)\s*", "", line_text).strip()
+                    prompt = str(item.get("prompt", "")).strip()
+                    prompt_norm = prompt_prefix_re.sub("", self._quiz_strip_metadata_text(prompt)).strip()
+                    if prompt_norm and clean.lower().startswith(prompt_norm.lower()):
+                        clean = clean[len(prompt_norm):].strip(" :-\t")
+                    line_text = clean
+                line_text = self._quiz_strip_metadata_text(line_text).strip()
+                if line_text:
+                    answer_parts.append(line_text)
+            candidate = " ".join(answer_parts).strip()
+            out[idx] = candidate
+        return out
+
+    @staticmethod
+    def _normalize_tf(value: str) -> str:
+        v = str(value or "").strip().lower()
+        if v in {"t", "true"}:
+            return "true"
+        if v in {"f", "false"}:
+            return "false"
+        return v
+
+    def _score_quiz_items(self, items: list[dict[str, Any]], user_answers: dict[int, str]) -> dict[str, Any]:
+        rows: list[dict[str, Any]] = []
+        total = 0.0
+        earned = 0.0
+        counts = {"correct": 0, "incorrect": 0, "partial": 0, "unanswered": 0}
+        type_totals: dict[str, dict[str, float]] = {
+            "mcq": {"earned": 0.0, "max": 0.0},
+            "tf": {"earned": 0.0, "max": 0.0},
+            "short": {"earned": 0.0, "max": 0.0},
+        }
+        for item in items:
+            num = int(item.get("number", 0))
+            qtype = str(item.get("type", "short"))
+            max_points = float(item.get("points", 1.0))
+            expected = str(item.get("answer", "")).strip()
+            options = item.get("options", []) if isinstance(item.get("options", []), list) else []
+            keywords = [str(k).strip().lower() for k in item.get("keywords", []) if str(k).strip()]
+            user = str(user_answers.get(num, "") or "").strip()
+            got = 0.0
+            status = "Incorrect"
+            if not user:
+                status = "Unanswered"
+                counts["unanswered"] += 1
+            elif qtype == "mcq":
+                expected_letter = expected.strip().upper()
+                user_token_match = re.search(r"\b([A-Za-z])\b", user)
+                user_letter = user_token_match.group(1).upper() if user_token_match else ""
+                expected_text = ""
+                for opt in options:
+                    if not isinstance(opt, (tuple, list)) or len(opt) < 2:
+                        continue
+                    if str(opt[0]).strip().upper() == expected_letter:
+                        expected_text = str(opt[1]).strip().lower()
+                        break
+                user_text = user.strip().lower()
+                if user_letter == expected_letter or (expected_text and user_text == expected_text):
+                    got = max_points
+                    status = "Correct"
+                    counts["correct"] += 1
+                else:
+                    counts["incorrect"] += 1
+            elif qtype == "tf":
+                expected_tf = self._normalize_tf(expected)
+                if expected_tf not in {"true", "false"} and options:
+                    for opt in options:
+                        if not isinstance(opt, (tuple, list)) or len(opt) < 2:
+                            continue
+                        if str(opt[0]).strip().upper() == str(expected).strip().upper():
+                            expected_tf = self._normalize_tf(str(opt[1]))
+                            break
+                user_tf = self._normalize_tf(user)
+                if user_tf not in {"true", "false"} and options:
+                    m = re.search(r"\b([A-Za-z])\b", user)
+                    user_letter = m.group(1).upper() if m else ""
+                    for opt in options:
+                        if not isinstance(opt, (tuple, list)) or len(opt) < 2:
+                            continue
+                        if str(opt[0]).strip().upper() == user_letter:
+                            user_tf = self._normalize_tf(str(opt[1]))
+                            break
+                if user_tf == expected_tf:
+                    got = max_points
+                    status = "Correct"
+                    counts["correct"] += 1
+                else:
+                    counts["incorrect"] += 1
+            else:
+                user_l = user.lower()
+                expected_l = expected.lower()
+                if expected_l and user_l == expected_l:
+                    got = max_points
+                    status = "Correct"
+                    counts["correct"] += 1
+                elif keywords:
+                    hit = sum(1 for k in keywords if k and k in user_l)
+                    ratio = hit / max(1, len(keywords))
+                    if ratio >= 0.6:
+                        got = max_points
+                        status = "Correct"
+                        counts["correct"] += 1
+                    elif ratio >= 0.3:
+                        got = round(max_points * 0.5, 2)
+                        status = "Partial"
+                        counts["partial"] += 1
+                    else:
+                        counts["incorrect"] += 1
+                else:
+                    counts["incorrect"] += 1
+            total += max_points
+            earned += got
+            t = type_totals.setdefault(qtype, {"earned": 0.0, "max": 0.0})
+            t["earned"] += got
+            t["max"] += max_points
+            expected_display = expected if expected else ("|".join(keywords) if keywords else "")
+            rows.append(
+                {
+                    "number": num,
+                    "type": qtype,
+                    "user": user,
+                    "expected": expected_display,
+                    "earned": got,
+                    "max": max_points,
+                    "status": status,
+                }
+            )
+        percent = (earned / total * 100.0) if total > 0 else 0.0
+        return {
+            "earned": round(earned, 2),
+            "max": round(total, 2),
+            "percent": round(percent, 2),
+            "type_totals": type_totals,
+            "counts": counts,
+            "rows": rows,
+        }
+
+    def _show_quiz_score_dialog(self, result: dict[str, Any]) -> None:
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Quiz Score")
+        layout = QVBoxLayout(dlg)
+        summary = QLabel(
+            f"Score: {result.get('earned', 0)}/{result.get('max', 0)} ({result.get('percent', 0)}%)",
+            dlg,
+        )
+        layout.addWidget(summary)
+        counts = result.get("counts", {})
+        layout.addWidget(
+            QLabel(
+                f"Correct: {counts.get('correct', 0)} | Partial: {counts.get('partial', 0)} | "
+                f"Incorrect: {counts.get('incorrect', 0)} | Unanswered: {counts.get('unanswered', 0)}",
+                dlg,
+            )
+        )
+        type_totals = result.get("type_totals", {})
+        mcq = type_totals.get("mcq", {})
+        tf = type_totals.get("tf", {})
+        short = type_totals.get("short", {})
+        layout.addWidget(
+            QLabel(
+                f"MCQ {mcq.get('earned', 0)}/{mcq.get('max', 0)} | "
+                f"TF {tf.get('earned', 0)}/{tf.get('max', 0)} | "
+                f"Short {short.get('earned', 0)}/{short.get('max', 0)}",
+                dlg,
+            )
+        )
+        layout.addWidget(QLabel("Manual review may be needed for ambiguous free-text answers.", dlg))
+        table = QTableWidget(dlg)
+        headers = ["#", "Type", "Your Answer", "Expected", "Points", "Status"]
+        table.setColumnCount(len(headers))
+        table.setHorizontalHeaderLabels(headers)
+        rows = result.get("rows", [])
+        table.setRowCount(len(rows))
+        for r, row in enumerate(rows):
+            table.setItem(r, 0, QTableWidgetItem(str(row.get("number", ""))))
+            table.setItem(r, 1, QTableWidgetItem(str(row.get("type", ""))))
+            table.setItem(r, 2, QTableWidgetItem(str(row.get("user", ""))))
+            table.setItem(r, 3, QTableWidgetItem(str(row.get("expected", ""))))
+            table.setItem(r, 4, QTableWidgetItem(f"{row.get('earned', 0)}/{row.get('max', 0)}"))
+            table.setItem(r, 5, QTableWidgetItem(str(row.get("status", ""))))
+        table.resizeColumnsToContents()
+        layout.addWidget(table)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok, Qt.Horizontal, dlg)
+        buttons.accepted.connect(dlg.accept)
+        layout.addWidget(buttons)
+        dlg.resize(920, 520)
+        dlg.exec()
+
+    def _apply_quiz_placeholders(self, tab: EditorTab, user_answers: dict[int, str] | None = None) -> None:
+        widget = getattr(tab.text_edit, "widget", None)
+        if widget is None or not hasattr(widget, "annotationClearAll"):
+            return
+        try:
+            widget.annotationClearAll()
+        except Exception:
+            return
+        answer_map = user_answers or {}
+        lines = tab.text_edit.get_text().splitlines()
+        for item in getattr(tab, "quiz_items", []):
+            number = int(item.get("number", 0))
+            if str(answer_map.get(number, "")).strip():
+                continue
+            anchor = int(item.get("user_anchor_line", -1))
+            if 0 <= anchor < len(lines):
+                try:
+                    widget.annotationSetText(anchor, "Your answer...")
+                except Exception:
+                    pass
+                continue
+            start = int(item.get("block_start", -1))
+            end = int(item.get("block_end", start + 1))
+            option_lines = set(int(x) for x in item.get("option_lines", []))
+            line = -1
+            # Prefer first non-option line under the question for cleaner alignment.
+            for ln in range(start + 1, min(end, len(lines))):
+                if ln in option_lines:
+                    continue
+                if str(lines[ln]).strip():
+                    line = ln
+                    break
+            if line < 0:
+                line = start
+            if line < 0:
+                continue
+            try:
+                widget.annotationSetText(line, "Your answer...")
+            except Exception:
+                continue
+
+    def _refresh_quiz_placeholders_for_tab(self, tab: EditorTab) -> None:
+        if tab is None or not bool(getattr(tab, "quiz_mode_enabled", False)):
+            return
+        tab.quiz_user_answers = self._collect_user_answers(tab)
+        self._apply_quiz_placeholders(tab, tab.quiz_user_answers)
+
+    def start_quiz_mode(self) -> None:
+        tab = self.active_tab()
+        if tab is None:
+            return
+        original = tab.text_edit.get_text()
+        items = self._parse_quiz_blocks(original)
+        if not items:
+            QMessageBox.information(self, "Quiz Mode", "No quiz blocks detected in this document.")
+            return
+        tab.quiz_original_text = original
+        tab.quiz_items = items
+        tab.quiz_user_answers = {}
+        tab.quiz_score_result = None
+        tab.quiz_mode_enabled = True
+        quiz_text = self._quiz_strip_metadata_text(original)
+        tab.text_edit.set_text(quiz_text)
+        tab.text_edit.set_modified(False)
+        self._refresh_quiz_placeholders_for_tab(tab)
+        self._sync_quiz_controls()
+        self.update_action_states()
+        self.show_status_message("Quiz mode started.", 2500)
+
+    def quit_quiz_mode(self) -> None:
+        tab = self.active_tab()
+        if tab is None or not bool(getattr(tab, "quiz_mode_enabled", False)):
+            return
+        if isinstance(tab.quiz_original_text, str):
+            tab.text_edit.set_text(tab.quiz_original_text)
+            tab.text_edit.set_modified(False)
+        widget = getattr(tab.text_edit, "widget", None)
+        if widget is not None and hasattr(widget, "annotationClearAll"):
+            try:
+                widget.annotationClearAll()
+            except Exception:
+                pass
+        tab.quiz_mode_enabled = False
+        tab.quiz_items = []
+        tab.quiz_user_answers = {}
+        tab.quiz_score_result = None
+        tab.quiz_original_text = None
+        self._sync_quiz_controls()
+        self.update_action_states()
+        self.show_status_message("Quiz mode exited.", 2500)
+
+    def finish_quiz_mode(self) -> None:
+        tab = self.active_tab()
+        if tab is None or not bool(getattr(tab, "quiz_mode_enabled", False)):
+            return
+        tab.quiz_user_answers = self._collect_user_answers(tab)
+        result = self._score_quiz_items(tab.quiz_items, tab.quiz_user_answers)
+        tab.quiz_score_result = result
+        self._show_quiz_score_dialog(result)
+        self.quit_quiz_mode()
+
     def ai_commit_message_generator(self) -> None:
         tab = self.active_tab()
         if tab is None:
@@ -1733,7 +2242,7 @@ class MiscMixin(
         prompt = f"Explain about the file:\n\n{contents}"
         self._send_ai_chat_prompt(prompt=prompt, visible_prompt="")
 
-    def toggle_simple_mode(self, checked: bool) -> None:
+    def toggle_simple_mode(self, checked: bool, *, persist: bool = True) -> None:
         self.settings["simple_mode"] = bool(checked)
         if checked:
             self.menuBar().setVisible(True)
@@ -1763,7 +2272,8 @@ class MiscMixin(
                 except RuntimeError:
                     pass
         self._layout_top_toolbars()
-        self.save_settings_to_disk()
+        if persist:
+            self.save_settings_to_disk()
 
     def apply_reading_preset(self) -> None:
         self.settings["font_size"] = 15
@@ -1812,6 +2322,85 @@ class MiscMixin(
             self.toggle_ai_chat_panel(True)
         if hasattr(self, "ai_chat_dock"):
             self.ai_chat_dock.send_prompt(prompt=prompt, visible_prompt=prompt)
+
+    def _selected_math_text_for_homework(self) -> str:
+        tab = self.active_tab()
+        if tab is None:
+            return ""
+        selected = str(tab.text_edit.selected_text() or "").strip()
+        return selected
+
+    def homework_solve_with_ai(self) -> None:
+        selected = self._selected_math_text_for_homework()
+        if not selected:
+            QMessageBox.information(self, "Homework: Solve with AI", "Select a math expression or problem first.")
+            return
+        prompt = (
+            "Solve this homework math problem.\n"
+            "Use standard school math notation by default. "
+            "Do NOT use Peano notation (S(0), S(S(0)), etc.) unless the user explicitly asks for it.\n"
+            "Return STRICTLY in this Markdown format:\n"
+            "## Solution\n"
+            "1. ...\n"
+            "## Final Answer\n"
+            "... \n"
+            "## Formats\n"
+            "- LaTeX (inline): `$...$`\n"
+            "- LaTeX (block): `$$...$$`\n"
+            "- Markdown: `...`\n"
+            "- Plain text: `...`\n"
+            "Use valid LaTeX delimiters ($...$ and $$...$$). Do not use unicode bullets.\n\n"
+            f"Problem:\n{selected}"
+        )
+        self._send_ai_chat_prompt(prompt=prompt, visible_prompt="Homework: Solve with AI")
+
+    def homework_solve_with_solutions_with_ai(self) -> None:
+        selected = self._selected_math_text_for_homework()
+        if not selected:
+            QMessageBox.information(self, "Homework: Solve with Solutions with AI", "Select a math expression or problem first.")
+            return
+        prompt = (
+            "Solve this homework problem and provide full worked solutions.\n"
+            "Use standard school math notation by default. "
+            "Do NOT use Peano notation (S(0), S(S(0)), etc.) unless the user explicitly asks for it.\n"
+            "Return STRICTLY in this Markdown format:\n"
+            "## Detailed Solution\n"
+            "1. ...\n"
+            "## Alternative Method\n"
+            "1. ...\n"
+            "## Final Answer\n"
+            "... \n"
+            "## Formats\n"
+            "- LaTeX (inline): `$...$`\n"
+            "- LaTeX (block): `$$...$$`\n"
+            "- Markdown: `...`\n"
+            "- Plain text: `...`\n"
+            "Use valid LaTeX delimiters ($...$ and $$...$$). Do not use unicode bullets.\n\n"
+            f"Problem:\n{selected}"
+        )
+        self._send_ai_chat_prompt(prompt=prompt, visible_prompt="Homework: Solve with Solutions with AI")
+
+    def homework_answer_with_ai(self) -> None:
+        selected = self._selected_math_text_for_homework()
+        if not selected:
+            QMessageBox.information(self, "Homework: Answer with AI", "Select a math expression or problem first.")
+            return
+        prompt = (
+            "Provide only the final answer for this homework problem.\n"
+            "Use standard school math notation by default. "
+            "Do NOT use Peano notation (S(0), S(S(0)), etc.) unless the user explicitly asks for it.\n"
+            "Return STRICTLY in this Markdown format:\n"
+            "## Final Answer\n"
+            "... \n"
+            "## Formats\n"
+            "- LaTeX (inline): `$...$`\n"
+            "- LaTeX (block): `$$...$$`\n"
+            "- Markdown: `...`\n"
+            "- Plain text: `...`\n"
+            "Use valid LaTeX delimiters ($...$ and $$...$$). Do not use unicode bullets.\n\n"
+            f"Problem:\n{selected}"
+        )
+        self._send_ai_chat_prompt(prompt=prompt, visible_prompt="Homework: Answer with AI")
 
     def generate_text_to_tab_with_ai(self) -> None:
         tab = self.active_tab()
@@ -2001,10 +2590,13 @@ class MiscMixin(
                 self.autosave_status_label.setText("Autosave: off")
             return
         saved_count = 0
+        draft_count = 0
         autosave_marked_saved = False
         for index in range(self.tab_widget.count()):
             tab = self.tab_widget.widget(index)
             if not isinstance(tab, EditorTab):
+                continue
+            if bool(getattr(tab, "quiz_mode_enabled", False)):
                 continue
             if tab.large_file:
                 continue
@@ -2012,6 +2604,16 @@ class MiscMixin(
                 if tab.autosave_id:
                     self._clear_tab_autosave(tab)
                 continue
+            # For real files, autosave should persist to the file on disk.
+            if tab.current_file and not tab.text_edit.is_read_only() and not getattr(tab, "partial_large_preview", False):
+                try:
+                    if self.file_save_tab(tab):
+                        autosave_marked_saved = True
+                        saved_count += 1
+                        continue
+                except Exception:
+                    pass
+                # If direct save fails, fall back to draft snapshot below.
             self._ensure_tab_autosave_meta(tab)
             if not tab.autosave_id or not tab.autosave_path:
                 continue
@@ -2025,9 +2627,7 @@ class MiscMixin(
                     original_path=tab.current_file or "",
                     title=self._tab_display_name(tab),
                 )
-                tab.text_edit.set_modified(False)
-                autosave_marked_saved = True
-                saved_count += 1
+                draft_count += 1
                 if hasattr(self, "_persist_tab_local_history"):
                     self._persist_tab_local_history(tab)
             except Exception:
@@ -2037,7 +2637,9 @@ class MiscMixin(
         if hasattr(self, "autosave_status_label"):
             stamp = datetime.now().strftime("%H:%M:%S")
             if saved_count > 0:
-                self.autosave_status_label.setText(f"Autosaved at {stamp}")
+                self.autosave_status_label.setText(f"Autosaved {saved_count} file(s) at {stamp}")
+            elif draft_count > 0:
+                self.autosave_status_label.setText(f"Draft autosaved {draft_count} tab(s) at {stamp}")
         if autosave_marked_saved:
             self.update_action_states()
             self.update_window_title()
@@ -2179,6 +2781,14 @@ class MiscMixin(
             _LOGGER.warning("Settings file did not contain a JSON object: %s", path)
             return
         self.settings.update(loaded)
+        themes_path = self._get_themes_file_path()
+        if themes_path.exists():
+            try:
+                themes_loaded = json.loads(themes_path.read_bytes().decode("utf-8"))
+                if isinstance(themes_loaded, dict):
+                    self.settings.update(themes_loaded)
+            except Exception:
+                _LOGGER.exception("Failed to read themes from %s", themes_path)
         self.settings = migrate_settings(self.settings)
         normalize_ui_visibility_settings(self.settings)
         if hasattr(self, "apply_logging_preferences"):
@@ -2199,28 +2809,85 @@ class MiscMixin(
             self.settings["lock_pin"] = from_bin or from_legacy
         _LOGGER.info("Settings loaded and migrated from %s", path)
 
-    def save_settings_to_disk(self) -> None:
-        path = self.settings_file
+    def save_settings_to_disk(self, *, synchronous: bool = False) -> None:
+        if bool(getattr(self, "_saving_settings_to_disk", False)):
+            return
+        self._saving_settings_to_disk = True
+        started_at = time.perf_counter()
+        caller = "unknown"
         try:
-            path.parent.mkdir(parents=True, exist_ok=True)
+            frame = sys._getframe(1)
+            caller = f"{Path(frame.f_code.co_filename).name}:{frame.f_lineno}:{frame.f_code.co_name}"
+        except Exception:
+            caller = "unknown"
+        try:
             payload = migrate_settings(dict(self.settings))
             self.settings = dict(payload)
+            # Reconfigure logging only when level actually changes; doing this on
+            # every settings save can stall the UI.
             if hasattr(self, "apply_logging_preferences"):
-                self.apply_logging_preferences()
-            lock_password = str(payload.get("lock_password", "") or "")
-            lock_pin = str(payload.get("lock_pin", "") or "")
-            self._save_password_data_to_disk(lock_password, lock_pin)
-            # Keep plaintext values only in-memory.
-            payload["lock_password"] = ""
-            payload["lock_pin"] = ""
-            payload.pop("lock_password_enc", None)
-            payload.pop("lock_pin_enc", None)
-            payload.pop("focus_mode_enabled", None)
-            path.write_bytes(json.dumps(payload, indent=2).encode("utf-8"))
-            _LOGGER.info("Settings saved to %s", path)
+                desired_level = str(payload.get("logging_level", "INFO") or "INFO").strip().upper() or "INFO"
+                last_level = str(getattr(self, "_last_applied_logging_level", "") or "").strip().upper()
+                if desired_level != last_level:
+                    self.apply_logging_preferences()
+                    self._last_applied_logging_level = desired_level
+            if synchronous:
+                self._write_settings_payload(self._prepare_settings_write_payload(payload, caller=caller))
+            else:
+                self._enqueue_settings_save(
+                    {
+                        "settings_snapshot": dict(payload),
+                        "caller": caller,
+                    }
+                )
         except Exception:
-            _LOGGER.exception("Failed to save settings to %s", path)
+            _LOGGER.exception("Failed to prepare settings save (caller=%s)", caller)
             pass
+        finally:
+            elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+            if elapsed_ms >= 150 and synchronous:
+                _LOGGER.warning(
+                    "Slow settings save prepare: %sms caller=%s tabs=%s quitting=%s",
+                    elapsed_ms,
+                    caller,
+                    self.tab_widget.count() if hasattr(self, "tab_widget") else "?",
+                    bool(getattr(QApplication.instance(), "closingDown", lambda: False)())
+                    if QApplication.instance() is not None
+                    else False,
+                )
+            self._saving_settings_to_disk = False
+
+    def _prepare_settings_write_payload(self, payload: dict[str, Any], *, caller: str) -> dict[str, Any]:
+        lock_password = str(payload.get("lock_password", "") or "")
+        lock_pin = str(payload.get("lock_pin", "") or "")
+        password_bytes = self._build_password_payload_bytes(lock_password, lock_pin)
+        theme_payload: dict[str, Any] = {}
+        for key in THEME_SETTINGS_KEYS:
+            if key in payload:
+                theme_payload[key] = payload.get(key)
+        # Keep plaintext values only in-memory.
+        clean_payload = dict(payload)
+        clean_payload["lock_password"] = ""
+        clean_payload["lock_pin"] = ""
+        clean_payload.pop("lock_password_enc", None)
+        clean_payload.pop("lock_pin_enc", None)
+        clean_payload.pop("focus_mode_enabled", None)
+        clean_payload.pop("ai_chat_sessions", None)
+        clean_payload.pop("ai_chat_history", None)
+        clean_payload.pop("ai_chat_session_files", None)
+        for key in THEME_SETTINGS_KEYS:
+            clean_payload.pop(key, None)
+        payload_bytes = json.dumps(clean_payload, indent=2).encode("utf-8")
+        themes_bytes = json.dumps(theme_payload, indent=2).encode("utf-8")
+        return {
+            "settings_path": self.settings_file,
+            "settings_bytes": payload_bytes,
+            "themes_path": self._get_themes_file_path(),
+            "themes_bytes": themes_bytes,
+            "password_path": self._get_password_file_path(),
+            "password_bytes": password_bytes,
+            "caller": caller,
+        }
 
     def _load_password_data_from_disk(self) -> dict:
         path = self._get_password_file_path()
@@ -2236,12 +2903,95 @@ class MiscMixin(
 
     def _save_password_data_to_disk(self, lock_password: str, lock_pin: str) -> None:
         path = self._get_password_file_path()
+        payload_bytes = self._build_password_payload_bytes(lock_password, lock_pin)
+        existing_payload = path.read_bytes() if path.exists() else None
+        if existing_payload != payload_bytes:
+            self._atomic_write_bytes(path, payload_bytes)
+
+    def _build_password_payload_bytes(self, lock_password: str, lock_pin: str) -> bytes:
         payload = {
             "lock_password_enc": self._protect_settings_secret(lock_password) if lock_password else "",
             "lock_pin_enc": self._protect_settings_secret(lock_pin) if lock_pin else "",
         }
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(json.dumps(payload, indent=2).encode("utf-8"))
+        return json.dumps(payload, indent=2).encode("utf-8")
+
+    def _enqueue_settings_save(self, payload: dict[str, Any]) -> None:
+        lock = getattr(self, "_settings_save_lock", None)
+        if lock is None:
+            lock = threading.Lock()
+            self._settings_save_lock = lock
+        event = getattr(self, "_settings_save_event", None)
+        if event is None:
+            event = threading.Event()
+            self._settings_save_event = event
+        with lock:
+            self._settings_save_pending = payload
+            worker = getattr(self, "_settings_save_worker", None)
+            if worker is None or not worker.is_alive():
+                worker = threading.Thread(target=self._settings_save_worker_loop, name="settings-save-worker", daemon=True)
+                self._settings_save_worker = worker
+                worker.start()
+        event.set()
+
+    def _settings_save_worker_loop(self) -> None:
+        lock = getattr(self, "_settings_save_lock", None)
+        event = getattr(self, "_settings_save_event", None)
+        if lock is None or event is None:
+            return
+        while True:
+            event.wait()
+            payload = None
+            with lock:
+                payload = getattr(self, "_settings_save_pending", None)
+                self._settings_save_pending = None
+                if payload is None:
+                    event.clear()
+            if payload is None:
+                continue
+            try:
+                if "settings_snapshot" in payload:
+                    payload = self._prepare_settings_write_payload(
+                        dict(payload.get("settings_snapshot", {})),
+                        caller=str(payload.get("caller", "unknown")),
+                    )
+                self._write_settings_payload(payload)
+            except Exception:
+                _LOGGER.exception("Settings worker failed while writing payload")
+
+    def _write_settings_payload(self, payload: dict[str, Any]) -> None:
+        settings_path = payload["settings_path"]
+        settings_bytes = payload["settings_bytes"]
+        themes_path = payload["themes_path"]
+        themes_bytes = payload["themes_bytes"]
+        password_path = payload["password_path"]
+        password_bytes = payload["password_bytes"]
+        caller = str(payload.get("caller", "unknown"))
+
+        try:
+            settings_path.parent.mkdir(parents=True, exist_ok=True)
+            existing_settings = settings_path.read_bytes() if settings_path.exists() else None
+            if existing_settings != settings_bytes:
+                self._atomic_write_bytes(settings_path, settings_bytes)
+
+            themes_path.parent.mkdir(parents=True, exist_ok=True)
+            existing_themes = themes_path.read_bytes() if themes_path.exists() else None
+            if existing_themes != themes_bytes:
+                self._atomic_write_bytes(themes_path, themes_bytes)
+
+            password_path.parent.mkdir(parents=True, exist_ok=True)
+            existing_password = password_path.read_bytes() if password_path.exists() else None
+            if existing_password != password_bytes:
+                self._atomic_write_bytes(password_path, password_bytes)
+
+            _LOGGER.info("Settings saved to %s", settings_path)
+        except Exception:
+            _LOGGER.exception("Failed to write settings payload (caller=%s)", caller)
+
+    @staticmethod
+    def _atomic_write_bytes(path: Path, data: bytes) -> None:
+        temp_path = path.with_suffix(path.suffix + ".tmp")
+        temp_path.write_bytes(data)
+        os.replace(temp_path, path)
 
     @staticmethod
     def _normalize_hex_color(value: str) -> str | None:
@@ -2257,27 +3007,103 @@ class MiscMixin(
             return None
         return text
 
+    def _apply_status_layout_visibility(self) -> None:
+        if hasattr(self, "position_label"):
+            self.position_label.setVisible(bool(self.settings.get("status_show_position", True)))
+        if hasattr(self, "zoom_label"):
+            self.zoom_label.setVisible(bool(self.settings.get("status_show_zoom", True)))
+        if hasattr(self, "eol_label"):
+            self.eol_label.setVisible(bool(self.settings.get("status_show_eol", True)))
+        if hasattr(self, "encoding_label"):
+            self.encoding_label.setVisible(bool(self.settings.get("status_show_encoding", True)))
+        show_syntax = bool(self.settings.get("status_show_syntax", True))
+        if hasattr(self, "syntax_label"):
+            self.syntax_label.setVisible(show_syntax)
+        if hasattr(self, "syntax_combo"):
+            self.syntax_combo.setVisible(show_syntax)
+        if hasattr(self, "breadcrumb_label"):
+            self.breadcrumb_label.setVisible(bool(self.settings.get("status_show_breadcrumb", True)))
+        if hasattr(self, "ruler_label"):
+            allow_ruler = bool(self.settings.get("status_show_ruler", True))
+            show_ruler = bool(
+                allow_ruler
+                and getattr(self, "_page_layout_view_enabled", False)
+                and self.settings.get("page_layout_show_ruler", True)
+            )
+            self.ruler_label.setVisible(show_ruler)
+        if hasattr(self, "ai_usage_label"):
+            self.ai_usage_label.setVisible(bool(self.settings.get("status_show_ai_usage", True)))
+        if hasattr(self, "autosave_status_label"):
+            self.autosave_status_label.setVisible(bool(self.settings.get("status_show_autosave", True)))
+        if hasattr(self, "status_panel_position_label"):
+            self.status_panel_position_label.setVisible(bool(self.settings.get("status_show_position", True)))
+        if hasattr(self, "status_panel_zoom_label"):
+            self.status_panel_zoom_label.setVisible(bool(self.settings.get("status_show_zoom", True)))
+        if hasattr(self, "status_panel_eol_label"):
+            self.status_panel_eol_label.setVisible(bool(self.settings.get("status_show_eol", True)))
+        if hasattr(self, "status_panel_encoding_label"):
+            self.status_panel_encoding_label.setVisible(bool(self.settings.get("status_show_encoding", True)))
+        if hasattr(self, "status_panel_syntax_label"):
+            self.status_panel_syntax_label.setVisible(bool(self.settings.get("status_show_syntax", True)))
+        if hasattr(self, "status_panel_breadcrumb_label"):
+            self.status_panel_breadcrumb_label.setVisible(bool(self.settings.get("status_show_breadcrumb", True)))
+        if hasattr(self, "status_panel_ruler_label"):
+            allow_ruler = bool(self.settings.get("status_show_ruler", True))
+            show_ruler = bool(
+                allow_ruler
+                and getattr(self, "_page_layout_view_enabled", False)
+                and self.settings.get("page_layout_show_ruler", True)
+            )
+            self.status_panel_ruler_label.setVisible(show_ruler)
+        if hasattr(self, "status_panel_ai_usage_label"):
+            self.status_panel_ai_usage_label.setVisible(bool(self.settings.get("status_show_ai_usage", True)))
+
     def apply_settings(self) -> None:
+        _perf_start = time.perf_counter()
+        _perf_marks: list[tuple[str, int]] = []
+
+        def _mark(stage: str) -> None:
+            _perf_marks.append((stage, int((time.perf_counter() - _perf_start) * 1000)))
+
         self.settings = migrate_settings(dict(self.settings))
         profile = ScintillaProfile.from_settings(self.settings)
+        _mark("migrate_profile")
         if hasattr(self, "apply_logging_preferences"):
             self.apply_logging_preferences()
         _LOGGER.debug("Applying runtime settings (logging level=%s)", self.settings.get("logging_level", "INFO"))
         if hasattr(self, "apply_shortcut_settings"):
             self.apply_shortcut_settings()
+        _mark("logging_shortcuts")
         app = QApplication.instance()
         if app is not None:
             ensure_dialog_theme_filter_installed()
             requested_style = str(self.settings.get("app_style", "System Default") or "System Default")
-            if requested_style == "System Default":
-                default_name = type(self).system_style_name or ""
-                default_style = QStyleFactory.create(default_name) if default_name else None
-                if default_style is not None:
-                    app.setStyle(default_style)
-            else:
-                style_obj = QStyleFactory.create(requested_style)
-                if style_obj is not None:
-                    app.setStyle(style_obj)
+            last_style_request = str(getattr(self, "_last_applied_style_request", "") or "")
+            if requested_style != last_style_request:
+                if requested_style == "System Default":
+                    default_name = type(self).system_style_name or ""
+                    default_style = QStyleFactory.create(default_name) if default_name else None
+                    if default_style is not None:
+                        app.setStyle(default_style)
+                else:
+                    style_obj = QStyleFactory.create(requested_style)
+                    if style_obj is not None:
+                        app.setStyle(style_obj)
+                self._last_applied_style_request = requested_style
+            desired_cursor_flash = (
+                int(self.settings.get("accessibility_cursor_blink_rate_ms", 1000))
+                if bool(self.settings.get("accessibility_cursor_blink", True))
+                else 0
+            )
+            if int(getattr(self, "_last_applied_cursor_flash_time", -1)) != desired_cursor_flash:
+                app.setCursorFlashTime(desired_cursor_flash)
+                self._last_applied_cursor_flash_time = desired_cursor_flash
+        _mark("app_style_cursor")
+
+        dock_options = QMainWindow.DockOption.AllowTabbedDocks | QMainWindow.DockOption.AllowNestedDocks
+        if not bool(self.settings.get("accessibility_reduce_motion", False)):
+            dock_options |= QMainWindow.DockOption.AnimatedDocks
+        self.setDockOptions(dock_options)
 
         # Font size & family
         font = QFont()
@@ -2289,6 +3115,7 @@ class MiscMixin(
             tab = self.tab_widget.widget(index)
             if isinstance(tab, EditorTab):
                 tab.text_edit.set_font(font)
+        _mark("font_per_tab")
 
         if hasattr(self, "snap_dock_left_action"):
             enable_snap = bool(self.settings.get("snap_dock_shortcuts_enabled", True))
@@ -2329,13 +3156,33 @@ class MiscMixin(
             tab_close_icon_url=tab_close_icon_url,
             close_button_visibility_qss=close_button_visibility_qss,
         )
-        if app is not None:
-            app.setStyleSheet(qss)
-        else:
-            self.setStyleSheet(qss)
-        self._apply_main_toolbar_icons()
-        self._apply_markdown_icons()
-        self._apply_format_icons()
+        qss_changed = qss != str(getattr(self, "_last_applied_main_qss", "") or "")
+        icon_signature = (
+            tokens.icon_fg,
+            tab_close_icon_url,
+            int(self.settings.get("icon_size_px", 18)),
+            str(self.settings.get("toolbar_label_mode", "icons_only")),
+            bool(self.settings.get("dark_mode")),
+        )
+        icons_changed = icon_signature != getattr(self, "_last_applied_icon_signature", None)
+        if qss_changed:
+            if app is not None:
+                app.setStyleSheet(qss)
+            else:
+                self.setStyleSheet(qss)
+            self._last_applied_main_qss = qss
+        if qss_changed or icons_changed:
+            self._apply_main_toolbar_icons()
+            self._apply_markdown_icons()
+            self._apply_format_icons()
+            if hasattr(self, "_apply_ai_feature_icons"):
+                self._apply_ai_feature_icons()
+            if hasattr(self, "show_symbol_toolbar_button") and self.show_symbol_toolbar_button is not None:
+                self.show_symbol_toolbar_button.setIcon(self._svg_icon("show-symbol"))
+            if hasattr(self, "_schedule_main_toolbar_overflow_update"):
+                self._schedule_main_toolbar_overflow_update()
+            self._last_applied_icon_signature = icon_signature
+        _mark("qss_icons")
         icon_px = int(self.settings.get("icon_size_px", 18))
         label_mode = str(self.settings.get("toolbar_label_mode", "icons_only"))
         style_map = {
@@ -2409,6 +3256,7 @@ class MiscMixin(
             self.show_line_numbers_action.blockSignals(False)
         if hasattr(self, "_set_editor_print_view_styles"):
             self._set_editor_print_view_styles(bool(self._page_layout_view_enabled and not getattr(self, "_print_view_enabled", False)))
+        _mark("layout_toggle_actions")
 
         reminder_interval = int(self.settings.get("reminder_check_interval_sec", 30))
         if self.settings.get("reminders_enabled", True) and reminder_interval > 0:
@@ -2429,11 +3277,16 @@ class MiscMixin(
         if hasattr(self, "syntax_combo"):
             self.syntax_combo.setEnabled(self.settings.get("syntax_highlighting_enabled", True))
             self.syntax_label.setEnabled(self.settings.get("syntax_highlighting_enabled", True))
+        self._apply_status_layout_visibility()
         self._refresh_recent_files_menu()
         self._refresh_favorite_files_menu()
         if hasattr(self, "advanced_features"):
             self.advanced_features.apply_backup_schedule()
-            self.advanced_features.toggle_keyboard_only(bool(self.settings.get("keyboard_only_mode", False)))
+            self.advanced_features.toggle_keyboard_only(
+                bool(self.settings.get("keyboard_only_mode", False)),
+                persist=False,
+            )
+        _mark("timers_menus_advanced")
 
         for index in range(self.tab_widget.count()):
             tab = self.tab_widget.widget(index)
@@ -2468,12 +3321,13 @@ class MiscMixin(
                 if hasattr(self, "_apply_scintilla_modes"):
                     self._apply_scintilla_modes(tab)
                 apply_indentation_defaults_to_tab(self, tab)
+        _mark("tab_theme_syntax_modes")
         if hasattr(self, "ai_chat_dock") and self.ai_chat_dock is not None:
             self.ai_chat_dock.refresh_theme()
         if bool(self.settings.get("simple_mode", False)):
-            self.toggle_simple_mode(True)
+            self.toggle_simple_mode(True, persist=False)
         else:
-            self.toggle_simple_mode(False)
+            self.toggle_simple_mode(False, persist=False)
         desired_on_top = bool(self.settings.get("always_on_top", False))
         desired_tool = bool(self.settings.get("post_it_mode", False))
         current_flags = self.windowFlags()
@@ -2495,10 +3349,17 @@ class MiscMixin(
         self._refresh_ai_usage_label()
         self.apply_language()
         apply_notepadpp_runtime_settings(self)
+        _mark("finalize")
+        _LOGGER.info(
+            "apply_settings breakdown(ms): %s",
+            ", ".join(f"{name}={ms}" for name, ms in _perf_marks),
+        )
 
-    def apply_language(self) -> None:
+    def apply_language(self, *, force: bool = False) -> None:
         lang_label = str(self.settings.get("language", "English") or "English")
         lang_code = language_code_for(lang_label)
+        if not force and str(getattr(self, "_ui_language_code", "") or "") == lang_code:
+            return
         self._ui_language_code = lang_code
         self._translate_actions(lang_code)
         self._translate_widgets(lang_code)
@@ -2716,25 +3577,94 @@ class MiscMixin(
                     button.setText(self._translate_text(str(original), lang_code))
 
     def open_settings(self, initial_section: str | None = None) -> None:
-        dlg = SidebarSettingsDialog(self, self.settings, initial_section=initial_section)
+        open_started_at = time.perf_counter()
+        dlg = getattr(self, "_settings_dialog_cached", None)
+        dlg_prepare_started_at = time.perf_counter()
+        if dlg is None:
+            dlg = SidebarSettingsDialog(self, self.settings, initial_section=initial_section)
+            self._settings_dialog_cached = dlg
+            dlg_prepare_mode = "create"
+        elif hasattr(dlg, "reload_from_settings"):
+            current_settings = dict(self.settings) if isinstance(self.settings, dict) else {}
+            needs_reload = True
+            try:
+                if hasattr(dlg, "get_settings") and dlg.get_settings() == current_settings:
+                    needs_reload = False
+            except Exception:
+                needs_reload = True
+            if needs_reload:
+                dlg.reload_from_settings(current_settings, initial_section=initial_section)
+                dlg_prepare_mode = "reload"
+            else:
+                dlg_prepare_mode = "reuse_no_reload"
+        else:
+            dlg_prepare_mode = "reuse"
+        dlg_prepare_ms = int((time.perf_counter() - dlg_prepare_started_at) * 1000)
+        _LOGGER.info(
+            "Settings open prepare: %sms mode=%s section=%s",
+            dlg_prepare_ms,
+            dlg_prepare_mode,
+            str(initial_section or "").strip() or "default",
+        )
+        if hasattr(dlg, "reset_to_defaults_requested"):
+            try:
+                dlg.reset_to_defaults_requested = False
+            except Exception:
+                pass
+        if hasattr(dlg, "prepare_for_open"):
+            try:
+                dlg.prepare_for_open()
+            except Exception:
+                _LOGGER.exception("Failed to prepare settings dialog before open")
         self.apply_language()
-        if dlg.exec():
+        exec_started_at = time.perf_counter()
+        result = dlg.exec()
+        exec_ms = int((time.perf_counter() - exec_started_at) * 1000)
+        _LOGGER.info("Settings dialog exec duration: %sms result=%s", exec_ms, "accepted" if result else "rejected")
+        if result:
             if getattr(dlg, "reset_to_defaults_requested", False):
                 self.reset_settings_to_default_and_close()
                 return
             current_settings = dict(self.settings)
             next_settings = dlg.get_settings()
-            restart_required = self._settings_change_requires_restart(current_settings, next_settings)
+            if next_settings == current_settings:
+                _LOGGER.info("Settings accepted with no changes; skipping apply/save")
+                return
 
             def _apply_after_dialog_close() -> None:
+                apply_started_at = time.perf_counter()
+                app = QApplication.instance()
+                prev_quit_on_last: bool | None = None
+                was_visible = self.isVisible()
+                was_minimized = self.isMinimized()
                 try:
+                    if app is not None:
+                        prev_quit_on_last = app.quitOnLastWindowClosed()
+                        app.setQuitOnLastWindowClosed(False)
+                    self._suspend_layout_autosave = True
+                    self._suppress_restart_after_settings_apply = True
                     self.settings = next_settings
+                    apply_settings_started_at = time.perf_counter()
                     self.apply_settings()
+                    if was_visible and not self.isVisible():
+                        if was_minimized:
+                            self.showMinimized()
+                        else:
+                            self.showNormal()
+                            self.raise_()
+                            self.activateWindow()
+                    apply_settings_ms = int((time.perf_counter() - apply_settings_started_at) * 1000)
+                    save_started_at = time.perf_counter()
                     self.save_settings_to_disk()
+                    save_enqueue_ms = int((time.perf_counter() - save_started_at) * 1000)
+                    total_apply_ms = int((time.perf_counter() - apply_started_at) * 1000)
+                    _LOGGER.info(
+                        "Settings post-OK apply/save: total=%sms apply_settings=%sms save_call=%sms",
+                        total_apply_ms,
+                        apply_settings_ms,
+                        save_enqueue_ms,
+                    )
                     self.log_event("Info", "Settings applied and saved")
-                    if restart_required:
-                        self.log_event("Info", "Theme-related settings changed; restarting app.")
-                        self._restart_app_after_theme_change()
                 except Exception as exc:
                     _LOGGER.exception("Failed applying settings from preferences dialog")
                     QMessageBox.critical(
@@ -2742,26 +3672,52 @@ class MiscMixin(
                         "Apply Settings Failed",
                         f"An error occurred while applying settings.\n\n{exc}",
                     )
+                finally:
+                    self._suppress_restart_after_settings_apply = False
+                    self._suspend_layout_autosave = False
+                    if app is not None and prev_quit_on_last is not None:
+                        app.setQuitOnLastWindowClosed(prev_quit_on_last)
 
             # Run after the modal dialog teardown to avoid UI re-entrancy stalls.
             QTimer.singleShot(0, _apply_after_dialog_close)
+        total_open_ms = int((time.perf_counter() - open_started_at) * 1000)
+        _LOGGER.info("Settings open flow total: %sms", total_open_ms)
+
+    def _prewarm_settings_dialog_cache(self) -> None:
+        if bool(getattr(self, "_settings_dialog_prewarm_started", False)):
+            return
+        self._settings_dialog_prewarm_started = True
+        started_at = time.perf_counter()
+        mode = "noop"
+        try:
+            dlg = getattr(self, "_settings_dialog_cached", None)
+            if dlg is None:
+                dlg = SidebarSettingsDialog(self, self.settings, initial_section=None)
+                self._settings_dialog_cached = dlg
+                mode = "create"
+            elif hasattr(dlg, "reload_from_settings"):
+                current_settings = dict(self.settings) if isinstance(self.settings, dict) else {}
+                try:
+                    if hasattr(dlg, "get_settings") and dlg.get_settings() != current_settings:
+                        dlg.reload_from_settings(current_settings, initial_section=None)
+                        mode = "reload"
+                    else:
+                        mode = "reuse_no_reload"
+                except Exception:
+                    dlg.reload_from_settings(current_settings, initial_section=None)
+                    mode = "reload"
+            else:
+                mode = "reuse"
+        except Exception:
+            _LOGGER.exception("Settings dialog prewarm failed")
+        finally:
+            elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+            _LOGGER.info("Settings dialog prewarm: %sms mode=%s", elapsed_ms, mode)
 
     @staticmethod
     def _settings_change_requires_restart(current: dict[str, Any], updated: dict[str, Any]) -> bool:
-        restart_keys = (
-            "theme",
-            "app_style",
-            "dark_mode",
-            "use_custom_colors",
-            "custom_editor_bg",
-            "custom_editor_fg",
-            "custom_chrome_bg",
-            "accent_color",
-            "ui_density",
-        )
-        for key in restart_keys:
-            if current.get(key) != updated.get(key):
-                return True
+        _ = current
+        _ = updated
         return False
 
     @staticmethod
@@ -2782,7 +3738,9 @@ class MiscMixin(
         return [str(Path(sys.executable).resolve()), *args]
 
     def _restart_app_after_theme_change(self) -> None:
-        self._restart_app_with_message("Theme changes were applied. The app will restart now.")
+        _LOGGER.info("Auto-restart after theme change is disabled; explicit reload required")
+        if hasattr(self, "show_status_message"):
+            self.show_status_message("Theme changes applied. Use Reload App if needed.", 3500)
 
     def reload_app(self) -> None:
         self._restart_app_with_message("The app will now reload.")
@@ -2809,9 +3767,22 @@ class MiscMixin(
             )
             return
         QMessageBox.information(self, "Restarting", message)
+        self._request_app_quit("reload_app_requested")
+
+    def _mark_close_trace(self, reason: str) -> None:
+        self._pending_close_reason = str(reason or "unknown")
+        self._pending_close_stack = "".join(traceback.format_stack(limit=12))
+        _LOGGER.info("[CloseTrace] requested reason=%s", self._pending_close_reason)
+
+    def _request_app_quit(self, reason: str) -> None:
+        self._mark_close_trace(reason)
         app = QApplication.instance()
         if app is not None:
             app.quit()
+
+    def _request_window_close(self, reason: str) -> None:
+        self._mark_close_trace(reason)
+        self.close()
 
     def get_shortcut_action_rows(self) -> list[ShortcutActionRow]:
         rows: list[ShortcutActionRow] = []
@@ -2889,11 +3860,9 @@ class MiscMixin(
 
     def reset_settings_to_default_and_close(self) -> None:
         self.settings = self._build_default_settings()
-        self.save_settings_to_disk()
+        self.save_settings_to_disk(synchronous=True)
         self.log_event("Info", "Settings reset to defaults. Closing app.")
-        app = QApplication.instance()
-        if app is not None:
-            app.quit()
+        self._request_app_quit("settings_factory_reset")
 
     def keyPressEvent(self, event) -> None:  # type: ignore[override]
         if (
@@ -2926,6 +3895,13 @@ class MiscMixin(
         self.update_window_title()
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
+        close_reason = str(getattr(self, "_pending_close_reason", "") or "unknown")
+        close_stack = str(getattr(self, "_pending_close_stack", "") or "")
+        if not close_stack:
+            close_stack = "".join(traceback.format_stack(limit=12))
+        _LOGGER.info("[CloseTrace] closeEvent reason=%s\n%s", close_reason, close_stack)
+        self._pending_close_reason = ""
+        self._pending_close_stack = ""
         tabs: list[EditorTab] = []
         for index in range(self.tab_widget.count()):
             tab = self.tab_widget.widget(index)
@@ -2946,7 +3922,7 @@ class MiscMixin(
                 self.save_current_layout()
             except Exception as exc:  # noqa: BLE001
                 self.log_event("Error", f"Failed to persist layout on close: {exc}")
-        self.save_settings_to_disk()
+        self.save_settings_to_disk(synchronous=True)
         try:
             self.reminders_store.save()
         except Exception as exc:  # noqa: BLE001
@@ -3164,6 +4140,16 @@ class MiscMixin(
     def _on_file_changed(self, path: str) -> None:
         if not path:
             return
+        normalized_path = os.path.normcase(os.path.abspath(path))
+        suppress_map = getattr(self, "_self_save_suppressed_paths", None)
+        if isinstance(suppress_map, dict):
+            now = time.monotonic()
+            expires_at = float(suppress_map.get(normalized_path, 0.0) or 0.0)
+            if expires_at > now:
+                return
+            stale = [p for p, t in suppress_map.items() if float(t or 0.0) <= now]
+            for stale_path in stale:
+                suppress_map.pop(stale_path, None)
         tab = None
         for i in range(self.tab_widget.count()):
             widget = self.tab_widget.widget(i)
@@ -3239,10 +4225,13 @@ class MiscMixin(
         styled = self._tab_style_lines(tab)
         if not styled:
             # Keep search highlights if enabled.
+            if hasattr(tab.text_edit.widget, "clear_background_overlays"):
+                tab.text_edit.widget.clear_background_overlays("line_styles")
             if hasattr(self, "_on_search_text_changed"):
                 self._on_search_text_changed()
             return
         selections: list[QTextEdit.ExtraSelection] = []
+        overlay_ranges: list[tuple[int, int, QColor]] = []
         for line, style_id in styled.items():
             block = tab.text_edit.widget.document().findBlockByNumber(line)
             if not block.isValid():
@@ -3255,6 +4244,10 @@ class MiscMixin(
             color.setAlpha(90)
             sel.format.setBackground(color)
             selections.append(sel)
+            overlay_ranges.append((int(cursor.selectionStart()), int(cursor.selectionEnd()), color))
+        if hasattr(tab.text_edit.widget, "set_background_overlays"):
+            tab.text_edit.widget.set_background_overlays("line_styles", overlay_ranges)
+            return
         tab.text_edit.widget.setExtraSelections(selections)
 
     def _record_change_history_line(self) -> None:
@@ -3948,6 +4941,7 @@ class MiscMixin(
         if getattr(self, "_layout_auto_save_ready", False):
             return
         self._layout_auto_save_ready = True
+        self._layout_autosave_watch_widgets = set()
         self._layout_auto_save_timer = QTimer(self)
         self._layout_auto_save_timer.setSingleShot(True)
         self._layout_auto_save_timer.timeout.connect(self._persist_layout_snapshot)
@@ -3965,6 +4959,8 @@ class MiscMixin(
             dock = getattr(self, name, None)
             if dock is None:
                 continue
+            self._layout_autosave_watch_widgets.add(dock)
+            dock.installEventFilter(self)
             dock.dockLocationChanged.connect(lambda _area, _dock=dock: self._schedule_layout_auto_save())
             dock.topLevelChanged.connect(lambda _floating, _dock=dock: self._schedule_layout_auto_save())
             dock.visibilityChanged.connect(lambda _visible, _dock=dock: self._schedule_layout_auto_save())
@@ -3972,26 +4968,32 @@ class MiscMixin(
             toolbar = getattr(self, toolbar_name, None)
             if toolbar is None:
                 continue
+            self._layout_autosave_watch_widgets.add(toolbar)
+            toolbar.installEventFilter(self)
             toolbar.topLevelChanged.connect(lambda _floating, _tb=toolbar: self._schedule_layout_auto_save())
             toolbar.visibilityChanged.connect(lambda _visible, _tb=toolbar: self._schedule_layout_auto_save())
 
     def _schedule_layout_auto_save(self) -> None:
         if getattr(self, "_layout_restore_in_progress", False):
             return
+        if bool(getattr(self, "_suspend_layout_autosave", False)):
+            return
+        app = QApplication.instance()
+        if app is not None and not bool(app.property("app_started")):
+            # Ignore startup/layout churn before the app is fully shown.
+            return
         if not bool(self.settings.get("layout_auto_save_enabled", True)):
             return
         if not hasattr(self, "_layout_auto_save_timer"):
             return
-        self._layout_auto_save_timer.start(400)
+        self._layout_auto_save_timer.start(1200)
 
     def _persist_layout_snapshot(self) -> None:
         if getattr(self, "_layout_restore_in_progress", False):
             return
         if hasattr(self, "save_current_layout"):
             try:
-                self.save_current_layout()
-                if hasattr(self, "save_settings_to_disk"):
-                    self.save_settings_to_disk()
+                self.save_current_layout(persist=True, show_status=False)
             except Exception as exc:  # noqa: BLE001
                 self.log_event("Error", f"Failed to auto-save layout: {exc}")
 
@@ -4146,11 +5148,99 @@ class MiscMixin(
         except Exception:
             return QByteArray()
 
-    def _layout_snapshot(self) -> dict[str, str]:
-        return {
+    def _layout_snapshot(self) -> dict[str, Any]:
+        snapshot: dict[str, Any] = {
             "state": self._encode_layout_bytes(self.saveState()),
             "geometry": self._encode_layout_bytes(self.saveGeometry()),
         }
+        dock_sizes = self._capture_primary_horizontal_dock_sizes()
+        if dock_sizes is not None:
+            snapshot["primary_dock_sizes"] = dock_sizes
+            snapshot["ai_chat_dock_width"] = int(dock_sizes[1])
+            try:
+                self.log_event("Info", f"[Layout] Saved primary_dock_sizes={dock_sizes}")
+            except Exception:
+                pass
+        return snapshot
+
+    def _capture_primary_horizontal_dock_sizes(self) -> list[int] | None:
+        editor_dock = getattr(self, "editor_dock", None)
+        ai_chat_dock = getattr(self, "ai_chat_dock", None)
+        if editor_dock is None or ai_chat_dock is None:
+            return None
+        try:
+            editor_w = int(editor_dock.width())
+            ai_w = int(ai_chat_dock.width())
+        except Exception:
+            return None
+        if editor_w <= 0 or ai_w <= 0:
+            return None
+        return [editor_w, ai_w]
+
+    def _apply_primary_horizontal_dock_sizes(self, payload: dict[str, Any]) -> None:
+        if not isinstance(payload, dict):
+            return
+        raw = payload.get("primary_dock_sizes")
+        if not isinstance(raw, list) or len(raw) != 2:
+            return
+        try:
+            sizes = [max(1, int(raw[0])), max(1, int(raw[1]))]
+        except Exception:
+            return
+        editor_dock = getattr(self, "editor_dock", None)
+        ai_chat_dock = getattr(self, "ai_chat_dock", None)
+        if editor_dock is None or ai_chat_dock is None:
+            return
+        try:
+            try:
+                self.log_event("Info", f"[Layout] Restoring primary_dock_sizes={sizes}")
+            except Exception:
+                pass
+            self.resizeDocks([editor_dock, ai_chat_dock], sizes, Qt.Orientation.Horizontal)
+            try:
+                applied = [int(editor_dock.width()), int(ai_chat_dock.width())]
+                self.log_event("Info", f"[Layout] Applied primary_dock_sizes={applied}")
+            except Exception:
+                pass
+        except Exception:
+            return
+        self._enforce_ai_chat_dock_width(payload)
+
+    def _enforce_ai_chat_dock_width(self, payload: dict[str, Any]) -> None:
+        if not isinstance(payload, dict):
+            return
+        raw = payload.get("ai_chat_dock_width")
+        if raw is None:
+            raw_sizes = payload.get("primary_dock_sizes")
+            if isinstance(raw_sizes, list) and len(raw_sizes) == 2:
+                raw = raw_sizes[1]
+        if raw is None:
+            return
+        try:
+            target = max(1, int(raw))
+        except Exception:
+            return
+        ai_chat_dock = getattr(self, "ai_chat_dock", None)
+        if ai_chat_dock is None:
+            return
+
+        def _apply_once() -> None:
+            dock = getattr(self, "ai_chat_dock", None)
+            if dock is None or not dock.isVisible():
+                return
+            try:
+                self.resizeDocks([dock], [target], Qt.Orientation.Horizontal)
+            except Exception:
+                return
+            try:
+                self.log_event("Info", f"[Layout] Enforce ai_chat_dock_width target={target} current={int(dock.width())}")
+            except Exception:
+                pass
+
+        _apply_once()
+        QTimer.singleShot(100, _apply_once)
+        QTimer.singleShot(300, _apply_once)
+        QTimer.singleShot(700, _apply_once)
 
     def _ensure_default_layout(self) -> None:
         layouts = self.settings.get("layout_presets")
@@ -4228,22 +5318,40 @@ class MiscMixin(
                 self.restoreGeometry(geo)
             if not state.isEmpty():
                 self.restoreState(state)
+            self._apply_primary_horizontal_dock_sizes(payload)
+            # Qt dock geometry can continue settling right after restoreState/show.
+            # Re-apply once more on the next cycle to avoid transient startup widths.
+            QTimer.singleShot(0, lambda p=dict(payload): self._apply_primary_horizontal_dock_sizes(p))
         finally:
             self._layout_restore_in_progress = False
         self._ensure_main_window_on_screen()
         self._sync_layout_panel_actions()
 
-    def save_current_layout(self) -> None:
+    def save_current_layout(self, *, persist: bool = True, show_status: bool = True) -> None:
         name = str(self.settings.get("layout_active", "") or "Default")
         layouts = self.settings.get("layout_presets", {})
         if not isinstance(layouts, dict):
             layouts = {}
-        layouts[name] = self._layout_snapshot()
+        snapshot = self._layout_snapshot()
+        existing = layouts.get(name, {})
+        if not isinstance(existing, dict):
+            existing = {}
+        unchanged = (
+            str(existing.get("state", "") or "") == str(snapshot.get("state", "") or "")
+            and str(existing.get("geometry", "") or "") == str(snapshot.get("geometry", "") or "")
+        )
+        if unchanged:
+            self.settings["layout_active"] = name
+            if show_status:
+                self.show_status_message(f'Layout unchanged: "{name}"', 1500)
+            return
+        layouts[name] = snapshot
         self.settings["layout_presets"] = layouts
         self.settings["layout_active"] = name
-        if hasattr(self, "save_settings_to_disk"):
+        if persist and hasattr(self, "save_settings_to_disk"):
             self.save_settings_to_disk()
-        self.show_status_message(f'Layout saved: "{name}"', 2500)
+        if show_status:
+            self.show_status_message(f'Layout saved: "{name}"', 2500)
 
     def save_layout_as(self) -> None:
         name, ok = QInputDialog.getText(self, "Save Layout As", "Layout name:")
@@ -5001,7 +6109,7 @@ Pypad User Guide
             result = dlg.exec()
             if result != QDialog.Accepted:
                 # User cancelled: close the window.
-                self.close()
+                self._request_window_close("privacy_lock_cancelled")
                 return
 
             entered_password, entered_pin = dlg.get_values()

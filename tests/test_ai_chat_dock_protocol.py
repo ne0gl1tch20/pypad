@@ -10,7 +10,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from pypad.ui.ai_chat_dock import AIChatDock
+from pypad.ui.ai.ai_chat_dock import AIChatDock
 
 
 def _b64_json(obj: dict) -> str:

@@ -17,6 +17,6 @@ if errorlevel 1 (
 )
 
 echo [DONE] Full build completed (PyInstaller + Inno Setup).
-echo [INFO] EXE: dist\run.exe
+echo [INFO] EXE: dist\run\run.exe
 echo [INFO] Installer: dist\installer\
 exit /b 0

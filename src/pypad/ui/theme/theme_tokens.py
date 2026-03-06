@@ -494,6 +494,42 @@ def build_ai_chat_qss(tokens: UIThemeTokens) -> tuple[str, str]:
             border-radius: {tokens.radius_sm}px;
             padding: 4px 8px;
         }}
+        QWidget#aiQuickActionsBar {{
+            background: {tokens.surface_bg};
+            border: 1px solid {assistant_border};
+            border-radius: {tokens.radius_md}px;
+        }}
+        QPushButton#aiQuickActionChip {{
+            background: {tokens.button_bg};
+            border: 1px solid {assistant_border};
+            border-radius: {tokens.radius_xl}px;
+            padding: 3px 10px;
+            min-height: 22px;
+        }}
+        QPushButton#aiQuickActionChip:hover {{
+            background: {tokens.tab_hover_bg};
+        }}
+        QLabel#aiContextUsageLabel {{
+            color: {tokens.text_muted};
+            background: transparent;
+            border: none;
+            padding: 1px 2px;
+        }}
+        QToolButton#aiQuickPlusButton {{
+            color: {tokens.text};
+            background: {tokens.button_bg};
+            border: 1px solid {assistant_border};
+            border-radius: {tokens.radius_xl}px;
+            padding: 2px 8px;
+            font-weight: 600;
+            min-height: 20px;
+        }}
+        QToolButton#aiQuickPlusButton:hover {{
+            background: {tokens.tab_hover_bg};
+        }}
+        QToolButton#aiQuickPlusButton:pressed {{
+            background: {tokens.toolbar_checked_bg};
+        }}
         QLabel#aiChatSessionTitle {{
             color: {tokens.text}; background: transparent; border: none; padding: 0px 4px; font-weight: 600;
         }}
@@ -539,14 +575,22 @@ def build_ai_chat_qss(tokens: UIThemeTokens) -> tuple[str, str]:
 
 
 def build_settings_dialog_qss(tokens: UIThemeTokens) -> str:
-    nav_selected_bg = _mix(tokens.accent, tokens.surface_bg, 0.16 if tokens.dark_mode else 0.24)
-    nav_hover_bg = _mix(tokens.tab_hover_bg, tokens.surface_bg, 0.25)
-    scope_bg = _mix(tokens.button_bg, tokens.surface_bg, 0.15)
+    nav_selected_bg = _mix(tokens.accent, tokens.surface_bg, 0.20 if tokens.dark_mode else 0.30)
+    nav_hover_bg = _mix(tokens.tab_hover_bg, tokens.surface_bg, 0.35 if tokens.dark_mode else 0.45)
+    scope_bg = _mix(tokens.button_bg, tokens.surface_bg, 0.22 if tokens.dark_mode else 0.35)
+    page_card_bg = _mix(tokens.surface_bg, tokens.panel_bg, 0.15 if tokens.dark_mode else 0.08)
+    list_bg = _mix(tokens.surface_bg, tokens.chrome_bg, 0.10 if tokens.dark_mode else 0.04)
+    search_bg = _mix(tokens.input_bg, tokens.surface_bg, 0.25 if tokens.dark_mode else 0.10)
+    split_handle = _mix(tokens.border, tokens.surface_bg, 0.35 if tokens.dark_mode else 0.55)
     page_text = tokens.text
     page_text_muted = tokens.text_muted
     return f"""
+        QDialog {{
+            background: {tokens.panel_bg};
+            color: {tokens.text};
+        }}
         #settingsHeaderCard {{
-            background: {tokens.surface_bg};
+            background: {page_card_bg};
             border: 1px solid {tokens.border};
             border-radius: {tokens.radius_lg}px;
         }}
@@ -559,7 +603,7 @@ def build_settings_dialog_qss(tokens: UIThemeTokens) -> str:
             background: transparent;
         }}
         #settingsNavList, #settingsPageStack {{
-            background: {tokens.surface_bg};
+            background: {list_bg};
             border: 1px solid {tokens.border};
             border-radius: {tokens.radius_lg}px;
         }}
@@ -616,12 +660,14 @@ def build_settings_dialog_qss(tokens: UIThemeTokens) -> str:
             min-height: {tokens.input_height}px;
             padding: 2px {tokens.space_md}px;
             border-radius: {tokens.radius_md}px;
+            background: {search_bg};
         }}
         QPushButton#settingsScopeBtn {{
             min-width: 64px;
             padding: {tokens.space_xs}px {tokens.space_lg}px;
             border-radius: 0px;
             background: {scope_bg};
+            border: 1px solid {tokens.border};
         }}
         QPushButton#settingsScopeBtn[scopePos="left"] {{
             border-top-left-radius: {tokens.radius_md}px;
@@ -635,6 +681,11 @@ def build_settings_dialog_qss(tokens: UIThemeTokens) -> str:
             background: {tokens.accent};
             color: {tokens.text_on_accent};
             border: 1px solid {tokens.accent};
+        }}
+        QSplitter::handle:horizontal {{
+            background: {split_handle};
+            width: 1px;
+            margin: 6px 4px;
         }}
         QSlider::groove:horizontal {{
             border: 1px solid {tokens.border};

@@ -66,7 +66,7 @@ from PySide6.QtPrintSupport import QPrintDialog, QPrintPreviewDialog, QPrinter
 
 from pypad.ui.debug.debug_logs_dialog import DebugLogsDialog
 from pypad.ui.editor.detachable_tab_bar import DetachableTabBar
-from pypad.ui.editor.editor_tab import EditorTab
+from pypad.ui.editor.editor_tab import EditorTab, MarkdownPreviewPane
 from pypad.ui.ai.ai_controller import AIController
 from pypad.ui.ai.ai_chat_dock import AIChatDock
 from pypad.ui.theme.asset_paths import resolve_asset_path
@@ -178,6 +178,17 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.editor_dock)
         if hasattr(self, "_sync_layout_panel_actions"):
             self.editor_dock.visibilityChanged.connect(lambda _v: self._sync_layout_panel_actions())
+        self.markdown_preview_dock = QDockWidget("Markdown Preview", self)
+        self.markdown_preview_dock.setObjectName("markdownPreviewDock")
+        self.markdown_preview_dock.setAllowedAreas(Qt.AllDockWidgetAreas)
+        self.markdown_preview_dock.setFeatures(
+            QDockWidget.DockWidgetMovable | QDockWidget.DockWidgetFloatable | QDockWidget.DockWidgetClosable
+        )
+        self.markdown_preview_pane = MarkdownPreviewPane(self.markdown_preview_dock)
+        self.markdown_preview_dock.setWidget(self.markdown_preview_pane)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.markdown_preview_dock)
+        self.markdown_preview_dock.visibilityChanged.connect(self._on_markdown_preview_dock_visibility_changed)
+        self.markdown_preview_dock.hide()
         self.setAcceptDrops(True)
 
         # Simple in-memory settings
@@ -262,6 +273,14 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
         self.autosave_status_label = QLabel("Autosave: waiting", self)
         self.autosave_status_label.setMargin(3)
         self.status.addPermanentWidget(self.autosave_status_label)
+        self.quiz_quit_button = QPushButton("Quit", self)
+        self.quiz_quit_button.setVisible(False)
+        self.quiz_quit_button.clicked.connect(self.quit_quiz_mode)
+        self.status.addPermanentWidget(self.quiz_quit_button)
+        self.quiz_finish_button = QPushButton("Finish", self)
+        self.quiz_finish_button.setVisible(False)
+        self.quiz_finish_button.clicked.connect(self.finish_quiz_mode)
+        self.status.addPermanentWidget(self.quiz_finish_button)
         self.log_event("Info", "[Startup] Status bar widgets attached")
         self.advanced_features = AdvancedFeaturesController(self)
         _mark_startup_stage("advanced_features_ready")
@@ -290,7 +309,7 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
         self.create_toolbars()
         self.log_event("Info", "[Startup] Toolbars created")
         if bool(self.settings.get("simple_mode", False)):
-            self.toggle_simple_mode(True)
+            self.toggle_simple_mode(True, persist=False)
         self._offer_crash_recovery()
         _mark_startup_stage("ui_ready")
         self.log_event("Info", "[Startup] UI ready")
@@ -327,6 +346,12 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
             if self.settings.get("auto_check_updates", True):
                 QTimer.singleShot(1500, lambda: self.check_for_updates(manual=False))
             QTimer.singleShot(300, self._maybe_show_welcome_tutorial)
+            if hasattr(self, "_prewarm_settings_dialog_cache") and bool(
+                self.settings.get("settings_dialog_prewarm_enabled", False)
+            ):
+                # Optional: prewarm can improve first-open latency, but can be heavy
+                # on some systems. Keep it opt-in.
+                QTimer.singleShot(800, self._prewarm_settings_dialog_cache)
 
         _finish_startup_sequence()
 

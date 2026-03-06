@@ -15,7 +15,7 @@ DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 OutputDir=..\dist\installer
 OutputBaseFilename=PyPad-Setup-{#MyAppVersion}
-Compression=lzma
+Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
 PrivilegesRequired=lowest
@@ -32,7 +32,7 @@ Name: "assoc_txt"; Description: "Associate .txt files with PyPad"; GroupDescript
 Name: "ctx_openwith"; Description: "Add 'Open with PyPad' to file context menu"; GroupDescription: "File associations:"; Flags: unchecked
 
 [Files]
-Source: "..\dist\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\dist\run\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "_internal\PySide6\translations\qtwebengine_locales\*.pak,_internal\PySide6\translations\*.qm,_internal\PySide6\qml\*,_internal\PySide6\resources\qtwebengine_devtools_resources.pak,_internal\PySide6\resources\*.debug.pak,_internal\PySide6\resources\*.debug.bin,_internal\PySide6\plugins\platforms\qdirect2d.dll,_internal\PySide6\plugins\platforms\qminimal.dll,_internal\PySide6\plugins\platforms\qoffscreen.dll,_internal\PySide6\plugins\platforminputcontexts\qtvirtualkeyboardplugin.dll,_internal\PySide6\plugins\networkinformation\qnetworklistmanager.dll,_internal\PySide6\Qt6Positioning.dll,_internal\PySide6\QtPositioning.pyd,_internal\PySide6\Qt6Quick*.dll,_internal\PySide6\Qt6Qml*.dll,_internal\PySide6\QtQuick*.pyd,_internal\PySide6\QtQml*.pyd"
 ; Bundle example plugins so users get plugin templates immediately.
 Source: "..\plugins\*"; DestDir: "{userappdata}\pypad\plugins"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "__pycache__\*"
 

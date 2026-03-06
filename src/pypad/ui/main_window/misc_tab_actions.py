@@ -112,6 +112,7 @@ class MiscTabActionsMixin:
         custom_color_action = color_menu.addAction("Custom...")
 
         has_file = bool(tab.current_file and Path(tab.current_file).exists())
+        close_action.setEnabled(not bool(getattr(tab, "pinned", False)))
         for action in (
             open_explorer_action,
             open_cmd_action,

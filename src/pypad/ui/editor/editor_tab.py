@@ -1,11 +1,62 @@
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QIcon, QPixmap
 from PySide6.QtWidgets import QHBoxLayout, QMenu, QSplitter, QTextEdit, QToolButton, QVBoxLayout, QWidget, QWidgetAction
+import re
 from typing import Any
 
 from pypad.ui.editor.editor_widget import EditorWidget
+from pypad.ui.document.document_fidelity import render_markdown_to_mathjax_html
 
 from pypad.ui.system.version_history import VersionHistory
+
+try:
+    from PySide6.QtWebEngineWidgets import QWebEngineView
+except Exception:
+    QWebEngineView = None
+
+
+class MarkdownPreviewPane(QWidget):
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self._text_preview = QTextEdit(self)
+        self._text_preview.setReadOnly(True)
+        self._text_preview.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+        self._text_preview.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+        self._web_preview = None
+        if QWebEngineView is not None:
+            try:
+                self._web_preview = QWebEngineView(self)
+                self._web_preview.hide()
+            except Exception:
+                self._web_preview = None
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self._text_preview)
+        if self._web_preview is not None:
+            layout.addWidget(self._web_preview)
+
+    def supports_mathjax(self) -> bool:
+        return self._web_preview is not None
+
+    def setMarkdown(self, text: str) -> None:
+        self.set_markdown(text, enable_mathjax=False, dark_mode=False)
+
+    def set_markdown(self, text: str, *, enable_mathjax: bool, dark_mode: bool) -> None:
+        if enable_mathjax and self._web_preview is not None:
+            self._text_preview.hide()
+            self._web_preview.show()
+            self._web_preview.setHtml(render_markdown_to_mathjax_html(text, dark_mode=dark_mode))
+            return
+        if self._web_preview is not None:
+            self._web_preview.hide()
+        self._text_preview.show()
+        self._text_preview.setMarkdown(text)
+
+    def clear(self) -> None:
+        if self._web_preview is not None:
+            self._web_preview.setHtml("")
+        self._text_preview.clear()
+
 
 class EditorTab(QWidget):
     def __init__(self, parent=None) -> None:
@@ -16,17 +67,9 @@ class EditorTab(QWidget):
         if hasattr(self.text_edit.widget, "setHorizontalScrollBarPolicy"):
             self.text_edit.widget.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
 
-        self.markdown_preview = QTextEdit(self)
-        self.markdown_preview.setReadOnly(True)
-        self.markdown_preview.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
-        self.markdown_preview.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
-        self.markdown_preview.hide()
-
         self.editor_splitter = QSplitter(Qt.Horizontal, self)
         self.editor_splitter.addWidget(self.text_edit.widget)
-        self.editor_splitter.addWidget(self.markdown_preview)
-        self.editor_splitter.setStretchFactor(0, 3)
-        self.editor_splitter.setStretchFactor(1, 2)
+        self.editor_splitter.setStretchFactor(0, 1)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -72,6 +115,11 @@ class EditorTab(QWidget):
         self.tags: list[str] = []
         self.encryption_enabled = False
         self.encryption_password: str | None = None
+        self.quiz_mode_enabled = False
+        self.quiz_items: list[dict[str, Any]] = []
+        self.quiz_user_answers: dict[int, str] = {}
+        self.quiz_score_result: dict[str, Any] | None = None
+        self.quiz_original_text: str | None = None
 
         self._setup_editor_context_menu()
 
@@ -110,6 +158,9 @@ class EditorTab(QWidget):
             "ai_attach_workspace_search_chat_action": "ai-attach-search",
             "ai_ask_context_action": "ai-citations",
             "ai_workspace_citations_action": "ai-workspace-cite",
+            "homework_solve_ai_action": "ai-explain",
+            "homework_solve_solutions_ai_action": "ai-refactor",
+            "homework_answer_ai_action": "ai-sparkles",
             "workspace_search_action": "edit-find",
             "find_action": "edit-find",
             "replace_action": "edit-find-replace",
@@ -333,6 +384,19 @@ class EditorTab(QWidget):
             "select_all_action",
         ):
             self._add_window_action(menu, window, attr)
+        selected_text = ""
+        try:
+            selected_text = str(self.text_edit.selected_text() or "")
+        except Exception:
+            selected_text = ""
+        if selected_text.strip() and self._selection_looks_like_math(selected_text):
+            menu.addSeparator()
+            for attr in (
+                "homework_solve_ai_action",
+                "homework_solve_solutions_ai_action",
+                "homework_answer_ai_action",
+            ):
+                self._add_window_action_if_enabled(menu, window, attr)
         menu.addSeparator()
         selection_menu = menu.addMenu("Selection")
         selection_icon = self._context_icon(window, "edit-copy")
@@ -497,5 +561,24 @@ class EditorTab(QWidget):
 
         global_pos = widget.mapToGlobal(pos) if hasattr(widget, "mapToGlobal") else pos
         menu.exec(global_pos)
+
+    @staticmethod
+    def _selection_looks_like_math(text: str) -> bool:
+        probe = str(text or "").strip()
+        if not probe:
+            return False
+        patterns = (
+            r"\$[^$]+\$",
+            r"\$\$[\s\S]+\$\$",
+            r"\\\([^\)]+\\\)",
+            r"\\\[[\s\S]+\\\]",
+            r"\\begin\{[a-zA-Z*]+\}",
+            r"[A-Za-z]\s*=\s*[^=\n]+",
+            r"\d+\s*[-+*/=^]\s*\d+",
+            r"[A-Za-z0-9\)\]]\s*[-+*/=]\s*[A-Za-z0-9\(\[]",
+            r"\b(sin|cos|tan|log|ln|exp|sqrt)\b",
+            r"\^|_|\\frac|\\sqrt|\\sum|\\int|\\alpha|\\beta|\\theta|\\pi",
+        )
+        return any(re.search(pattern, probe) for pattern in patterns)
 
 

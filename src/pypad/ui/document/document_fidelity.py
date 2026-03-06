@@ -29,6 +29,48 @@ def render_text_to_html(text: str, *, markdown_mode: bool) -> str:
     return doc.toHtml()
 
 
+def render_markdown_to_mathjax_html(text: str, *, dark_mode: bool = False) -> str:
+    doc = QTextDocument()
+    doc.setMarkdown(text)
+    body_html = doc.toHtml()
+    bg = "#1f1f1f" if dark_mode else "#ffffff"
+    fg = "#f2f2f2" if dark_mode else "#1f1f1f"
+    border = "#3b3b3b" if dark_mode else "#e0e0e0"
+    return f"""<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {{
+      background: {bg};
+      color: {fg};
+      margin: 0;
+      padding: 14px;
+      font-family: "Segoe UI", Arial, sans-serif;
+      line-height: 1.45;
+    }}
+    hr {{ border: 0; border-top: 1px solid {border}; }}
+    code, pre {{ font-family: "Consolas", "Courier New", monospace; }}
+    img {{ max-width: 100%; }}
+  </style>
+  <script>
+    window.MathJax = {{
+      tex: {{
+        inlineMath: [['$', '$'], ['\\\\(', '\\\\)']],
+        displayMath: [['$$', '$$'], ['\\\\[', '\\\\]']]
+      }},
+      options: {{
+        skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+      }}
+    }};
+  </script>
+  <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+</head>
+<body>{body_html}</body>
+</html>"""
+
+
 def _read_text_file(path: Path, encoding: str) -> str:
     try:
         return path.read_text(encoding=encoding)

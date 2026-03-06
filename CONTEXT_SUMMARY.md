@@ -1,7 +1,7 @@
 ﻿# Context Summary
 
 ## Docs Updated
-- Last docs sync: 2026-02-27
+- Last docs sync: 2026-03-06
 - Synced files:
   - `CONTEXT_SUMMARY.md`
   - `APP_SUMMARY.md`
@@ -12,14 +12,28 @@
   - `assets/version_info.txt`
 
 ## Current Release Metadata
-- Version: `1.7.5-prerelease`
-- Update feed entry: `update.xml` (2026-02-27)
-- Changelog entry added: `1.7.5-prerelease`
+- Version: `1.7.7-prerelease`
+- Update feed entry: `update.xml` (2026-03-06)
+- Changelog entry added: `1.7.7-prerelease`
 
 ## Current Focus (Completed)
 - LSP definition client hardening (timeouts/retries/logging + server preference settings)
 - Factory reset workflow added in Settings (confirmation + close-on-reset)
-- Release metadata/docs updated for `1.7.5-prerelease`
+- Release metadata/docs updated for `1.7.7-prerelease`
+- Quiz mode restored and expanded:
+  - mixed-format parser (MCQ/TF/short-answer)
+  - `{user}`/`[user]` answer anchors
+  - metadata hide/restore in quiz mode
+  - detailed scoring dialog + per-question breakdown
+  - save/autosave safeguards during quiz mode
+- AI chat panel quick-actions restored:
+  - `+` menu replacing idle badge
+  - Add Files file-picker attachment flow
+  - live status row in menu (`Idle/Thinking/Streaming/Error`)
+- Settings-close reliability fixes:
+  - reset sticky cached settings flags
+  - explicit reload-only behavior (no auto theme-restart close)
+  - temporary close-event trace logging for root-cause diagnostics
 - PySide6 Scintilla-compat engine expanded to cover advanced editing/view behaviors without PyQt/Qsci dependency
 
 ## What Was Completed (Phases 1-4)
@@ -112,7 +126,7 @@
   - Keep enabled for future regressions where settings content contrast/background appears inconsistent at dialog startup
 
 ## Next Easy Resume Points
-1. Build/release packaging validation for `1.7.5-prerelease` (installer output + update feed URL verification).
+1. Build/release packaging validation for `1.7.7-prerelease` (installer output + update feed URL verification).
 2. Optional visual baseline refresh after intentional UI/editor rendering changes using `scripts/run_ui_checks.ps1 -Visual -UpdateVisualBaseline`.
 3. If targeting deeper Scintilla parity, prioritize:
    - advanced lexer stateful styling/perf

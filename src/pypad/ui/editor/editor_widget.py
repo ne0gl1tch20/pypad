@@ -474,6 +474,12 @@ class EditorWidget(QObject):
             )
             if hasattr(self.widget, "setCaretLineBackgroundColor"):
                 self.widget.setCaretLineBackgroundColor(QColor(caret_line_bg))
+            if hasattr(self.widget, "setMarginsBackgroundColor"):
+                self.widget.setMarginsBackgroundColor(QColor(gutter_bg))
+            if hasattr(self.widget, "setMarginsForegroundColor"):
+                self.widget.setMarginsForegroundColor(QColor(gutter_fg))
+            if hasattr(self.widget, "setFoldMarginColors"):
+                self.widget.setFoldMarginColors(QColor(gutter_fg), QColor(gutter_bg))
             return
         # Drop any stale per-widget stylesheet (e.g. from print/page view) so native Scintilla
         # palette and style calls are not visually overridden.

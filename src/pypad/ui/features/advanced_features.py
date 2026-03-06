@@ -1971,7 +1971,7 @@ class AdvancedFeaturesController:
             zf.writestr("meta.json", json.dumps({"timestamp": datetime.now().isoformat()}, indent=2))
         self.window.show_status_message("Diagnostics exported.", 2500)
 
-    def toggle_keyboard_only(self, checked: bool) -> None:
+    def toggle_keyboard_only(self, checked: bool, *, persist: bool = True) -> None:
         self.window.settings["keyboard_only_mode"] = bool(checked)
         if checked:
             self.window.main_toolbar.hide()
@@ -1981,7 +1981,8 @@ class AdvancedFeaturesController:
                 self.window.search_toolbar.hide()
         else:
             self.window._layout_top_toolbars()
-        self.window.save_settings_to_disk()
+        if persist:
+            self.window.save_settings_to_disk()
 
     def apply_accessibility_high_contrast(self) -> None:
         self.window.settings["theme"] = "High Contrast"

@@ -13,10 +13,44 @@ from PySide6.QtCore import QObject, QEvent, Qt, QTimer, qInstallMessageHandler, 
 
 _MAIN_WINDOW = None
 
-# --- Add ROOT for imports ---
-ROOT = Path(__file__).resolve().parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+def _bootstrap_import_paths() -> None:
+    """Support both development and PyInstaller onedir layouts.
+
+    Dev layout:
+      <repo>/src/run.py
+
+    PyInstaller onedir layout (as installed by Inno):
+      run.exe
+      assets/
+      _internal/
+    """
+    candidates: list[Path] = []
+
+    # Development: add the src directory containing "pypad".
+    dev_src = Path(__file__).resolve().parent
+    candidates.append(dev_src)
+
+    if getattr(sys, "frozen", False):
+        exe_dir = Path(sys.executable).resolve().parent
+        # PyInstaller onedir Python runtime + collected modules.
+        candidates.append(exe_dir / "_internal")
+        # Optional nested layout some builds produce.
+        candidates.append(exe_dir / "_internal" / "src")
+
+        # Onefile extraction root (if used), still safe to include.
+        meipass = getattr(sys, "_MEIPASS", "")
+        if meipass:
+            candidates.append(Path(meipass))
+            candidates.append(Path(meipass) / "src")
+
+    for path in candidates:
+        if path.exists():
+            text = str(path)
+            if text not in sys.path:
+                sys.path.insert(0, text)
+
+
+_bootstrap_import_paths()
 
 from pypad.app import main
 from pypad.app_settings import get_crash_logs_file_path
@@ -346,7 +380,7 @@ if __name__ == "__main__":
     _quit_filter = _QuitEventFilter(app)
     app.installEventFilter(_quit_filter)
 
-    QTimer.singleShot(500, start_main)
+    QTimer.singleShot(0, start_main)
 
     exit_code = app.exec()
     _startup_log(f"Qt event loop exited with code {exit_code}")

@@ -32,6 +32,9 @@ class MiscWindowTabsMixin:
     def _close_tabs_by_indices(self, indices: list[int]) -> None:
         for index in sorted(indices, reverse=True):
             if 0 <= index < self.tab_widget.count():
+                tab = self._tab_at_index(index)
+                if tab is not None and bool(getattr(tab, "pinned", False)):
+                    continue
                 self.close_tab(index)
 
     def close_all_tabs(self) -> None:
@@ -66,6 +69,8 @@ class MiscWindowTabsMixin:
         for i in range(self.tab_widget.count()):
             tab = self._tab_at_index(i)
             if tab is None:
+                continue
+            if bool(getattr(tab, "quiz_mode_enabled", False)):
                 continue
             if tab.text_edit.is_modified():
                 self.file_save_tab(tab)

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 from PySide6.QtGui import QAction
 
 from ...app_settings import (
+    get_ai_chats_dir_path,
     get_autosave_dir_path,
     get_crash_logs_file_path,
     get_debug_logs_file_path,
@@ -13,6 +14,7 @@ from ...app_settings import (
     get_password_file_path,
     get_reminders_file_path,
     get_settings_file_path,
+    get_themes_file_path,
     get_translation_cache_path,
 )
 from .notepadpp_pref_runtime import recent_file_max_entries, recent_file_menu_label
@@ -25,6 +27,10 @@ class MiscSettingsRecentMixin:
     @staticmethod
     def _get_settings_file_path() -> Path:
         return get_settings_file_path()
+
+    @staticmethod
+    def _get_themes_file_path() -> Path:
+        return get_themes_file_path()
 
     @staticmethod
     def _get_legacy_settings_file_path() -> Path:
@@ -45,6 +51,10 @@ class MiscSettingsRecentMixin:
     @staticmethod
     def _get_translation_cache_path() -> Path:
         return get_translation_cache_path()
+
+    @staticmethod
+    def _get_ai_chats_dir_path() -> Path:
+        return get_ai_chats_dir_path()
 
     @staticmethod
     def _get_debug_logs_file_path() -> Path:

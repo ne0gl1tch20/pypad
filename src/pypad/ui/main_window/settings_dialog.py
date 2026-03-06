@@ -73,7 +73,7 @@ class SettingsDialog(QDialog):
     def __init__(self, parent: "Notepad", settings: dict, initial_section: str | None = None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Preferences")
-        self.resize(980, 680)
+        self.resize(980, 700)
         self._parent_window = parent
         self._settings = migrate_settings(dict(settings))
         self._initial_section = str(initial_section or "").strip()
@@ -83,9 +83,10 @@ class SettingsDialog(QDialog):
         self._highlighted_widgets: list[QWidget] = []
         self._nav_scopes: list[str] = []
         self._settings_nav_scope = "all"
-        self._settings_page_content_max_width = 720
-        self._settings_form_label_width = 190
+        self._settings_page_content_max_width = 1180
+        self._settings_form_label_width = 200
         self._npp_pref_controls: dict[str, dict] = {}
+        self._npp_pages_built = False
         self.reset_to_defaults_requested = False
         self._theme_probe_logged_open = False
         self._theme_probe_logged_first_paint = False
@@ -113,25 +114,25 @@ class SettingsDialog(QDialog):
 
         self.settings_nav_list = QListWidget(splitter)
         self.settings_nav_list.setObjectName("settingsNavList")
-        self.settings_nav_list.setFixedWidth(260)
+        self.settings_nav_list.setFixedWidth(252)
         self.settings_nav_list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
         self.settings_nav_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.settings_nav_list.setSpacing(2)
+        self.settings_nav_list.setSpacing(1)
         right_panel = QWidget(splitter)
         right_layout = QVBoxLayout(right_panel)
         right_layout.setContentsMargins(0, 0, 0, 0)
         self.settings_header_card = QFrame(right_panel)
         self.settings_header_card.setObjectName("settingsHeaderCard")
         header_layout = QVBoxLayout(self.settings_header_card)
-        header_layout.setContentsMargins(12, 10, 12, 10)
-        header_layout.setSpacing(4)
+        header_layout.setContentsMargins(14, 10, 14, 10)
+        header_layout.setSpacing(3)
         self.settings_page_title = QLabel("Preferences", self.settings_header_card)
         self.settings_page_title.setObjectName("settingsPageTitle")
-        self.settings_page_title.setStyleSheet("font-size: 16px; font-weight: 700;")
+        self.settings_page_title.setStyleSheet("font-size: 31px; font-weight: 700;")
         self.settings_page_desc = QLabel("Customize PyPad and compatibility behavior.", self.settings_header_card)
         self.settings_page_desc.setObjectName("settingsPageDesc")
         self.settings_page_desc.setWordWrap(True)
-        self.settings_page_desc.setStyleSheet("color: #888;")
+        self.settings_page_desc.setStyleSheet("font-size: 14px; color: #888;")
         header_layout.addWidget(self.settings_page_title)
         header_layout.addWidget(self.settings_page_desc)
         right_layout.addWidget(self.settings_header_card)
@@ -150,13 +151,12 @@ class SettingsDialog(QDialog):
         buttons_row.addWidget(self.restore_defaults_btn)
         buttons_row.addStretch(1)
 
-        self.apply_btn = QPushButton("Apply", self)
-        self.apply_btn.clicked.connect(self._apply_to_memory)
-        buttons_row.addWidget(self.apply_btn)
-
         self.button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, self)
         self.button_box.accepted.connect(self._accept_with_apply)
         self.button_box.rejected.connect(self.reject)
+        save_btn = self.button_box.button(QDialogButtonBox.StandardButton.Ok)
+        if save_btn is not None:
+            save_btn.setText("Save && Close")
         buttons_row.addWidget(self.button_box)
         root.addLayout(buttons_row)
 
@@ -175,6 +175,28 @@ class SettingsDialog(QDialog):
             self._sync_dark_checkbox_from_npp_preference()
         if self._initial_section:
             QTimer.singleShot(0, lambda: self.focus_section(self._initial_section))
+
+    def reload_from_settings(self, settings: dict, initial_section: str | None = None) -> None:
+        self._settings = migrate_settings(dict(settings))
+        self._initial_section = str(initial_section or "").strip()
+        self._settings_nav_scope = "all"
+        self.scope_all_btn.setChecked(True)
+        self.scope_pypad_btn.setChecked(False)
+        self.scope_npp_btn.setChecked(False)
+        self.settings_search_input.blockSignals(True)
+        self.settings_search_input.setText("")
+        self.settings_search_input.blockSignals(False)
+        self._apply_search_filter("")
+        self._load_controls_from_settings(self._settings)
+        self.settings_nav_list.setCurrentRow(0)
+        self._apply_dialog_theme()
+        if self._initial_section:
+            QTimer.singleShot(0, lambda: self.focus_section(self._initial_section))
+
+    def prepare_for_open(self) -> None:
+        # Public pre-open hook for cached dialog reuse. Keeps visual theme in sync
+        # with current state before exec() without exposing internal helpers.
+        self._apply_dialog_theme()
 
     @staticmethod
     def _normalize_hex(value: str, fallback: str) -> str:
@@ -226,7 +248,7 @@ class SettingsDialog(QDialog):
         scroll_content.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         scroll_content.setAutoFillBackground(True)
         scroll_layout = QVBoxLayout(scroll_content)
-        scroll_layout.setContentsMargins(16, 12, 16, 12)
+        scroll_layout.setContentsMargins(14, 10, 14, 10)
         scroll_layout.setSpacing(0)
         scroll_layout.addWidget(page, 0, Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         scroll_layout.addStretch(1)
@@ -273,10 +295,12 @@ class SettingsDialog(QDialog):
             "scintilla": "Advanced Scintilla behavior for wrapping, indentation, margins, caret, and symbols.",
             "language": "App language and translation cache controls.",
             "tabs": "Tab size, close buttons, elide mode, and double-click actions.",
+            "customize": "Status bar layout visibility with a live preview.",
             "layout": "Dock layout persistence, autosave, and panel shortcuts.",
             "workspace": "Workspace root and file tree scanning behavior.",
             "search": "Find defaults and highlight behavior.",
             "shortcuts": "Shortcut profile, conflict policy, and mapper tools.",
+            "accessibility": "Keyboard-only mode plus motion and caret accessibility options.",
             "ai-updates": "AI model, privacy redaction, and update checks.",
             "privacy-security": "Lock screen, recovery behavior, and local history.",
             "backup-restore": "Settings export/import and profile backup helpers.",
@@ -316,9 +340,15 @@ class SettingsDialog(QDialog):
         self.settings_page_title.setText(title)
         item = self.settings_nav_list.item(row)
         self.settings_page_desc.setText(item.toolTip() if item is not None and item.toolTip() else "Settings page")
+        preview_settings = self._theme_probe_preview_settings()
+        tokens = build_tokens_from_settings(preview_settings)
+        self._apply_settings_stack_direct_style(tokens.surface_bg, tokens.text, tokens.text_muted)
+        self._apply_settings_stack_palette(tokens.surface_bg, tokens.text)
 
     def _set_nav_scope(self, scope: str) -> None:
         self._settings_nav_scope = scope if scope in {"all", "pypad", "npp"} else "all"
+        if self._settings_nav_scope == "npp":
+            self._ensure_notepadpp_pages_built()
         self.scope_all_btn.setChecked(self._settings_nav_scope == "all")
         self.scope_pypad_btn.setChecked(self._settings_nav_scope == "pypad")
         self.scope_npp_btn.setChecked(self._settings_nav_scope == "npp")
@@ -347,6 +377,8 @@ class SettingsDialog(QDialog):
         if not key:
             return False
         key = key.removeprefix("settings-").removeprefix("preferences-")
+        if key.startswith("npp-"):
+            self._ensure_notepadpp_pages_built()
         idx = self._route_index_map.get(key)
         if idx is None:
             for route_key, route_idx in self._route_index_map.items():
@@ -390,8 +422,8 @@ class SettingsDialog(QDialog):
                 form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.FieldsStayAtSizeHint)
                 form.setFormAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
                 form.setLabelAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-                form.setHorizontalSpacing(14)
-                form.setVerticalSpacing(8)
+                form.setHorizontalSpacing(12)
+                form.setVerticalSpacing(6)
                 for row in range(form.rowCount()):
                     label_item = form.itemAt(row, QFormLayout.ItemRole.LabelRole)
                     if label_item is None:
@@ -407,16 +439,21 @@ class SettingsDialog(QDialog):
             for widget in self.findChildren(widget_type):
                 try:
                     policy = widget.sizePolicy()
-                    policy.setHorizontalPolicy(QSizePolicy.Policy.Maximum)
+                    if isinstance(widget, (QComboBox, QLineEdit)):
+                        policy.setHorizontalPolicy(QSizePolicy.Policy.Expanding)
+                    elif isinstance(widget, QPushButton) and widget.objectName() != "settingsScopeBtn":
+                        policy.setHorizontalPolicy(QSizePolicy.Policy.Preferred)
+                    else:
+                        policy.setHorizontalPolicy(QSizePolicy.Policy.Maximum)
                     widget.setSizePolicy(policy)
                     if isinstance(widget, QComboBox):
-                        widget.setMinimumWidth(170)
+                        widget.setMinimumWidth(220)
                     elif isinstance(widget, QLineEdit):
-                        widget.setMinimumWidth(180)
+                        widget.setMinimumWidth(260)
                     elif isinstance(widget, (QSpinBox, QDoubleSpinBox)):
                         widget.setMinimumWidth(88)
                     elif isinstance(widget, QPushButton) and widget.objectName() != "settingsScopeBtn":
-                        widget.setMinimumWidth(max(widget.minimumWidth(), 84))
+                        widget.setMinimumWidth(max(widget.minimumWidth(), 96))
                 except Exception:
                     pass
         for slider in self.findChildren(QSlider):
@@ -466,6 +503,37 @@ class SettingsDialog(QDialog):
         pick.clicked.connect(pick_color)
         clear.clicked.connect(lambda: apply_value(""))
         return preview, holder
+
+    @staticmethod
+    def _status_preview_label_for_key(key: str) -> str:
+        labels = {
+            "status_show_position": "Ln 1, Col 1",
+            "status_show_zoom": "100%",
+            "status_show_eol": "Windows (CRLF)",
+            "status_show_encoding": "UTF-8",
+            "status_show_syntax": "Lang: Auto",
+            "status_show_breadcrumb": "untitled.txt > line 1",
+            "status_show_ruler": "|----10----20----30----|",
+            "status_show_ai_usage": "AI: 0 req | ~0 tok | ~$0.0000",
+            "status_show_autosave": "Autosave: running",
+        }
+        return labels.get(key, key)
+
+    def _refresh_status_layout_preview(self) -> None:
+        preview = getattr(self, "status_layout_preview", None)
+        if not isinstance(preview, QLabel):
+            return
+        tokens: list[str] = []
+        for key, checkbox in getattr(self, "_status_layout_controls", []):
+            if isinstance(checkbox, QCheckBox) and checkbox.isChecked():
+                tokens.append(self._status_preview_label_for_key(key))
+        preview.setText("  |  ".join(tokens) if tokens else "(No status items selected)")
+
+    def _sync_accessibility_controls_enabled(self) -> None:
+        rate_spin = getattr(self, "accessibility_cursor_blink_rate_spin", None)
+        blink_toggle = getattr(self, "accessibility_cursor_blink_checkbox", None)
+        if isinstance(rate_spin, QSpinBox) and isinstance(blink_toggle, QCheckBox):
+            rate_spin.setEnabled(bool(blink_toggle.isChecked()))
 
     def _build_pages(self) -> None:
         # Appearance
@@ -700,6 +768,38 @@ class SettingsDialog(QDialog):
         self.tab_max_width_spin = self._add_spin(tabs_layout, idx, "Tab max width", 120, 420)
         self.tab_double_click_combo = self._add_combo(tabs_layout, idx, "Double-click action", ["new_tab", "rename", "none"])
 
+        # Customize
+        customize = QWidget(self)
+        customize_layout = QVBoxLayout(customize)
+        customize_form = QFormLayout()
+        customize_layout.addLayout(customize_form)
+        idx = self._add_category("Customize", customize)
+        self._register_route_aliases(idx, "customize", "status", "status-layout")
+        status_items_group = QGroupBox("Status bar items", customize)
+        status_items_form = QFormLayout(status_items_group)
+        self._status_layout_controls: list[tuple[str, QCheckBox]] = []
+        for key, label in (
+            ("status_show_position", "Show line/column"),
+            ("status_show_zoom", "Show zoom"),
+            ("status_show_eol", "Show EOL mode"),
+            ("status_show_encoding", "Show encoding"),
+            ("status_show_syntax", "Show language picker"),
+            ("status_show_breadcrumb", "Show breadcrumb"),
+            ("status_show_ruler", "Show ruler"),
+            ("status_show_ai_usage", "Show AI usage"),
+            ("status_show_autosave", "Show autosave status"),
+        ):
+            cb = self._add_check(status_items_form, idx, label)
+            self._status_layout_controls.append((key, cb))
+            cb.toggled.connect(self._refresh_status_layout_preview)
+        customize_form.addRow(status_items_group)
+        self.status_layout_preview = QLabel(customize)
+        self.status_layout_preview.setWordWrap(True)
+        self.status_layout_preview.setMinimumHeight(54)
+        self.status_layout_preview.setObjectName("statusLayoutPreviewLabel")
+        customize_form.addRow("Preview", self.status_layout_preview)
+        customize_layout.addStretch(1)
+
         # Layout
         layout_page = QWidget(self)
         layout_form = QFormLayout(layout_page)
@@ -759,6 +859,23 @@ class SettingsDialog(QDialog):
         self.export_profile_btn.clicked.connect(self._export_profile)
         self.import_profile_btn.clicked.connect(self._import_profile)
         self.open_mapper_btn.clicked.connect(self._open_mapper_from_settings)
+
+        # Accessibility
+        accessibility = QWidget(self)
+        accessibility_layout = QFormLayout(accessibility)
+        idx = self._add_category("Accessibility", accessibility)
+        self._register_route_aliases(idx, "accessibility", "a11y")
+        self.accessibility_keyboard_only_checkbox = self._add_check(accessibility_layout, idx, "Enable keyboard-only mode")
+        self.accessibility_reduce_motion_checkbox = self._add_check(accessibility_layout, idx, "Reduce UI motion and animations")
+        self.accessibility_cursor_blink_checkbox = self._add_check(accessibility_layout, idx, "Enable cursor blink")
+        self.accessibility_cursor_blink_rate_spin = self._add_spin(
+            accessibility_layout,
+            idx,
+            "Cursor blink rate (ms)",
+            200,
+            2500,
+        )
+        self.accessibility_cursor_blink_checkbox.toggled.connect(self._sync_accessibility_controls_enabled)
 
         # AI & Updates
         ai = QWidget(self)
@@ -973,7 +1090,20 @@ class SettingsDialog(QDialog):
         self._register_search(idx, "Settings schema version", self.settings_schema_version_label)
 
         # Notepad++-style granular preferences (extended pages)
-        build_notepadpp_like_pages(self)
+        # Built lazily on first N++ scope/route usage to keep initial dialog open fast.
+
+    def _ensure_notepadpp_pages_built(self) -> None:
+        if bool(getattr(self, "_npp_pages_built", False)):
+            return
+        try:
+            build_notepadpp_like_pages(self)
+            self._npp_pages_built = True
+            # Sync newly created controls with current working settings snapshot.
+            load_notepadpp_like_page_settings(self, self._settings)
+            self._apply_non_stretch_settings_layout()
+            self._apply_dialog_theme()
+        except Exception:
+            _LOGGER.exception("Failed building N++ compatibility pages lazily")
 
     def _apply_search_filter(self, text: str) -> None:
         query = text.strip().lower()
@@ -1050,13 +1180,18 @@ class SettingsDialog(QDialog):
         )
         scroll_style = f"background: {surface_bg}; background-color: {surface_bg}; border: none;"
 
-        for w in self.settings_pages.findChildren(QWidget, "settingsPageHost"):
-            w.setStyleSheet(host_style)
-        for w in self.settings_pages.findChildren(QWidget, "settingsPageScrollContent"):
-            w.setStyleSheet(host_style)
-        for w in self.settings_pages.findChildren(QWidget, "settingsPageBody"):
-            w.setStyleSheet(body_style)
-        for scroll in self.settings_pages.findChildren(QScrollArea, "settingsPageScroll"):
+        host = self.settings_pages.currentWidget()
+        if not isinstance(host, QWidget):
+            return
+        host.setStyleSheet(host_style)
+        scroll_content = host.findChild(QWidget, "settingsPageScrollContent")
+        if isinstance(scroll_content, QWidget):
+            scroll_content.setStyleSheet(host_style)
+        body = host.findChild(QWidget, "settingsPageBody")
+        if isinstance(body, QWidget):
+            body.setStyleSheet(body_style)
+        scroll = host.findChild(QScrollArea, "settingsPageScroll")
+        if isinstance(scroll, QScrollArea):
             scroll.setStyleSheet(scroll_style)
             scroll.viewport().setStyleSheet(scroll_style)
 
@@ -1078,12 +1213,15 @@ class SettingsDialog(QDialog):
 
         if hasattr(self, "settings_pages"):
             _apply_palette(self.settings_pages)
-            for obj_name in ("settingsPageHost", "settingsPageScrollContent", "settingsPageBody"):
-                for w in self.settings_pages.findChildren(QWidget, obj_name):
-                    _apply_palette(w)
-            for scroll in self.settings_pages.findChildren(QScrollArea, "settingsPageScroll"):
-                _apply_palette(scroll)
-                _apply_palette(scroll.viewport())
+            host = self.settings_pages.currentWidget()
+            if isinstance(host, QWidget):
+                _apply_palette(host)
+                _apply_palette(host.findChild(QWidget, "settingsPageScrollContent"))
+                _apply_palette(host.findChild(QWidget, "settingsPageBody"))
+                scroll = host.findChild(QScrollArea, "settingsPageScroll")
+                if isinstance(scroll, QScrollArea):
+                    _apply_palette(scroll)
+                    _apply_palette(scroll.viewport())
 
     def _theme_probe_preview_settings(self) -> dict:
         preview_settings = dict(self._settings)
@@ -1404,6 +1542,20 @@ class SettingsDialog(QDialog):
         self.tab_min_width_spin.setValue(int(s.get("tab_min_width_px", 120)))
         self.tab_max_width_spin.setValue(int(s.get("tab_max_width_px", 240)))
         self.tab_double_click_combo.setCurrentText(str(s.get("tab_double_click_action", "new_tab")))
+        status_defaults = {
+            "status_show_position": True,
+            "status_show_zoom": True,
+            "status_show_eol": True,
+            "status_show_encoding": True,
+            "status_show_syntax": True,
+            "status_show_breadcrumb": True,
+            "status_show_ruler": True,
+            "status_show_ai_usage": True,
+            "status_show_autosave": True,
+        }
+        for key, checkbox in getattr(self, "_status_layout_controls", []):
+            checkbox.setChecked(bool(s.get(key, status_defaults.get(key, True))))
+        self._refresh_status_layout_preview()
 
         self.workspace_root_edit.setText(str(s.get("workspace_root", "")))
         self.workspace_show_hidden_checkbox.setChecked(bool(s.get("workspace_show_hidden_files", False)))
@@ -1495,6 +1647,11 @@ class SettingsDialog(QDialog):
         self.autosave_interval_sec_spin.setValue(int(s.get("autosave_interval_sec", 30)))
         self.autosave_interval_sec_spin.setEnabled(self.autosave_enabled_checkbox.isChecked())
         self.autosave_include_pdf_checkbox.setChecked(bool(s.get("autosave_include_pdf", False)))
+        self.accessibility_keyboard_only_checkbox.setChecked(bool(s.get("keyboard_only_mode", False)))
+        self.accessibility_reduce_motion_checkbox.setChecked(bool(s.get("accessibility_reduce_motion", False)))
+        self.accessibility_cursor_blink_checkbox.setChecked(bool(s.get("accessibility_cursor_blink", True)))
+        self.accessibility_cursor_blink_rate_spin.setValue(int(s.get("accessibility_cursor_blink_rate_ms", 1000)))
+        self._sync_accessibility_controls_enabled()
         self.settings_schema_version_label.setText(str(int(s.get("settings_schema_version", 2))))
         load_notepadpp_like_page_settings(self, s)
 
@@ -1536,6 +1693,8 @@ class SettingsDialog(QDialog):
         s["tab_min_width_px"] = int(self.tab_min_width_spin.value())
         s["tab_max_width_px"] = int(self.tab_max_width_spin.value())
         s["tab_double_click_action"] = self.tab_double_click_combo.currentText()
+        for key, checkbox in getattr(self, "_status_layout_controls", []):
+            s[key] = bool(checkbox.isChecked())
 
         s["workspace_root"] = self.workspace_root_edit.text().strip()
         s["workspace_show_hidden_files"] = self.workspace_show_hidden_checkbox.isChecked()
@@ -1611,6 +1770,10 @@ class SettingsDialog(QDialog):
         s["autosave_enabled"] = self.autosave_enabled_checkbox.isChecked()
         s["autosave_interval_sec"] = int(self.autosave_interval_sec_spin.value())
         s["autosave_include_pdf"] = self.autosave_include_pdf_checkbox.isChecked()
+        s["keyboard_only_mode"] = self.accessibility_keyboard_only_checkbox.isChecked()
+        s["accessibility_reduce_motion"] = self.accessibility_reduce_motion_checkbox.isChecked()
+        s["accessibility_cursor_blink"] = self.accessibility_cursor_blink_checkbox.isChecked()
+        s["accessibility_cursor_blink_rate_ms"] = int(self.accessibility_cursor_blink_rate_spin.value())
         s["settings_schema_version"] = 2
         collect_notepadpp_like_page_settings(self, s)
         return migrate_settings(s)
@@ -1628,6 +1791,7 @@ class SettingsDialog(QDialog):
         if not self._apply_to_memory():
             return
         self.accept()
+
 
     def _reset_controls_to_defaults(self) -> None:
         confirm = QMessageBox.question(

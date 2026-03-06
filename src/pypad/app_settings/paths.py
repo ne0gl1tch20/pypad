@@ -14,12 +14,20 @@ def get_settings_file_path() -> Path:
     return _app_roaming_dir() / "settings.json"
 
 
+def get_themes_file_path() -> Path:
+    return _app_roaming_dir() / "themes.json"
+
+
 def get_legacy_settings_file_path() -> Path:
     return _app_roaming_dir() / "save.bin"
 
 
 def get_password_file_path() -> Path:
     return _app_roaming_dir() / "password.bin"
+
+
+def get_ai_chats_dir_path() -> Path:
+    return _app_roaming_dir() / "ai_chats"
 
 
 def get_reminders_file_path() -> Path:

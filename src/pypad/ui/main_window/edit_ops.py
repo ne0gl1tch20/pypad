@@ -12,7 +12,6 @@ import webbrowser
 from typing import TYPE_CHECKING, Any
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import quote_plus
 
 from PySide6.QtCore import QEvent, QPoint, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import (
@@ -77,6 +76,7 @@ from pypad.ui.system.version_history import VersionHistoryDialog
 from pypad.ui.workspace.workspace_controller import WorkspaceController
 from pypad.ui.editor.advanced_text_tools import compute_regex_filtered_replacement
 from pypad.ui.document.document_fidelity import clipboard_paste_special_options, convert_clipboard_for_paste
+from .notepadpp_pref_runtime import build_search_internet_url
 
 
 
@@ -521,7 +521,7 @@ class EditOpsMixin:
         if not text:
             QMessageBox.information(self, "Pypad", "Please select some text or use Find first.")
             return
-        url = f"https://www.bing.com/search?q={quote_plus(text)}"
+        url = build_search_internet_url(self.settings, text)
         webbrowser.open(url)
 
     def show_search_panel(self) -> None:
@@ -578,7 +578,9 @@ class EditOpsMixin:
     def _clear_search_highlights(self) -> None:
         tab = self.active_tab()
         if tab is not None:
-            if not tab.text_edit.is_native_scintilla:
+            if not tab.text_edit.is_native_scintilla and hasattr(tab.text_edit.widget, "clear_background_overlays"):
+                tab.text_edit.widget.clear_background_overlays("search")
+            elif not tab.text_edit.is_native_scintilla:
                 tab.text_edit.widget.setExtraSelections([])
 
     def _apply_search_highlights(self, query: str) -> None:
@@ -601,6 +603,13 @@ class EditOpsMixin:
             selection.format.setBackground(QColor("#f7e36d"))
             selections.append(selection)
             cursor = doc.find(query, cursor, flags)
+        if hasattr(tab.text_edit.widget, "set_background_overlays"):
+            ranges = []
+            for sel in selections:
+                c = sel.cursor
+                ranges.append((int(c.selectionStart()), int(c.selectionEnd()), QColor("#f7e36d")))
+            tab.text_edit.widget.set_background_overlays("search", ranges)
+            return
         tab.text_edit.widget.setExtraSelections(selections)
 
 

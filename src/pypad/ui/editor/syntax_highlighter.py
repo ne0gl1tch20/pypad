@@ -115,11 +115,11 @@ class CodeSyntaxHighlighter(QSyntaxHighlighter):
             "True", "try", "while", "with", "yield",
         ]
         for word in keywords:
-            rules.append((re.compile(rf"\\b{word}\\b"), py_keyword_fmt))
+            rules.append((re.compile(rf"\b{word}\b"), py_keyword_fmt))
         rules.append((re.compile(r"#.*"), py_comment_fmt))
-        rules.append((re.compile(r"('''[\\s\\S]*?'''|\"\"\"[\\s\\S]*?\"\"\")"), py_string_fmt))
-        rules.append((re.compile(r"('([^'\\\\]|\\\\.)*'|\"([^\"\\\\]|\\\\.)*\")"), py_string_fmt))
-        rules.append((re.compile(r"\\b\\d+(\\.\\d+)?\\b"), py_number_fmt))
+        rules.append((re.compile(r"('''[\s\S]*?'''|\"\"\"[\s\S]*?\"\"\")"), py_string_fmt))
+        rules.append((re.compile(r"('([^'\\]|\\.)*'|\"([^\"\\]|\\.)*\")"), py_string_fmt))
+        rules.append((re.compile(r"\b\d+(\.\d+)?\b"), py_number_fmt))
         self._rules_by_lang["python"] = rules
 
         js_keyword_fmt = _fmt(self._style_color("javascript", "keyword"), bold=True)
@@ -135,21 +135,21 @@ class CodeSyntaxHighlighter(QSyntaxHighlighter):
             "yield",
         ]
         for word in keywords:
-            rules.append((re.compile(rf"\\b{word}\\b"), js_keyword_fmt))
+            rules.append((re.compile(rf"\b{word}\b"), js_keyword_fmt))
         rules.append((re.compile(r"//.*"), js_comment_fmt))
-        rules.append((re.compile(r"/\\*[\\s\\S]*?\\*/"), js_comment_fmt))
-        rules.append((re.compile(r"('([^'\\\\]|\\\\.)*'|\"([^\"\\\\]|\\\\.)*\"|`([^`\\\\]|\\\\.)*`)"), js_string_fmt))
-        rules.append((re.compile(r"\\b\\d+(\\.\\d+)?\\b"), js_number_fmt))
+        rules.append((re.compile(r"/\*[\s\S]*?\*/"), js_comment_fmt))
+        rules.append((re.compile(r"('([^'\\]|\\.)*'|\"([^\"\\]|\\.)*\"|`([^`\\]|\\.)*`)"), js_string_fmt))
+        rules.append((re.compile(r"\b\d+(\.\d+)?\b"), js_number_fmt))
         self._rules_by_lang["javascript"] = rules
 
         json_keyword_fmt = _fmt(self._style_color("json", "keyword"), bold=True)
         json_string_fmt = _fmt(self._style_color("json", "string"))
         json_number_fmt = _fmt(self._style_color("json", "number"))
         rules = []
-        rules.append((re.compile(r"\"(\\\\.|[^\"])*\"(?=\\s*:)"), json_keyword_fmt))
-        rules.append((re.compile(r"\"(\\\\.|[^\"])*\""), json_string_fmt))
-        rules.append((re.compile(r"\\b\\d+(\\.\\d+)?\\b"), json_number_fmt))
-        rules.append((re.compile(r"\\b(true|false|null)\\b"), json_keyword_fmt))
+        rules.append((re.compile(r"\"(\\.|[^\"])*\"(?=\s*:)"), json_keyword_fmt))
+        rules.append((re.compile(r"\"(\\.|[^\"])*\""), json_string_fmt))
+        rules.append((re.compile(r"\b\d+(\.\d+)?\b"), json_number_fmt))
+        rules.append((re.compile(r"\b(true|false|null)\b"), json_keyword_fmt))
         self._rules_by_lang["json"] = rules
 
         md_keyword_fmt = _fmt(self._style_color("markdown", "keyword"), bold=True)
@@ -158,8 +158,8 @@ class CodeSyntaxHighlighter(QSyntaxHighlighter):
         rules = []
         rules.append((re.compile(r"^#{1,6} .*$"), md_keyword_fmt))
         rules.append((re.compile(r"`{1,3}[^`]+`{1,3}"), md_string_fmt))
-        rules.append((re.compile(r"\\*\\*[^*]+\\*\\*"), md_keyword_fmt))
-        rules.append((re.compile(r"\\*[^*]+\\*"), md_comment_fmt))
+        rules.append((re.compile(r"\*\*[^*]+\*\*"), md_keyword_fmt))
+        rules.append((re.compile(r"\*[^*]+\*"), md_comment_fmt))
         self._rules_by_lang["markdown"] = rules
 
     def _apply_rules(self, text: str, language: str) -> None:
@@ -173,7 +173,7 @@ class CodeSyntaxHighlighter(QSyntaxHighlighter):
         language = self.language.lower()
         if language in {"markdown", "md"}:
             in_code = self.previousBlockState() == 1
-            fence_match = re.match(r"^\\s*```\\s*([A-Za-z0-9_-]+)?\\s*$", text)
+            fence_match = re.match(r"^\s*```\s*([A-Za-z0-9_-]+)?\s*$", text)
             if fence_match:
                 self._md_fence_lang = (fence_match.group(1) or "").lower()
                 self.setCurrentBlockState(0 if in_code else 1)
