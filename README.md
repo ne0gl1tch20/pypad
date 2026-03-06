@@ -18,6 +18,8 @@ Highlights:
 
 ## Preview
 
+*The picture below does not reflect on the actual app experience as the app ui layout can be updated anytime.
+
 ### Splash
 ![Pypad Splash](assets/splash.png)
 
