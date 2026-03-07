@@ -8,7 +8,7 @@ The format is based on Keep a Changelog, and this project uses Semantic Versioni
 ## [1.7.9-prerelease] - 2026-03-07
 
 ### Creator's Thoughts
-- I'd probably know this update will be long, but I know I'm planning for community plugins just yet but I'd still need to consider about approval system, moderation, rules, and anything else.
+- I'd probably know this update will be massive and sometimes overwhelming, but I know I'm planning for community plugins just yet but I'd still need to consider about the approval system, moderation, rules, and anything else.
 - New updates, New Features, More Fun!
 - Probably, I'm gonna add more features specifically for casual and newcomers here, so they'd probably not gonna be overwhelmed at the next update.
 
