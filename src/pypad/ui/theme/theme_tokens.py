@@ -918,19 +918,6 @@ def build_main_window_qss(*, tokens: UIThemeTokens, tab_close_icon_url: str, clo
         QDockWidget::title:!active {{
             color: {tokens.text};
         }}
-        QDockWidget#explorerDock::title,
-        QDockWidget#markdownPreviewDock::title,
-        QDockWidget#editorDock::title {{
-            background: {tokens.chrome_bg};
-            color: {tokens.text};
-            padding: 2px 8px;
-            min-height: 18px;
-            border-radius: 0px;
-            border-left: none;
-            border-right: none;
-            border-top: none;
-            border-bottom: 1px solid {tokens.border_soft};
-        }}
         QDockWidget::close-button,
         QDockWidget::float-button {{
             background: transparent;

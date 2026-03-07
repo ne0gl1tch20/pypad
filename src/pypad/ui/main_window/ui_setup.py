@@ -100,6 +100,36 @@ from .notepadpp_pref_runtime import (
 
 
 
+class _StandardDockTitleBar(QWidget):
+    def __init__(self, dock: QWidget, title: str) -> None:
+        super().__init__(dock)
+        self.setObjectName("pypadDockTitleBar")
+        self._dock = dock
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(8, 4, 4, 4)
+        layout.setSpacing(4)
+        self.label = QLabel(title, self)
+        self.label.setObjectName("pypadDockTitleLabel")
+        self.float_btn = QToolButton(self)
+        self.close_btn = QToolButton(self)
+        for btn in (self.float_btn, self.close_btn):
+            btn.setAutoRaise(True)
+            btn.setFixedSize(20, 20)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.float_btn.setToolTip("Float / Dock")
+        self.close_btn.setToolTip("Close")
+        self.float_btn.clicked.connect(self._toggle_floating)
+        self.close_btn.clicked.connect(getattr(self._dock, "close"))
+        layout.addWidget(self.label)
+        layout.addStretch(1)
+        layout.addWidget(self.float_btn)
+        layout.addWidget(self.close_btn)
+        self.setMinimumHeight(28)
+
+    def _toggle_floating(self) -> None:
+        if hasattr(self._dock, "setFloating") and hasattr(self._dock, "isFloating"):
+            self._dock.setFloating(not self._dock.isFloating())
+
 class UiSetupMixin:
     if TYPE_CHECKING:
         # Cross-mixin attributes injected by Notepad/window composition.
@@ -126,6 +156,49 @@ class UiSetupMixin:
         aliases = {"WARN": "WARNING", "ERR": "ERROR"}
         return aliases.get(text, text or "INFO")
 
+
+    def _install_custom_dock_title_bar(self, dock: QWidget, title: str, attr_name: str) -> None:
+        bar = _StandardDockTitleBar(dock, title)
+        if hasattr(dock, "setTitleBarWidget"):
+            dock.setTitleBarWidget(bar)
+        setattr(self, attr_name, bar)
+
+    def _apply_custom_dock_title_bars_theme(self) -> None:
+        tokens = build_tokens_from_settings(self.settings)
+        title_qss = f"""
+            QWidget#pypadDockTitleBar {{
+                background: {tokens.panel_bg};
+                border-bottom: 1px solid {tokens.border};
+                border-top-left-radius: {tokens.radius_md}px;
+                border-top-right-radius: {tokens.radius_md}px;
+            }}
+            QLabel#pypadDockTitleLabel {{ color: {tokens.text}; font-weight: 600; }}
+            QWidget#pypadDockTitleBar QToolButton {{
+                background: transparent;
+                border: 1px solid transparent;
+                border-radius: {tokens.radius_sm}px;
+                padding: 0px;
+            }}
+            QWidget#pypadDockTitleBar QToolButton:hover {{
+                background: {tokens.dock_button_hover_bg};
+                border: 1px solid {tokens.border};
+            }}
+            QWidget#pypadDockTitleBar QToolButton:pressed {{
+                background: {tokens.dock_button_pressed_bg};
+                border: 1px solid {tokens.border};
+            }}
+        """
+        for attr_name in ("editor_dock_title_bar", "markdown_preview_dock_title_bar", "explorer_dock_title_bar"):
+            bar = getattr(self, attr_name, None)
+            if bar is None:
+                continue
+            bar.setStyleSheet(title_qss)
+            float_icon = self._svg_icon("view-fullscreen")
+            close_icon = self._svg_icon("tab-close")
+            if not float_icon.isNull():
+                bar.float_btn.setIcon(float_icon)
+            if not close_icon.isNull():
+                bar.close_btn.setIcon(close_icon)
     def _active_logging_level(self) -> str:
         settings = getattr(self, "settings", {}) or {}
         return normalize_log_level_name(settings.get("logging_level", "INFO"))
@@ -141,12 +214,17 @@ class UiSetupMixin:
 
     @staticmethod
     def _force_svg_monochrome(svg_text: str, color_hex: str) -> str:
-        # Recolor explicit stroke/fill values (except "none") and currentColor.
+        # Recolor explicit stroke/fill values (except "none"), style declarations, and currentColor.
         text = re.sub(
             r'\b(stroke|fill)\b\s*=\s*["\'](?!none\b)[^"\']*["\']',
             lambda m: f'{m.group(1)}="{color_hex}"',
             svg_text,
             flags=re.IGNORECASE,
+        )
+        text = re.sub(
+            r'(?i)\b(stroke|fill)\s*:\s*(?!none\b)[^;}"\']+',
+            lambda m: f"{m.group(1)}:{color_hex}",
+            text,
         )
         text = text.replace("currentColor", color_hex)
         return text

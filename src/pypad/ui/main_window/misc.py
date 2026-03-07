@@ -3473,6 +3473,8 @@ class MiscMixin(
             self._apply_main_toolbar_icons()
             self._apply_markdown_icons()
             self._apply_format_icons()
+            if hasattr(self, "_apply_custom_dock_title_bars_theme"):
+                self._apply_custom_dock_title_bars_theme()
             if hasattr(self, "_apply_ai_feature_icons"):
                 self._apply_ai_feature_icons()
             if hasattr(self, "_refresh_explorer_dock"):
@@ -4827,6 +4829,8 @@ class MiscMixin(
         dock.setObjectName("explorerDock")
         dock.setAllowedAreas(Qt.AllDockWidgetAreas)
         dock.setFeatures(QDockWidget.DockWidgetMovable | QDockWidget.DockWidgetFloatable | QDockWidget.DockWidgetClosable)
+        if hasattr(self, "_install_custom_dock_title_bar"):
+            self._install_custom_dock_title_bar(dock, "Explorer", "explorer_dock_title_bar")
         dock.setMinimumWidth(0)
         dock.setMinimumSize(0, 0)
         container = QWidget(dock)
@@ -4960,6 +4964,14 @@ class MiscMixin(
         if not hasattr(self, "explorer_tree"):
             return
         tokens = build_tokens_from_settings(self.settings)
+        bg = QColor(tokens.input_bg)
+        fg = QColor(tokens.text)
+        if bg.isValid() and fg.isValid():
+            pal = self.explorer_tree.palette()
+            pal.setColor(self.explorer_tree.backgroundRole(), bg)
+            pal.setColor(self.explorer_tree.foregroundRole(), fg)
+            self.explorer_tree.setPalette(pal)
+            self.explorer_tree.viewport().setPalette(pal)
         self.explorer_tree.setStyleSheet(
             f"""
             QTreeView#explorerTree {{

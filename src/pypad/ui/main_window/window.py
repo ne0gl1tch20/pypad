@@ -174,6 +174,8 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
         self.editor_dock.setFeatures(
             QDockWidget.DockWidgetMovable | QDockWidget.DockWidgetFloatable | QDockWidget.DockWidgetClosable
         )
+        if hasattr(self, "_install_custom_dock_title_bar"):
+            self._install_custom_dock_title_bar(self.editor_dock, "Editor", "editor_dock_title_bar")
         self.editor_dock.setWidget(self.central_stack)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.editor_dock)
         if hasattr(self, "_sync_layout_panel_actions"):
@@ -184,6 +186,12 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
         self.markdown_preview_dock.setFeatures(
             QDockWidget.DockWidgetMovable | QDockWidget.DockWidgetFloatable | QDockWidget.DockWidgetClosable
         )
+        if hasattr(self, "_install_custom_dock_title_bar"):
+            self._install_custom_dock_title_bar(
+                self.markdown_preview_dock,
+                "Markdown Preview",
+                "markdown_preview_dock_title_bar",
+            )
         self.markdown_preview_pane = MarkdownPreviewPane(self.markdown_preview_dock)
         self.markdown_preview_dock.setWidget(self.markdown_preview_pane)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.markdown_preview_dock)

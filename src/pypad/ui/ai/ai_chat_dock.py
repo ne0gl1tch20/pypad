@@ -826,6 +826,11 @@ class AIChatDock(QDockWidget):
             svg_text,
             flags=re.IGNORECASE,
         )
+        text = re.sub(
+            r'(?i)\b(stroke|fill)\s*:\s*(?!none\b)[^;}"\']+',
+            lambda m: f"{m.group(1)}:{color_hex}",
+            text,
+        )
         text = text.replace("currentColor", color_hex)
         return text
 

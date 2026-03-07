@@ -143,6 +143,7 @@ class SettingsDialog(QDialog):
         splitter.setStretchFactor(1, 1)
 
         self._build_pages()
+        self._ensure_notepadpp_pages_built()
         self._apply_non_stretch_settings_layout()
 
         buttons_row = QHBoxLayout()
@@ -179,6 +180,7 @@ class SettingsDialog(QDialog):
 
     def reload_from_settings(self, settings: dict, initial_section: str | None = None) -> None:
         self._settings = migrate_settings(dict(settings))
+        self._ensure_notepadpp_pages_built()
         self._initial_section = str(initial_section or "").strip()
         self._settings_nav_scope = "all"
         self.scope_all_btn.setChecked(True)
