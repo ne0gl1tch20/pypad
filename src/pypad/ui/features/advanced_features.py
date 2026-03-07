@@ -1337,9 +1337,12 @@ class PluginHost:
     @staticmethod
     def _decode_text_bytes_with_fallback(payload: bytes) -> str:
         try:
-            return payload.decode("utf-8", errors="strict")
+            text = payload.decode("utf-8", errors="strict")
         except Exception:
-            return payload.decode("utf-8-sig", errors="replace")
+            text = payload.decode("utf-8-sig", errors="replace")
+        if text.startswith("\ufeff"):
+            text = text.lstrip("\ufeff")
+        return text
 
     def install_online_plugin(self, entry: dict[str, str]) -> Path:
         plugin_id = self._normalize_plugin_id(str(entry.get("id", "")).strip())
@@ -1352,9 +1355,9 @@ class PluginHost:
         dest_dir = self.plugins_dir / plugin_id
         if dest_dir.exists():
             raise FileExistsError(f"Plugin already exists: {plugin_id}")
-        with tempfile.TemporaryDirectory(prefix="pypad_online_plugin_") as temp_dir:
-            staging = Path(temp_dir) / plugin_id
-            staging.mkdir(parents=True, exist_ok=True)
+        staging = self.plugins_dir / f"__incoming_online_{plugin_id}_{uuid.uuid4().hex[:8]}"
+        staging.mkdir(parents=True, exist_ok=True)
+        try:
             raw_base = repo.replace("https://github.com/", "https://raw.githubusercontent.com/").rstrip("/")
             if raw_base.endswith(".git"):
                 raw_base = raw_base[:-4]
@@ -1402,7 +1405,69 @@ class PluginHost:
             if issues:
                 raise RuntimeError("Plugin rejected by policy: " + "; ".join(issues[:3]))
             shutil.copytree(staging, dest_dir)
+        finally:
+            if staging.exists():
+                shutil.rmtree(staging, ignore_errors=True)
         return dest_dir
+
+    def uninstall_plugin(self, plugin_id: str) -> None:
+        pid = self._normalize_plugin_id(str(plugin_id or "").strip())
+        if not pid:
+            raise RuntimeError("Plugin id is required.")
+        target = self.plugins_dir / pid
+        if not target.exists() or not target.is_dir():
+            raise FileNotFoundError(f"Plugin not found: {pid}")
+        try:
+            self._unload_record(next((r for r in self.records if r.plugin_id == pid), PluginRecord(
+                plugin_id=pid,
+                name=pid,
+                description="",
+                permissions=set(),
+                path=target,
+                enabled=False,
+                digest="",
+            )))
+        except Exception:
+            pass
+        shutil.rmtree(target, ignore_errors=False)
+        enabled = self._enabled()
+        if pid in enabled:
+            enabled.discard(pid)
+            self._save_enabled(enabled)
+        trusted = self._trusted_hashes()
+        if pid in trusted:
+            trusted.pop(pid, None)
+            self._save_trusted_hashes(trusted)
+        quarantined = self._quarantined()
+        if pid in quarantined:
+            quarantined.discard(pid)
+            self._save_quarantined(quarantined)
+        overrides = self._permission_overrides()
+        if pid in overrides:
+            overrides.pop(pid, None)
+            self.window.settings["plugin_permission_overrides"] = {
+                key: sorted(values) for key, values in sorted(overrides.items())
+            }
+            self.window.save_settings_to_disk()
+        failure_counts = self._failure_counts()
+        if pid in failure_counts:
+            failure_counts.pop(pid, None)
+            self.window.settings["plugin_failure_counts"] = {
+                key: int(value) for key, value in sorted(failure_counts.items())
+            }
+            self.window.save_settings_to_disk()
+        raw_state = self.window.settings.get("plugin_state", {})
+        if isinstance(raw_state, dict) and pid in raw_state:
+            raw_state.pop(pid, None)
+            self.window.save_settings_to_disk()
+        raw_cfg = self.window.settings.get("plugin_config", {})
+        if isinstance(raw_cfg, dict) and pid in raw_cfg:
+            raw_cfg.pop(pid, None)
+            self.window.save_settings_to_disk()
+        self._service_registry.pop(pid, None)
+        self._command_registry.pop(pid, None)
+        self._job_registry.pop(pid, None)
+        self._plugin_logs.pop(pid, None)
 
     def inspect_plugin_archive(self, archive_path: Path) -> dict[str, Any]:
         path = Path(archive_path)
@@ -2762,6 +2827,10 @@ class OnlinePluginsDialog(QDialog):
         self.install_btn.setToolTip("Install selected plugin")
         self.install_btn.setIconSize(QSize(18, 18))
         self.install_btn.setFixedSize(30, 30)
+        self.uninstall_btn = QToolButton(self)
+        self.uninstall_btn.setToolTip("Uninstall selected plugin")
+        self.uninstall_btn.setIconSize(QSize(18, 18))
+        self.uninstall_btn.setFixedSize(30, 30)
         self.close_btn = QToolButton(self)
         self.close_btn.setToolTip("Close")
         self.close_btn.setIconSize(QSize(18, 18))
@@ -2769,6 +2838,7 @@ class OnlinePluginsDialog(QDialog):
         for btn, icon_name in (
             (self.refresh_btn, "plugin-online"),
             (self.install_btn, "plugin-install"),
+            (self.uninstall_btn, "tab-close"),
             (self.close_btn, "tab-close"),
         ):
             icon = None
@@ -2781,12 +2851,14 @@ class OnlinePluginsDialog(QDialog):
                 btn.setIcon(icon)
         row.addWidget(self.refresh_btn)
         row.addWidget(self.install_btn)
+        row.addWidget(self.uninstall_btn)
         row.addStretch(1)
         row.addWidget(self.close_btn)
         v.addLayout(row)
         self.list_widget.currentRowChanged.connect(self._refresh_details)
         self.refresh_btn.clicked.connect(self._populate)
         self.install_btn.clicked.connect(self._install_selected)
+        self.uninstall_btn.clicked.connect(self._uninstall_selected)
         self.close_btn.clicked.connect(self.accept)
         self._populate()
 
@@ -2840,6 +2912,33 @@ class OnlinePluginsDialog(QDialog):
             QMessageBox.warning(self, "Online Plugins", f"Failed to install '{plugin_id}':\n{exc}")
             return
         self.host.window.show_status_message(f"Online plugin installed: {out.name}", 3200)
+        self.host.reload()
+        self._populate()
+
+    def _uninstall_selected(self) -> None:
+        idx = int(self.list_widget.currentRow())
+        if idx < 0 or idx >= len(self._entries):
+            QMessageBox.information(self, "Online Plugins", "Select an online plugin first.")
+            return
+        entry = self._entries[idx]
+        plugin_id = str(entry.get("id", "") or "").strip()
+        if not plugin_id:
+            return
+        answer = QMessageBox.question(
+            self,
+            "Uninstall Plugin",
+            f"Uninstall '{plugin_id}'?\n\nThis will remove its files and plugin state.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            self.host.uninstall_plugin(plugin_id)
+        except Exception as exc:
+            QMessageBox.warning(self, "Uninstall Plugin", f"Failed to uninstall '{plugin_id}':\n{exc}")
+            return
+        self.host.window.show_status_message(f"Plugin uninstalled: {plugin_id}", 3200)
         self.host.reload()
         self._populate()
 
