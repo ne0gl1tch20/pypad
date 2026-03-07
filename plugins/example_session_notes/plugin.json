@@ -1,0 +1,7 @@
+﻿{
+  "id": "example_session_notes",
+  "name": "Example Session Notes",
+  "version": "1.0.0",
+  "description": "Stores lightweight plugin state and creates timestamped notes.",
+  "permissions": ["file", "menu"]
+}

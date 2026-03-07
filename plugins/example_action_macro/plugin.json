@@ -1,0 +1,7 @@
+﻿{
+  "id": "example_action_macro",
+  "name": "Example Action Macro",
+  "version": "1.0.0",
+  "description": "Runs a small macro by triggering built-in actions via controller API.",
+  "permissions": ["menu", "ui"]
+}

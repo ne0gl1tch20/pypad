@@ -1,0 +1,7 @@
+﻿{
+  "id": "example_action_runner",
+  "name": "Example Action Runner",
+  "version": "1.0.0",
+  "description": "Demonstrates listing and triggering app actions via controller API.",
+  "permissions": ["menu", "ui"]
+}

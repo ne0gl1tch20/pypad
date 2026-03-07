@@ -1,0 +1,7 @@
+﻿{
+  "id": "example_auto_tagger",
+  "name": "Example Auto Tagger",
+  "version": "1.0.0",
+  "description": "Adds lightweight content tags to current document state.",
+  "permissions": ["menu"]
+}

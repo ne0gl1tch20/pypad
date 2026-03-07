@@ -1,0 +1,7 @@
+﻿{
+  "id": "example_workspace_todo_index",
+  "name": "Example Workspace TODO Index",
+  "version": "1.0.0",
+  "description": "Builds a TODO/FIXME report from workspace files.",
+  "permissions": ["file", "menu", "background"]
+}

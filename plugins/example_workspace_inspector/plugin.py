@@ -19,6 +19,7 @@ class Plugin:
         layout.addWidget(self.status_label)
         self.api.add_panel("Workspace Index", panel)
         self.api.add_menu_action("Plugins/Workspace", "Refresh Workspace Index", self.refresh_index)
+        self.api.add_menu_action("Plugins/Workspace", "Show Plugin State", self.show_state)
         self.api.start_timer(5000, self._refresh_status)
         self.refresh_index()
 
@@ -27,7 +28,9 @@ class Plugin:
 
     def refresh_index(self) -> None:
         self.api.refresh_workspace_index()
-        self.api.notify("Workspace index refresh requested.")
+        requested = int(self.api.plugin_state_get("refresh_requests", 0) or 0) + 1
+        self.api.plugin_state_set("refresh_requests", requested)
+        self.api.show_status(f"Workspace index refresh requested ({requested}).", 2200)
 
     def _refresh_status(self) -> None:
         status = self.api.workspace_index_status()
@@ -41,5 +44,11 @@ class Plugin:
             state = "scanning" if scanning else ("ready" if ready else "idle")
             self.status_label.setText(f"Index: {state} | files: {count} | {datetime.now().strftime('%H:%M:%S')}")
         if ready and not self.last_notice_ready:
+            self.api.plugin_state_set("last_ready_count", count)
             self.api.notify(f"Workspace index ready: {count} files.")
         self.last_notice_ready = ready
+
+    def show_state(self) -> None:
+        requests = int(self.api.plugin_state_get("refresh_requests", 0) or 0)
+        last_ready = int(self.api.plugin_state_get("last_ready_count", 0) or 0)
+        self.api.notify(f"State -> refresh_requests={requests}, last_ready_count={last_ready}")

@@ -1,0 +1,7 @@
+﻿{
+  "id": "example_ai_commit_message",
+  "name": "Example AI Commit Message",
+  "version": "1.0.0",
+  "description": "Asks AI to draft commit messages from selection/current text.",
+  "permissions": ["ai", "menu"]
+}

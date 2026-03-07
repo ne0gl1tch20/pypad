@@ -1,0 +1,7 @@
+﻿{
+  "id": "example_quick_insert",
+  "name": "Example Quick Insert",
+  "version": "1.0.0",
+  "description": "Quick insertion helpers for common snippets.",
+  "permissions": ["file", "menu"]
+}

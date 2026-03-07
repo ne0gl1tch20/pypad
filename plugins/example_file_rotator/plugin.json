@@ -1,0 +1,7 @@
+﻿{
+  "id": "example_file_rotator",
+  "name": "Example File Rotator",
+  "version": "1.0.0",
+  "description": "Rotates through open tabs and saves writable ones.",
+  "permissions": ["file", "menu", "ui"]
+}

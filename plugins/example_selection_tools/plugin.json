@@ -1,0 +1,7 @@
+﻿{
+  "id": "example_selection_tools",
+  "name": "Example Selection Tools",
+  "version": "1.0.0",
+  "description": "Selection-focused editing helpers (quote/timestamp).",
+  "permissions": ["file", "menu"]
+}

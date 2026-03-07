@@ -1,0 +1,7 @@
+﻿{
+  "id": "example_tab_health",
+  "name": "Example Tab Health",
+  "version": "1.0.0",
+  "description": "Periodic tab-health summary (count/switches/current).",
+  "permissions": ["ui", "menu", "background", "hooks"]
+}

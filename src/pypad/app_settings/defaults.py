@@ -137,6 +137,7 @@ def build_default_settings(*, default_style: str, font_family: str, font_size: i
         "plugin_startup_safe_mode": False,
         "defer_plugin_load_on_startup": True,
         "plugin_startup_defer_ms": 1200,
+        "plugin_allow_unsafe_ui_bridge": False,
         "keyboard_only_mode": False,
         "backup_scheduler_enabled": False,
         "backup_interval_min": 15,

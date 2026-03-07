@@ -1,0 +1,7 @@
+﻿{
+  "id": "example_action_bookmarks",
+  "name": "Example Action Bookmarks",
+  "version": "1.0.0",
+  "description": "Bookmark and replay favorite action IDs.",
+  "permissions": ["menu", "ui"]
+}

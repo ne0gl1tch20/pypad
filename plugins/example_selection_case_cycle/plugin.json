@@ -1,0 +1,7 @@
+﻿{
+  "id": "example_selection_case_cycle",
+  "name": "Example Selection Case Cycle",
+  "version": "1.0.0",
+  "description": "Cycles selection through lower/upper/title case.",
+  "permissions": ["file", "menu"]
+}

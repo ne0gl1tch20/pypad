@@ -3509,6 +3509,15 @@ class MiscMixin(
                 self._apply_ai_feature_icons()
             if hasattr(self, "_refresh_explorer_dock"):
                 self._refresh_explorer_dock()
+            # Re-render tab file icons with the current theme icon color.
+            if hasattr(self, "_refresh_tab_title"):
+                for index in range(self.tab_widget.count()):
+                    tab = self.tab_widget.widget(index)
+                    if isinstance(tab, EditorTab):
+                        try:
+                            self._refresh_tab_title(tab)
+                        except Exception:
+                            pass
             if hasattr(self, "show_symbol_toolbar_button") and self.show_symbol_toolbar_button is not None:
                 self.show_symbol_toolbar_button.setIcon(self._svg_icon("show-symbol"))
             if hasattr(self, "_schedule_main_toolbar_overflow_update"):
@@ -3969,6 +3978,8 @@ class MiscMixin(
                 prev_quit_on_last: bool | None = None
                 was_visible = self.isVisible()
                 was_minimized = self.isMinimized()
+                was_fullscreen = bool(self.windowState() & Qt.WindowState.WindowFullScreen)
+                was_maximized = bool(self.windowState() & Qt.WindowState.WindowMaximized)
                 try:
                     if app is not None:
                         prev_quit_on_last = app.quitOnLastWindowClosed()
@@ -4000,8 +4011,13 @@ class MiscMixin(
                     if was_visible and not self.isVisible():
                         if was_minimized:
                             self.showMinimized()
+                        elif was_fullscreen:
+                            self.showFullScreen()
+                        elif was_maximized:
+                            self.showMaximized()
                         else:
                             self.showNormal()
+                        if not was_minimized:
                             self.raise_()
                             self.activateWindow()
                     apply_settings_ms = int((time.perf_counter() - apply_settings_started_at) * 1000)
@@ -4276,6 +4292,7 @@ class MiscMixin(
         self.settings["last_session_active_file"] = session_state["active_file"]
         self.settings["last_session_active_unsaved_index"] = session_state.get("active_unsaved_index", -1)
         self.settings["last_session_workspace_root"] = session_state["workspace_root"]
+        self.settings["main_window_mode"] = self._current_window_mode()
         if hasattr(self, "save_current_layout"):
             try:
                 self.save_current_layout()
@@ -6283,6 +6300,7 @@ class MiscMixin(
         snapshot: dict[str, Any] = {
             "state": self._encode_layout_bytes(self.saveState()),
             "geometry": self._encode_layout_bytes(self.saveGeometry()),
+            "window_mode": self._current_window_mode(),
         }
         dock_sizes = self._capture_primary_horizontal_dock_sizes()
         if dock_sizes is not None:
@@ -6293,6 +6311,30 @@ class MiscMixin(
             except Exception:
                 pass
         return snapshot
+
+    def _current_window_mode(self) -> str:
+        state = self.windowState()
+        if bool(state & Qt.WindowState.WindowFullScreen):
+            return "fullscreen"
+        if bool(state & Qt.WindowState.WindowMaximized):
+            return "maximized"
+        return "normal"
+
+    def _apply_window_mode(self, mode: str) -> None:
+        normalized = str(mode or "normal").strip().lower()
+        if normalized == "fullscreen":
+            self.showFullScreen()
+            return
+        if normalized == "maximized":
+            self.showMaximized()
+            return
+        if self.isFullScreen():
+            self.showNormal()
+            return
+        state = self.windowState() & ~Qt.WindowState.WindowMinimized
+        state = state & ~Qt.WindowState.WindowMaximized
+        state = state & ~Qt.WindowState.WindowFullScreen
+        self.setWindowState(state)
 
     def _capture_primary_horizontal_dock_sizes(self) -> list[int] | None:
         editor_dock = getattr(self, "editor_dock", None)
@@ -6437,6 +6479,13 @@ class MiscMixin(
         name = str(self.settings.get("layout_active", "") or "")
         layouts = self.settings.get("layout_presets", {})
         if not isinstance(layouts, dict) or not name or name not in layouts:
+            fallback_mode = str(self.settings.get("main_window_mode", "") or "")
+            if fallback_mode:
+                try:
+                    self.log_event("Info", f"[Startup] Restoring window mode: {fallback_mode} (fallback)")
+                except Exception:
+                    pass
+                QTimer.singleShot(0, lambda m=fallback_mode: self._apply_window_mode(m))
             return
         payload = layouts.get(name, {})
         if not isinstance(payload, dict):
@@ -6453,6 +6502,13 @@ class MiscMixin(
             # Qt dock geometry can continue settling right after restoreState/show.
             # Re-apply once more on the next cycle to avoid transient startup widths.
             QTimer.singleShot(0, lambda p=dict(payload): self._apply_primary_horizontal_dock_sizes(p))
+            window_mode = str(payload.get("window_mode", "") or self.settings.get("main_window_mode", "") or "")
+            if window_mode:
+                try:
+                    self.log_event("Info", f"[Startup] Restoring window mode: {window_mode}")
+                except Exception:
+                    pass
+                QTimer.singleShot(0, lambda m=window_mode: self._apply_window_mode(m))
         finally:
             self._layout_restore_in_progress = False
         self._ensure_main_window_on_screen()
@@ -6470,15 +6526,18 @@ class MiscMixin(
         unchanged = (
             str(existing.get("state", "") or "") == str(snapshot.get("state", "") or "")
             and str(existing.get("geometry", "") or "") == str(snapshot.get("geometry", "") or "")
+            and str(existing.get("window_mode", "") or "") == str(snapshot.get("window_mode", "") or "")
         )
         if unchanged:
             self.settings["layout_active"] = name
+            self.settings["main_window_mode"] = str(snapshot.get("window_mode", "normal"))
             if show_status:
                 self.show_status_message(f'Layout unchanged: "{name}"', 1500)
             return
         layouts[name] = snapshot
         self.settings["layout_presets"] = layouts
         self.settings["layout_active"] = name
+        self.settings["main_window_mode"] = str(snapshot.get("window_mode", "normal"))
         if persist and hasattr(self, "save_settings_to_disk"):
             self.save_settings_to_disk()
         if show_status:

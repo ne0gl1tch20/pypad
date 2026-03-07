@@ -1,0 +1,7 @@
+﻿{
+  "id": "example_hook_logger",
+  "name": "Example Hook Logger",
+  "version": "1.0.0",
+  "description": "Logs lifecycle hooks and keeps per-hook counters in plugin state.",
+  "permissions": ["hooks", "menu"]
+}

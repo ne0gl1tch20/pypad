@@ -4,6 +4,7 @@ import ast
 import hashlib
 import hmac
 import json
+import keyword
 import queue
 import re
 import secrets
@@ -11,6 +12,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import uuid
@@ -21,14 +23,17 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse, unquote
+from urllib.request import urlopen
 
-from PySide6.QtCore import QTimer, Qt
+from PySide6.QtCore import QSize, QTimer, Qt
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QDockWidget,
+    QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
     QHBoxLayout,
@@ -41,12 +46,14 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSpinBox,
     QTextEdit,
+    QSplitter,
     QToolBar,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 from pypad.app_settings.paths import get_plugins_dir_path
-from pypad.ui.features.extensibility_ops import assess_plugin_security
+from pypad.ui.features.extensibility_ops import assess_plugin_security, discover_window_actions
 from pypad.ui.editor.editor_tab import EditorTab
 from pypad.ui.workspace.project_workflow import (
     apply_unified_patch_to_text,
@@ -55,10 +62,55 @@ from pypad.ui.workspace.project_workflow import (
 )
 from pypad.ui.theme.theme_tokens import build_tokens_from_settings
 
+PLUGIN_API_VERSION = "1.0"
+
 
 def _root() -> Path:
     # src/pypad/ui/features/advanced_features.py -> repo root at parents[4]
     return Path(__file__).resolve().parents[4]
+
+
+def _read_app_version() -> str:
+    version_file = _root() / "assets" / "version.txt"
+    try:
+        return str(version_file.read_text(encoding="utf-8").strip() or "0.0.0")
+    except Exception:
+        return "0.0.0"
+
+
+def _parse_version_tuple(value: str) -> tuple[int, int, int]:
+    text = str(value or "").strip().lower().lstrip("v")
+    nums = [int(x) for x in re.findall(r"\d+", text)]
+    while len(nums) < 3:
+        nums.append(0)
+    return nums[0], nums[1], nums[2]
+
+
+def _is_version_compatible(app_version: str, min_version: str, max_version: str) -> bool:
+    app_v = _parse_version_tuple(app_version)
+    if str(min_version or "").strip():
+        if app_v < _parse_version_tuple(min_version):
+            return False
+    if str(max_version or "").strip():
+        if app_v > _parse_version_tuple(max_version):
+            return False
+    return True
+
+
+def _parse_api_version(value: str) -> tuple[int, int]:
+    text = str(value or "").strip().lower().lstrip("v")
+    nums = [int(x) for x in re.findall(r"\d+", text)]
+    while len(nums) < 2:
+        nums.append(0)
+    return nums[0], nums[1]
+
+
+def _is_plugin_api_compatible(plugin_api_version: str, supported_api_version: str) -> bool:
+    plugin_major, plugin_minor = _parse_api_version(plugin_api_version)
+    supported_major, supported_minor = _parse_api_version(supported_api_version)
+    if plugin_major != supported_major:
+        return False
+    return plugin_minor <= supported_minor
 
 
 @dataclass
@@ -73,11 +125,26 @@ class PluginRecord:
     requested_permissions: set[str] = field(default_factory=set)
     quarantined: bool = False
     security_issues: list[str] = field(default_factory=list)
+    compatibility_issues: list[str] = field(default_factory=list)
+    metadata: dict[str, str] = field(default_factory=dict)
+    settings_schema: dict[str, dict[str, Any]] = field(default_factory=dict)
+    dependencies: list[str] = field(default_factory=list)
+    provided_services: set[str] = field(default_factory=set)
+    required_services: set[str] = field(default_factory=set)
+    command_specs: dict[str, dict[str, Any]] = field(default_factory=dict)
     instance: Any = None
     actions: list[QAction] = field(default_factory=list)
     toolbars: list[QToolBar] = field(default_factory=list)
     panels: list[QDockWidget] = field(default_factory=list)
     timers: list[QTimer] = field(default_factory=list)
+    hook_counts: dict[str, int] = field(default_factory=dict)
+    load_count: int = 0
+    last_run_at: str = ""
+    last_event_at: str = ""
+    last_error_at: str = ""
+    last_error: str = ""
+    runtime_events: list[dict[str, Any]] = field(default_factory=list)
+    failure_count: int = 0
 
 
 def compute_plugin_digest(plugin_dir: Path) -> str:
@@ -132,13 +199,238 @@ class PluginAPI:
     def notify(self, text: str) -> None:
         self.window.show_status_message(f"[Plugin:{self.record.name}] {text}", 3000)
 
+    def _host(self):
+        controller = getattr(self.window, "advanced_features", None)
+        return getattr(controller, "plugin_host", None)
+
+    def _record_runtime(self, event: str, payload: dict[str, Any] | None = None) -> None:
+        host = self._host()
+        if host is not None and hasattr(host, "record_runtime_event"):
+            host.record_runtime_event(self.record.plugin_id, event, payload or {})
+
+    def _allow_unsafe_ui_bridge(self) -> None:
+        enabled = bool(self.window.settings.get("plugin_allow_unsafe_ui_bridge", False))
+        if not enabled:
+            raise RuntimeError(
+                "Unsafe UI bridge is disabled. Use controller API methods instead "
+                "(enable 'plugin_allow_unsafe_ui_bridge' only if you fully trust the plugin)."
+            )
+
     def app_window(self):
         self._allow("ui")
+        self._allow_unsafe_ui_bridge()
         return self.window
 
     def active_tab(self):
         self._allow("ui")
+        self._allow_unsafe_ui_bridge()
         return self.window.active_tab()
+
+    def app_info(self) -> dict[str, Any]:
+        return {
+            "app_name": "Pypad",
+            "plugin_id": self.record.plugin_id,
+            "plugin_name": self.record.name,
+            "permissions": sorted(self.record.permissions),
+        }
+
+    def show_status(self, text: str, timeout_ms: int = 3000) -> None:
+        self.window.show_status_message(f"[Plugin:{self.record.name}] {text}", max(500, int(timeout_ms)))
+
+    def plugin_state_get(self, key: str, default: Any = None) -> Any:
+        state = self.window.settings.get("plugin_state", {})
+        if not isinstance(state, dict):
+            return default
+        plugin_state = state.get(self.record.plugin_id, {})
+        if not isinstance(plugin_state, dict):
+            return default
+        return plugin_state.get(str(key), default)
+
+    def plugin_state_set(self, key: str, value: Any) -> None:
+        text_key = str(key).strip()
+        if not text_key:
+            raise ValueError("state key cannot be empty")
+        state = self.window.settings.get("plugin_state")
+        if not isinstance(state, dict):
+            state = {}
+            self.window.settings["plugin_state"] = state
+        plugin_state = state.get(self.record.plugin_id)
+        if not isinstance(plugin_state, dict):
+            plugin_state = {}
+            state[self.record.plugin_id] = plugin_state
+        plugin_state[text_key] = value
+        self.window.save_settings_to_disk()
+
+    def plugin_config_schema(self) -> dict[str, dict[str, Any]]:
+        return dict(getattr(self.record, "settings_schema", {}) or {})
+
+    def plugin_config_get(self, key: str, default: Any = None) -> Any:
+        cfg = self.window.settings.get("plugin_config", {})
+        if not isinstance(cfg, dict):
+            return default
+        p = cfg.get(self.record.plugin_id, {})
+        if not isinstance(p, dict):
+            return default
+        return p.get(str(key), default)
+
+    def plugin_config_set(self, key: str, value: Any) -> None:
+        host = self._host()
+        if host is not None and hasattr(host, "set_plugin_config"):
+            host.set_plugin_config(self.record.plugin_id, str(key), value)
+            return
+        cfg = self.window.settings.get("plugin_config")
+        if not isinstance(cfg, dict):
+            cfg = {}
+            self.window.settings["plugin_config"] = cfg
+        p = cfg.get(self.record.plugin_id)
+        if not isinstance(p, dict):
+            p = {}
+            cfg[self.record.plugin_id] = p
+        p[str(key)] = value
+        self.window.save_settings_to_disk()
+
+    def register_service(self, service_name: str, obj: Any) -> None:
+        host = self._host()
+        if host is None or not hasattr(host, "register_plugin_service"):
+            raise RuntimeError("Plugin host service registry unavailable.")
+        host.register_plugin_service(self.record.plugin_id, str(service_name), obj)
+        self._record_runtime("service_register", {"service": str(service_name)})
+
+    def get_service(self, service_ref: str) -> Any:
+        host = self._host()
+        if host is None or not hasattr(host, "resolve_plugin_service"):
+            raise RuntimeError("Plugin host service registry unavailable.")
+        value = host.resolve_plugin_service(self.record, str(service_ref))
+        self._record_runtime("service_get", {"service_ref": str(service_ref)})
+        return value
+
+    def register_command(
+        self,
+        command_name: str,
+        callback,
+        *,
+        description: str = "",
+        args_schema: dict[str, Any] | None = None,
+    ) -> None:
+        host = self._host()
+        if host is None or not hasattr(host, "register_plugin_command"):
+            raise RuntimeError("Plugin host command registry unavailable.")
+        host.register_plugin_command(
+            self.record.plugin_id,
+            str(command_name),
+            callback,
+            description=str(description or ""),
+            args_schema=dict(args_schema or {}),
+        )
+        self._record_runtime("command_register", {"command": str(command_name)})
+
+    def run_command(self, command_ref: str, args: dict[str, Any] | None = None) -> Any:
+        host = self._host()
+        if host is None or not hasattr(host, "run_plugin_command"):
+            raise RuntimeError("Plugin host command registry unavailable.")
+        self._record_runtime("command_run", {"command_ref": str(command_ref)})
+        return host.run_plugin_command(self.record.plugin_id, str(command_ref), dict(args or {}))
+
+    def log(self, level: str, message: str) -> None:
+        host = self._host()
+        lvl = str(level or "INFO").strip().upper() or "INFO"
+        msg = str(message or "")
+        if host is not None and hasattr(host, "record_plugin_log"):
+            host.record_plugin_log(self.record.plugin_id, lvl, msg)
+        self.window.log_event(lvl, f"[Plugin:{self.record.plugin_id}] {msg}")
+
+    def start_job(self, job_name: str, fn) -> str:
+        self._allow("background")
+        host = self._host()
+        if host is None or not hasattr(host, "start_plugin_job"):
+            raise RuntimeError("Plugin host job runner unavailable.")
+        job_id = host.start_plugin_job(self.record.plugin_id, str(job_name), fn)
+        self._record_runtime("job_start", {"job_id": job_id, "job_name": str(job_name)})
+        return job_id
+
+    def cancel_job(self, job_id: str) -> bool:
+        self._allow("background")
+        host = self._host()
+        if host is None or not hasattr(host, "cancel_plugin_job"):
+            raise RuntimeError("Plugin host job runner unavailable.")
+        ok = bool(host.cancel_plugin_job(self.record.plugin_id, str(job_id)))
+        self._record_runtime("job_cancel", {"job_id": str(job_id), "ok": ok})
+        return ok
+
+    def job_status(self, job_id: str) -> dict[str, Any]:
+        self._allow("background")
+        host = self._host()
+        if host is None or not hasattr(host, "plugin_job_status"):
+            raise RuntimeError("Plugin host job runner unavailable.")
+        return dict(host.plugin_job_status(self.record.plugin_id, str(job_id)))
+
+    def log_metric(self, event: str, detail: str = "") -> None:
+        host = self._host()
+        if host is None or not hasattr(host, "record_runtime_event"):
+            return
+        host.record_runtime_event(self.record.plugin_id, str(event or "metric"), {"detail": str(detail or "")})
+
+    def emit_runtime_event(self, event: str, payload: dict[str, Any] | None = None) -> None:
+        host = self._host()
+        if host is None or not hasattr(host, "publish_runtime_event"):
+            return
+        host.publish_runtime_event(self.record.plugin_id, str(event or "event"), dict(payload or {}))
+
+    def tab_count(self) -> int:
+        return int(self.window.tab_widget.count())
+
+    def active_tab_index(self) -> int:
+        return int(self.window.tab_widget.currentIndex())
+
+    def active_tab_info(self) -> dict[str, Any]:
+        tab = self.window.active_tab()
+        if tab is None:
+            return {
+                "index": -1,
+                "title": "",
+                "path": "",
+                "read_only": False,
+                "modified": False,
+            }
+        index = int(self.window.tab_widget.currentIndex())
+        title = str(self.window._tab_display_name(tab))
+        path = str(getattr(tab, "current_file", "") or "")
+        editor = getattr(tab, "text_edit", None)
+        read_only = bool(editor.is_read_only()) if editor is not None and hasattr(editor, "is_read_only") else False
+        modified = bool(tab.text_edit.is_modified()) if editor is not None and hasattr(editor, "is_modified") else False
+        return {
+            "index": index,
+            "title": title,
+            "path": path,
+            "read_only": read_only,
+            "modified": modified,
+        }
+
+    def switch_to_tab(self, index: int) -> bool:
+        idx = int(index)
+        if idx < 0 or idx >= self.window.tab_widget.count():
+            return False
+        self.window.tab_widget.setCurrentIndex(idx)
+        return True
+
+    def file_new(self, text: str = "") -> bool:
+        self._allow("file")
+        if not hasattr(self.window, "file_new"):
+            return False
+        self.window.file_new()
+        if text:
+            self.replace_text(str(text))
+        return True
+
+    def close_tab(self, index: int | None = None) -> bool:
+        self._allow("file")
+        idx = self.window.tab_widget.currentIndex() if index is None else int(index)
+        if idx < 0 or idx >= self.window.tab_widget.count():
+            return False
+        if hasattr(self.window, "close_tab"):
+            self.window.close_tab(idx)
+            return True
+        return False
 
     def workspace_root(self) -> str:
         ctrl = getattr(self.window, "workspace_controller", None)
@@ -199,6 +491,29 @@ class PluginAPI:
                 }
             )
         return tabs
+
+    def list_actions(self) -> list[dict[str, str]]:
+        self._allow_any({"ui", "menu"})
+        return [
+            {
+                "action_id": item.action_id,
+                "label": item.label,
+                "section": item.section,
+                "shortcut": item.shortcut_text,
+            }
+            for item in discover_window_actions(self.window)
+        ]
+
+    def trigger_action(self, action_id: str) -> bool:
+        self._allow_any({"ui", "menu"})
+        target_id = str(action_id or "").strip()
+        if not target_id:
+            return False
+        for item in discover_window_actions(self.window):
+            if item.action_id == target_id:
+                item.action.trigger()
+                return True
+        return False
 
     def open_file(self, path: str) -> bool:
         self._allow("file")
@@ -327,10 +642,16 @@ class PluginAPI:
 class PluginHost:
     def __init__(self, window) -> None:
         self.window = window
-        self.plugins_dir = get_plugins_dir_path()
+        self.app_version = _read_app_version()
+        self.plugins_dir = self._resolve_plugins_dir()
         self.plugins_dir.mkdir(parents=True, exist_ok=True)
         self._install_example_plugins_if_missing()
         self.records: list[PluginRecord] = []
+        self.runtime_event_log: list[dict[str, Any]] = []
+        self._service_registry: dict[str, dict[str, Any]] = {}
+        self._command_registry: dict[str, dict[str, dict[str, Any]]] = {}
+        self._job_registry: dict[str, dict[str, dict[str, Any]]] = {}
+        self._plugin_logs: dict[str, list[dict[str, Any]]] = {}
         self._startup_plugins_loaded = False
         defer_load = bool(self.window.settings.get("defer_plugin_load_on_startup", True))
         delay_ms = int(self.window.settings.get("plugin_startup_defer_ms", 1200) or 0)
@@ -338,6 +659,22 @@ class PluginHost:
             QTimer.singleShot(max(0, delay_ms), self._load_startup_plugins)
         else:
             self._load_startup_plugins()
+
+    def _resolve_plugins_dir(self) -> Path:
+        # Dev-exclusive override: allow loading directly from repo ../plugins folder.
+        if not getattr(sys, "frozen", False):
+            if bool(self.window.settings.get("plugin_dev_use_repo_plugins", False)):
+                return _root() / "plugins"
+        return get_plugins_dir_path()
+
+    def set_dev_plugins_source(self, use_repo_plugins: bool) -> None:
+        if getattr(sys, "frozen", False):
+            return
+        self.window.settings["plugin_dev_use_repo_plugins"] = bool(use_repo_plugins)
+        self.window.save_settings_to_disk()
+        self.plugins_dir = self._resolve_plugins_dir()
+        self.plugins_dir.mkdir(parents=True, exist_ok=True)
+        self.reload()
 
     def _load_startup_plugins(self) -> None:
         if self._startup_plugins_loaded:
@@ -416,6 +753,62 @@ class PluginHost:
     def _is_startup_safe_mode(self) -> bool:
         return bool(self.window.settings.get("plugin_startup_safe_mode", False))
 
+    def _failure_counts(self) -> dict[str, int]:
+        raw = self.window.settings.get("plugin_failure_counts", {})
+        if not isinstance(raw, dict):
+            return {}
+        out: dict[str, int] = {}
+        for key, value in raw.items():
+            pid = str(key).strip()
+            if not pid:
+                continue
+            try:
+                out[pid] = max(0, int(value))
+            except Exception:
+                continue
+        return out
+
+    def _save_failure_counts(self, mapping: dict[str, int]) -> None:
+        serial = {k: int(v) for k, v in sorted(mapping.items()) if int(v) > 0}
+        self.window.settings["plugin_failure_counts"] = serial
+        self.window.save_settings_to_disk()
+
+    def _max_failures_before_disable(self) -> int:
+        try:
+            value = int(self.window.settings.get("plugin_max_failures_before_disable", 3) or 3)
+        except Exception:
+            value = 3
+        return max(1, min(20, value))
+
+    def plugin_health_score(self, rec: PluginRecord) -> int:
+        score = 100
+        score -= min(60, int(rec.failure_count) * 15)
+        if rec.last_error:
+            score -= 15
+        if rec.security_issues:
+            score -= 30
+        if rec.compatibility_issues:
+            score -= 20
+        if rec.instance is None and rec.enabled:
+            score -= 10
+        return max(0, min(100, score))
+
+    def _record_plugin_failure(self, plugin_id: str, reason: str) -> int:
+        counts = self._failure_counts()
+        counts[plugin_id] = int(counts.get(plugin_id, 0) or 0) + 1
+        self._save_failure_counts(counts)
+        self.record_runtime_event(plugin_id, "failure", {"count": counts[plugin_id], "reason": str(reason or "")})
+        return counts[plugin_id]
+
+    def _clear_plugin_failure(self, plugin_id: str) -> None:
+        counts = self._failure_counts()
+        if plugin_id in counts:
+            counts.pop(plugin_id, None)
+            self._save_failure_counts(counts)
+
+    def reset_plugin_failure_count(self, plugin_id: str) -> None:
+        self._clear_plugin_failure(plugin_id)
+
     def _trust_prompt(self, rec: PluginRecord) -> bool:
         box = QMessageBox(self.window)
         box.setWindowTitle("Trust Plugin")
@@ -482,10 +875,608 @@ class PluginHost:
         self.window.settings["plugin_permission_overrides"] = {}
         self.window.save_settings_to_disk()
 
+    def _plugin_config_map(self) -> dict[str, dict[str, Any]]:
+        raw = self.window.settings.get("plugin_config", {})
+        if isinstance(raw, dict):
+            return raw
+        self.window.settings["plugin_config"] = {}
+        return self.window.settings["plugin_config"]
+
+    def _coerce_schema_value(self, spec: dict[str, Any], value: Any) -> Any:
+        typ = str(spec.get("type", "str")).strip().lower()
+        if typ in {"int", "integer"}:
+            try:
+                n = int(value)
+            except Exception:
+                n = int(spec.get("default", 0) or 0)
+            if "min" in spec:
+                n = max(int(spec.get("min", n)), n)
+            if "max" in spec:
+                n = min(int(spec.get("max", n)), n)
+            return n
+        if typ in {"float", "number"}:
+            try:
+                n = float(value)
+            except Exception:
+                n = float(spec.get("default", 0.0) or 0.0)
+            if "min" in spec:
+                n = max(float(spec.get("min", n)), n)
+            if "max" in spec:
+                n = min(float(spec.get("max", n)), n)
+            return n
+        if typ in {"bool", "boolean"}:
+            if isinstance(value, bool):
+                return value
+            return str(value).strip().lower() in {"1", "true", "yes", "on"}
+        if typ in {"list", "array"}:
+            if isinstance(value, list):
+                return value
+            if isinstance(value, tuple):
+                return list(value)
+            if isinstance(value, str):
+                return [x.strip() for x in value.split(",") if x.strip()]
+            return list(spec.get("default", []) or [])
+        text = str(value if value is not None else spec.get("default", "") or "")
+        enum_vals = spec.get("enum")
+        if isinstance(enum_vals, list) and enum_vals:
+            enum_text = [str(x) for x in enum_vals]
+            if text not in enum_text:
+                return str(spec.get("default", enum_text[0]))
+        return text
+
+    def _apply_plugin_settings_schema(self, rec: PluginRecord) -> None:
+        schema = dict(rec.settings_schema or {})
+        if not schema:
+            return
+        config_map = self._plugin_config_map()
+        existing = config_map.get(rec.plugin_id)
+        if not isinstance(existing, dict):
+            existing = {}
+        out: dict[str, Any] = dict(existing)
+        changed = False
+        for key, spec_raw in schema.items():
+            if not isinstance(spec_raw, dict):
+                continue
+            spec = dict(spec_raw)
+            if key not in out:
+                out[key] = spec.get("default", "")
+                changed = True
+            coerced = self._coerce_schema_value(spec, out.get(key))
+            if out.get(key) != coerced:
+                out[key] = coerced
+                changed = True
+        config_map[rec.plugin_id] = out
+        if changed:
+            self.window.settings["plugin_config"] = config_map
+            self.window.save_settings_to_disk()
+
+    def set_plugin_config(self, plugin_id: str, key: str, value: Any) -> None:
+        rec = next((x for x in self.discover() if x.plugin_id == plugin_id), None)
+        schema = rec.settings_schema if rec is not None else {}
+        if key in schema:
+            value = self._coerce_schema_value(schema[key], value)
+        config_map = self._plugin_config_map()
+        plugin_cfg = config_map.get(plugin_id)
+        if not isinstance(plugin_cfg, dict):
+            plugin_cfg = {}
+        plugin_cfg[str(key)] = value
+        config_map[plugin_id] = plugin_cfg
+        self.window.settings["plugin_config"] = config_map
+        self.window.save_settings_to_disk()
+
+    def _append_runtime_log(self, item: dict[str, Any]) -> None:
+        self.runtime_event_log.append(dict(item))
+        if len(self.runtime_event_log) > 500:
+            self.runtime_event_log = self.runtime_event_log[-500:]
+
+    def plugin_logs(self, plugin_id: str) -> list[dict[str, Any]]:
+        return list(self._plugin_logs.get(str(plugin_id), []))
+
+    def record_plugin_log(self, plugin_id: str, level: str, message: str) -> None:
+        pid = str(plugin_id or "").strip()
+        if not pid:
+            return
+        row = {
+            "ts": datetime.now().isoformat(timespec="seconds"),
+            "level": str(level or "INFO").strip().upper() or "INFO",
+            "message": str(message or ""),
+        }
+        items = self._plugin_logs.get(pid)
+        if items is None:
+            items = []
+            self._plugin_logs[pid] = items
+        items.append(row)
+        if len(items) > 300:
+            self._plugin_logs[pid] = items[-300:]
+
+    def register_plugin_service(self, plugin_id: str, service_name: str, obj: Any) -> None:
+        pid = str(plugin_id or "").strip()
+        name = str(service_name or "").strip()
+        if not pid or not name:
+            raise ValueError("plugin_id and service_name are required")
+        registry = self._service_registry.get(pid)
+        if registry is None:
+            registry = {}
+            self._service_registry[pid] = registry
+        registry[name] = obj
+
+    def resolve_plugin_service(self, requester: PluginRecord, service_ref: str) -> Any:
+        ref = str(service_ref or "").strip()
+        if not ref:
+            raise RuntimeError("service reference is required")
+        allowed_refs = set(requester.required_services or set())
+        if ref not in allowed_refs:
+            raise RuntimeError(
+                f"Plugin '{requester.plugin_id}' attempted undeclared service access: {ref}"
+            )
+        if ":" in ref:
+            pid, service_name = ref.split(":", 1)
+            obj = self._service_registry.get(pid, {}).get(service_name)
+            if obj is None:
+                raise RuntimeError(f"Service unavailable: {ref}")
+            return obj
+        # Unqualified lookup: unique service by name across all plugins.
+        matches: list[Any] = []
+        for provider_pid, services in self._service_registry.items():
+            if ref in services:
+                matches.append(services[ref])
+        if not matches:
+            raise RuntimeError(f"Service unavailable: {ref}")
+        if len(matches) > 1:
+            raise RuntimeError(f"Service reference is ambiguous: {ref}")
+        return matches[0]
+
+    @staticmethod
+    def _normalize_dep_id(dep: str) -> str:
+        text = str(dep or "").strip()
+        if not text:
+            return ""
+        for sep in (">=", "<=", "==", "!=", ">", "<", " "):
+            if sep in text:
+                text = text.split(sep, 1)[0].strip()
+                break
+        return text
+
+    def _build_load_order(self, records: list[PluginRecord]) -> list[PluginRecord]:
+        rec_by_id = {r.plugin_id: r for r in records}
+        deps: dict[str, set[str]] = {}
+        for rec in records:
+            dep_ids = {self._normalize_dep_id(x) for x in rec.dependencies}
+            dep_ids = {x for x in dep_ids if x}
+            deps[rec.plugin_id] = {x for x in dep_ids if x in rec_by_id}
+        out: list[PluginRecord] = []
+        ready = sorted([pid for pid, d in deps.items() if not d])
+        while ready:
+            pid = ready.pop(0)
+            out.append(rec_by_id[pid])
+            for other in sorted(deps.keys()):
+                if pid in deps[other]:
+                    deps[other].discard(pid)
+                    if not deps[other] and other not in [r.plugin_id for r in out] and other not in ready:
+                        ready.append(other)
+                        ready.sort()
+        if len(out) != len(records):
+            unresolved = [pid for pid, d in deps.items() if d]
+            raise RuntimeError(f"Dependency cycle detected: {', '.join(sorted(unresolved))}")
+        return out
+
+    def record_runtime_event(self, plugin_id: str, event: str, payload: dict[str, Any] | None = None) -> None:
+        now = datetime.now().isoformat(timespec="seconds")
+        rec = next((x for x in self.records if x.plugin_id == plugin_id), None)
+        item = {
+            "ts": now,
+            "plugin_id": plugin_id,
+            "event": str(event or "event"),
+            "payload": dict(payload or {}),
+        }
+        self._append_runtime_log(item)
+        if rec is not None:
+            rec.last_run_at = now
+            rec.last_event_at = now
+            rec.runtime_events.append(item)
+            if len(rec.runtime_events) > 100:
+                rec.runtime_events = rec.runtime_events[-100:]
+
+    def publish_runtime_event(self, source_plugin_id: str, event: str, payload: dict[str, Any]) -> None:
+        self.record_runtime_event(source_plugin_id, f"bus:{event}", payload)
+        envelope = {
+            "source_plugin_id": source_plugin_id,
+            "event": event,
+            "payload": dict(payload or {}),
+        }
+        for rec in list(self.records):
+            if rec.instance is None or "hooks" not in rec.permissions:
+                continue
+            try:
+                on_event = getattr(rec.instance, "on_event", None)
+                if callable(on_event):
+                    on_event("plugin_bus", dict(envelope))
+            except Exception as exc:  # noqa: BLE001
+                rec.last_error = str(exc)
+                rec.last_error_at = datetime.now().isoformat(timespec="seconds")
+                self.window.log_event("Error", f"Plugin bus error ({rec.plugin_id}): {exc}")
+
+    def register_plugin_command(
+        self,
+        plugin_id: str,
+        command_name: str,
+        callback,
+        *,
+        description: str = "",
+        args_schema: dict[str, Any] | None = None,
+    ) -> None:
+        pid = str(plugin_id or "").strip()
+        name = str(command_name or "").strip()
+        if not pid or not name:
+            raise ValueError("plugin_id and command_name are required")
+        per = self._command_registry.get(pid)
+        if per is None:
+            per = {}
+            self._command_registry[pid] = per
+        per[name] = {
+            "callback": callback,
+            "description": str(description or ""),
+            "args_schema": dict(args_schema or {}),
+        }
+        rec = next((x for x in self.records if x.plugin_id == pid), None)
+        if rec is not None:
+            rec.command_specs[name] = {
+                "description": str(description or ""),
+                "args_schema": dict(args_schema or {}),
+            }
+            # Command-palette integration path: expose plugin commands as real QActions in Plugins menu.
+            try:
+                root = getattr(self.window, "plugins_menu", None)
+                if root is None and hasattr(self.window, "menuBar"):
+                    root = self.window.menuBar().addMenu("&Plugins")
+                    self.window.plugins_menu = root
+                if root is not None:
+                    commands_menu = None
+                    for act in root.actions():
+                        sub = act.menu()
+                        if sub is not None and str(sub.title()).replace("&", "").strip().lower() == "commands":
+                            commands_menu = sub
+                            break
+                    if commands_menu is None:
+                        commands_menu = root.addMenu("Commands")
+                    plugin_menu = None
+                    plugin_title = rec.name or rec.plugin_id
+                    for act in commands_menu.actions():
+                        sub = act.menu()
+                        if sub is not None and str(sub.title()).replace("&", "").strip() == plugin_title:
+                            plugin_menu = sub
+                            break
+                    if plugin_menu is None:
+                        plugin_menu = commands_menu.addMenu(plugin_title)
+                    existing = next((a for a in rec.actions if a.objectName() == f"plugincmd:{pid}:{name}"), None)
+                    if existing is not None:
+                        try:
+                            plugin_menu.removeAction(existing)
+                        except Exception:
+                            pass
+                        try:
+                            rec.actions.remove(existing)
+                        except Exception:
+                            pass
+                    action = QAction(name, self.window)
+                    action.setObjectName(f"plugincmd:{pid}:{name}")
+                    action.triggered.connect(lambda _checked=False, _pid=pid, _name=name: self.run_plugin_command(_pid, _name, {}))
+                    plugin_menu.addAction(action)
+                    rec.actions.append(action)
+            except Exception:
+                pass
+
+    def list_plugin_commands(self, plugin_id: str) -> list[dict[str, Any]]:
+        pid = str(plugin_id or "").strip()
+        per = self._command_registry.get(pid, {})
+        out: list[dict[str, Any]] = []
+        for name in sorted(per.keys()):
+            entry = per[name]
+            out.append(
+                {
+                    "name": name,
+                    "description": str(entry.get("description", "") or ""),
+                    "args_schema": dict(entry.get("args_schema", {}) or {}),
+                }
+            )
+        return out
+
+    def run_plugin_command(self, requester_plugin_id: str, command_ref: str, args: dict[str, Any] | None = None) -> Any:
+        ref = str(command_ref or "").strip()
+        if not ref:
+            raise RuntimeError("command reference is required")
+        if ":" in ref:
+            pid, name = ref.split(":", 1)
+        else:
+            pid = str(requester_plugin_id or "").strip()
+            name = ref
+        entry = self._command_registry.get(pid, {}).get(name)
+        if entry is None:
+            raise RuntimeError(f"Command not found: {ref}")
+        cb = entry.get("callback")
+        payload = dict(args or {})
+        self.record_runtime_event(pid, "command_execute", {"command": name, "requester": requester_plugin_id})
+        if callable(cb):
+            return cb(payload)
+        raise RuntimeError(f"Command callback is not callable: {ref}")
+
+    def install_plugin_archive(self, archive_path: Path) -> Path:
+        path = Path(archive_path)
+        if not path.exists() or not path.is_file():
+            raise FileNotFoundError(f"Archive not found: {path}")
+        if path.suffix.lower() != ".zip":
+            raise ValueError("Plugin archive must be a .zip file.")
+        allowed_permissions = {
+            "file",
+            "network",
+            "ai",
+            "ui",
+            "menu",
+            "toolbar",
+            "panel",
+            "background",
+            "hooks",
+        }
+        with tempfile.TemporaryDirectory(prefix="pypad_plugin_install_") as temp_dir:
+            temp_root = Path(temp_dir)
+            with zipfile.ZipFile(path, "r") as zf:
+                for info in zf.infolist():
+                    member = Path(info.filename.replace("\\", "/"))
+                    if member.is_absolute() or ".." in member.parts:
+                        raise RuntimeError(f"Unsafe archive path: {info.filename}")
+                zf.extractall(temp_root)
+            candidates: list[Path] = []
+            if (temp_root / "plugin.json").exists() and (temp_root / "plugin.py").exists():
+                candidates.append(temp_root)
+            for child in temp_root.rglob("*"):
+                if child.is_dir() and (child / "plugin.json").exists() and (child / "plugin.py").exists():
+                    candidates.append(child)
+            if not candidates:
+                raise RuntimeError("Archive does not contain plugin.json + plugin.py.")
+            candidates = sorted({c.resolve() for c in candidates}, key=lambda p: len(p.parts))
+            source_dir = candidates[0]
+            try:
+                meta = json.loads((source_dir / "plugin.json").read_text(encoding="utf-8-sig"))
+            except Exception as exc:
+                raise RuntimeError(f"Invalid plugin.json: {exc}") from exc
+            if not isinstance(meta, dict):
+                raise RuntimeError("Invalid plugin.json format.")
+            pid = self._normalize_plugin_id(str(meta.get("id", source_dir.name)))
+            if not self._valid_plugin_id(pid):
+                raise RuntimeError("Invalid plugin id in archive.")
+            requested = {
+                str(p).lower().strip()
+                for p in meta.get("permissions", [])
+                if str(p).lower().strip() in allowed_permissions
+            }
+            dest_dir = self.plugins_dir / pid
+            if dest_dir.exists():
+                raise FileExistsError(f"Plugin already exists: {pid}")
+            staging_dir = self.plugins_dir / f"__incoming_{pid}_{uuid.uuid4().hex[:8]}"
+            shutil.copytree(source_dir, staging_dir, ignore=shutil.ignore_patterns("__pycache__"))
+            try:
+                issues = assess_plugin_security(
+                    plugin_root=self.plugins_dir,
+                    plugin_dir=staging_dir,
+                    plugin_id=pid,
+                    permissions=requested,
+                )
+                if issues:
+                    raise RuntimeError("Plugin rejected by policy: " + "; ".join(issues[:3]))
+                staging_dir.rename(dest_dir)
+                return dest_dir
+            finally:
+                if staging_dir.exists():
+                    shutil.rmtree(staging_dir, ignore_errors=True)
+
+    def inspect_plugin_archive(self, archive_path: Path) -> dict[str, Any]:
+        path = Path(archive_path)
+        if not path.exists() or not path.is_file():
+            raise FileNotFoundError(f"Archive not found: {path}")
+        if path.suffix.lower() != ".zip":
+            raise ValueError("Plugin archive must be a .zip file.")
+        allowed_permissions = {
+            "file",
+            "network",
+            "ai",
+            "ui",
+            "menu",
+            "toolbar",
+            "panel",
+            "background",
+            "hooks",
+        }
+        with tempfile.TemporaryDirectory(prefix="pypad_plugin_") as temp_dir:
+            temp_root = Path(temp_dir)
+            with zipfile.ZipFile(path, "r") as zf:
+                for info in zf.infolist():
+                    member = Path(info.filename.replace("\\", "/"))
+                    if member.is_absolute() or ".." in member.parts:
+                        raise RuntimeError(f"Unsafe archive path: {info.filename}")
+                zf.extractall(temp_root)
+            candidates: list[Path] = []
+            if (temp_root / "plugin.json").exists() and (temp_root / "plugin.py").exists():
+                candidates.append(temp_root)
+            for child in temp_root.rglob("*"):
+                if child.is_dir() and (child / "plugin.json").exists() and (child / "plugin.py").exists():
+                    candidates.append(child)
+            if not candidates:
+                raise RuntimeError("Archive does not contain plugin.json + plugin.py.")
+            candidates = sorted({c.resolve() for c in candidates}, key=lambda p: len(p.parts))
+            source_dir = candidates[0]
+            try:
+                meta = json.loads((source_dir / "plugin.json").read_text(encoding="utf-8-sig"))
+            except Exception as exc:
+                raise RuntimeError(f"Invalid plugin.json: {exc}") from exc
+            if not isinstance(meta, dict):
+                raise RuntimeError("Invalid plugin.json format.")
+            pid = self._normalize_plugin_id(str(meta.get("id", source_dir.name)))
+            if not self._valid_plugin_id(pid):
+                raise RuntimeError("Invalid plugin id in archive.")
+            requested = {
+                str(p).lower().strip()
+                for p in meta.get("permissions", [])
+                if str(p).lower().strip() in allowed_permissions
+            }
+            inspect_dir = temp_root / "__inspect_target"
+            shutil.copytree(source_dir, inspect_dir, ignore=shutil.ignore_patterns("__pycache__"))
+            issues = assess_plugin_security(
+                plugin_root=self.plugins_dir,
+                plugin_dir=inspect_dir,
+                plugin_id=pid,
+                permissions=requested,
+            )
+            return {
+                "plugin_id": pid,
+                "name": str(meta.get("name", pid)),
+                "version": str(meta.get("version", "") or ""),
+                "requested_permissions": sorted(requested),
+                "issues": list(issues),
+            }
+
+    def check_plugin_update(self, rec: PluginRecord) -> dict[str, Any]:
+        update_url = str(rec.metadata.get("update_url", "") or "").strip()
+        current = str(rec.metadata.get("version", "") or "").strip() or "0.0.0"
+        result = {
+            "plugin_id": rec.plugin_id,
+            "current_version": current,
+            "update_url": update_url,
+            "latest_version": "",
+            "update_available": False,
+            "error": "",
+        }
+        if not update_url:
+            result["error"] = "No update_url configured."
+            return result
+        try:
+            with urlopen(update_url, timeout=5.0) as resp:
+                raw = resp.read().decode("utf-8", errors="replace")
+            payload = json.loads(raw)
+            if not isinstance(payload, dict):
+                raise RuntimeError("Update payload must be a JSON object.")
+            latest = str(payload.get("version", "") or "").strip()
+            if not latest:
+                raise RuntimeError("Missing 'version' in update payload.")
+            result["latest_version"] = latest
+            result["update_available"] = _parse_version_tuple(latest) > _parse_version_tuple(current)
+            return result
+        except Exception as exc:
+            result["error"] = str(exc)
+            return result
+
+    def check_all_plugin_updates(self) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        for rec in self.discover():
+            out.append(self.check_plugin_update(rec))
+        return out
+
+    def plugin_diagnostics_snapshot(self, rec: PluginRecord) -> dict[str, Any]:
+        return {
+            "plugin_id": rec.plugin_id,
+            "name": rec.name,
+            "description": rec.description,
+            "enabled": bool(rec.enabled),
+            "loaded": rec.instance is not None,
+            "failure_count": int(rec.failure_count),
+            "health_score": int(self.plugin_health_score(rec)),
+            "permissions": sorted(rec.permissions),
+            "requested_permissions": sorted(rec.requested_permissions),
+            "dependencies": sorted(rec.dependencies),
+            "provided_services": sorted(rec.provided_services),
+            "required_services": sorted(rec.required_services),
+            "metadata": dict(rec.metadata),
+            "security_issues": list(rec.security_issues),
+            "compatibility_issues": list(rec.compatibility_issues),
+            "hook_counts": dict(rec.hook_counts),
+            "load_count": int(rec.load_count),
+            "last_run_at": rec.last_run_at,
+            "last_event_at": rec.last_event_at,
+            "last_error_at": rec.last_error_at,
+            "last_error": rec.last_error,
+            "runtime_events": list(rec.runtime_events),
+            "jobs": list(self._job_registry.get(rec.plugin_id, {}).values()),
+            "logs": self.plugin_logs(rec.plugin_id),
+        }
+
+    def start_plugin_job(self, plugin_id: str, job_name: str, fn) -> str:
+        pid = str(plugin_id or "").strip()
+        if not pid:
+            raise ValueError("plugin_id is required")
+        jid = f"{pid}:{uuid.uuid4().hex[:12]}"
+        per = self._job_registry.get(pid)
+        if per is None:
+            per = {}
+            self._job_registry[pid] = per
+        state: dict[str, Any] = {
+            "job_id": jid,
+            "job_name": str(job_name or "job"),
+            "status": "running",
+            "progress": 0.0,
+            "started_at": datetime.now().isoformat(timespec="seconds"),
+            "ended_at": "",
+            "cancel_requested": False,
+            "error": "",
+        }
+        per[jid] = state
+
+        def _run() -> None:
+            def report_progress(value: float) -> None:
+                try:
+                    state["progress"] = max(0.0, min(1.0, float(value)))
+                except Exception:
+                    pass
+
+            def should_stop() -> bool:
+                return bool(state.get("cancel_requested", False))
+
+            try:
+                if callable(fn):
+                    fn({"report_progress": report_progress, "should_stop": should_stop, "job_id": jid})
+                if bool(state.get("cancel_requested", False)):
+                    state["status"] = "cancelled"
+                else:
+                    state["status"] = "completed"
+            except Exception as exc:  # noqa: BLE001
+                state["status"] = "failed"
+                state["error"] = str(exc)
+                self.record_runtime_event(pid, "job_error", {"job_id": jid, "message": str(exc)})
+            finally:
+                state["ended_at"] = datetime.now().isoformat(timespec="seconds")
+                self.record_runtime_event(pid, "job_done", {"job_id": jid, "status": state.get("status", "")})
+
+        thread = threading.Thread(target=_run, name=f"plugin-job-{pid}", daemon=True)
+        state["thread"] = thread
+        thread.start()
+        self.record_runtime_event(pid, "job_created", {"job_id": jid, "job_name": state["job_name"]})
+        return jid
+
+    def cancel_plugin_job(self, plugin_id: str, job_id: str) -> bool:
+        pid = str(plugin_id or "").strip()
+        jid = str(job_id or "").strip()
+        state = self._job_registry.get(pid, {}).get(jid)
+        if state is None:
+            return False
+        state["cancel_requested"] = True
+        if state.get("status") == "running":
+            state["status"] = "cancelling"
+        self.record_runtime_event(pid, "job_cancel_requested", {"job_id": jid})
+        return True
+
+    def plugin_job_status(self, plugin_id: str, job_id: str) -> dict[str, Any]:
+        pid = str(plugin_id or "").strip()
+        jid = str(job_id or "").strip()
+        state = self._job_registry.get(pid, {}).get(jid)
+        if state is None:
+            raise RuntimeError(f"Job not found: {jid}")
+        out = dict(state)
+        out.pop("thread", None)
+        return out
+
     def discover(self) -> list[PluginRecord]:
         enabled = self._enabled()
         quarantined = self._quarantined()
         overrides = self._permission_overrides()
+        failure_counts = self._failure_counts()
         allowed_permissions = {
             "file",
             "network",
@@ -506,12 +1497,32 @@ class PluginHost:
             if not manifest.exists() or not code.exists():
                 continue
             try:
-                meta = json.loads(manifest.read_text(encoding="utf-8"))
+                # Accept BOM-prefixed UTF-8 manifests generated by common editors/tools.
+                meta = json.loads(manifest.read_text(encoding="utf-8-sig"))
             except Exception:
                 continue
             if not isinstance(meta, dict):
                 continue
             pid = str(meta.get("id", folder.name))
+            plugin_api_version = str(meta.get("plugin_api_version", "1.0") or "1.0").strip()
+            min_app_version = str(meta.get("min_app_version", "") or "").strip()
+            max_app_version = str(meta.get("max_app_version", "") or "").strip()
+            update_url = str(meta.get("update_url", "") or "").strip()
+            homepage = str(meta.get("homepage", "") or "").strip()
+            settings_schema = meta.get("settings_schema", {})
+            depends_on_raw = meta.get("depends_on", [])
+            provides_raw = meta.get("provides_services", [])
+            requires_raw = meta.get("requires_services", [])
+            compatibility_issues: list[str] = []
+            if not _is_version_compatible(self.app_version, min_app_version, max_app_version):
+                compatibility_issues.append(
+                    f"Incompatible with app version {self.app_version} "
+                    f"(requires min={min_app_version or '-'} max={max_app_version or '-'})"
+                )
+            if not _is_plugin_api_compatible(plugin_api_version, PLUGIN_API_VERSION):
+                compatibility_issues.append(
+                    f"Incompatible plugin API version {plugin_api_version} (supported {PLUGIN_API_VERSION})"
+                )
             requested = {
                 str(p).lower().strip()
                 for p in meta.get("permissions", [])
@@ -519,6 +1530,22 @@ class PluginHost:
             }
             override = overrides.get(pid)
             perms = requested if override is None else (requested & override)
+            dependencies = [
+                self._normalize_dep_id(str(x))
+                for x in (depends_on_raw if isinstance(depends_on_raw, list) else [])
+                if str(x).strip()
+            ]
+            dependencies = [x for x in dependencies if x]
+            provided_services = {
+                str(x).strip()
+                for x in (provides_raw if isinstance(provides_raw, list) else [])
+                if str(x).strip()
+            }
+            required_services = {
+                str(x).strip()
+                for x in (requires_raw if isinstance(requires_raw, list) else [])
+                if str(x).strip()
+            }
             issues = assess_plugin_security(
                 plugin_root=self.plugins_dir,
                 plugin_dir=folder,
@@ -537,8 +1564,27 @@ class PluginHost:
                     digest=compute_plugin_digest(folder),
                     quarantined=(pid in quarantined) or bool(issues),
                     security_issues=issues,
+                    compatibility_issues=compatibility_issues,
+                    metadata={
+                        "version": str(meta.get("version", "") or "").strip(),
+                        "plugin_api_version": plugin_api_version,
+                        "min_app_version": min_app_version,
+                        "max_app_version": max_app_version,
+                        "update_url": update_url,
+                        "homepage": homepage,
+                    },
+                    settings_schema=settings_schema if isinstance(settings_schema, dict) else {},
+                    dependencies=dependencies,
+                    provided_services=provided_services,
+                    required_services=required_services,
+                    failure_count=int(failure_counts.get(pid, 0) or 0),
                 )
             )
+        ids = {r.plugin_id for r in out}
+        for rec in out:
+            missing = [d for d in rec.dependencies if d and d not in ids]
+            for dep in missing:
+                rec.compatibility_issues.append(f"Missing dependency plugin: {dep}")
         return out
 
     def emit_event(self, event_name: str, **payload) -> None:
@@ -548,6 +1594,11 @@ class PluginHost:
             if "hooks" not in rec.permissions:
                 continue
             try:
+                now_iso = datetime.now().isoformat(timespec="seconds")
+                rec.last_run_at = now_iso
+                rec.last_event_at = now_iso
+                rec.hook_counts[event_name] = int(rec.hook_counts.get(event_name, 0) or 0) + 1
+                self.record_runtime_event(rec.plugin_id, f"hook:{event_name}", {"source": "app"})
                 event_payload = dict(payload)
                 if "ui" not in rec.permissions and "tab" in event_payload:
                     event_payload.pop("tab", None)
@@ -558,6 +1609,9 @@ class PluginHost:
                 if callable(handler):
                     handler(dict(event_payload))
             except Exception as exc:  # noqa: BLE001
+                rec.failure_count = self._record_plugin_failure(rec.plugin_id, f"hook:{event_name}:{exc}")
+                rec.last_error = str(exc)
+                rec.last_error_at = datetime.now().isoformat(timespec="seconds")
                 self.window.log_event("Error", f"Plugin hook error ({rec.plugin_id}:{event_name}): {exc}")
 
     def _unload_record(self, rec: PluginRecord) -> None:
@@ -605,6 +1659,10 @@ class PluginHost:
         rec.instance = None
 
     def _unload_all(self) -> None:
+        self._service_registry = {}
+        self._command_registry = {}
+        self._job_registry = {}
+        self._plugin_logs = {}
         for rec in list(self.records):
             if rec.instance is not None:
                 self._unload_record(rec)
@@ -617,13 +1675,44 @@ class PluginHost:
         if startup and self._is_startup_safe_mode():
             self.window.show_status_message("Plugin startup safe mode is enabled.", 3000)
             return
-        for rec in self.records:
+        enabled_recs = [r for r in self.records if r.enabled and not r.security_issues and not r.compatibility_issues and not r.quarantined]
+        enabled_ids = {r.plugin_id for r in enabled_recs}
+        provided_by_plugin = {r.plugin_id: set(r.provided_services) for r in enabled_recs}
+        global_services = set()
+        for values in provided_by_plugin.values():
+            global_services.update(values)
+        for rec in enabled_recs:
+            unresolved_deps = [dep for dep in rec.dependencies if dep and dep not in enabled_ids]
+            if unresolved_deps:
+                rec.compatibility_issues.append(f"Disabled/missing dependency at runtime: {', '.join(sorted(unresolved_deps))}")
+            missing_services: list[str] = []
+            for req in sorted(rec.required_services):
+                if ":" in req:
+                    pid, name = req.split(":", 1)
+                    if name not in provided_by_plugin.get(pid, set()):
+                        missing_services.append(req)
+                else:
+                    if req not in global_services:
+                        missing_services.append(req)
+            if missing_services:
+                rec.compatibility_issues.append("Missing required service(s): " + ", ".join(missing_services))
+        try:
+            load_order = self._build_load_order([r for r in self.records if r.enabled])
+        except Exception as exc:
+            self.window.log_event("Error", f"Plugin dependency resolution failed: {exc}")
+            load_order = [r for r in self.records if r.enabled]
+            for rec in load_order:
+                rec.compatibility_issues.append(f"Dependency resolution warning: {exc}")
+        for rec in load_order:
             if not rec.enabled:
                 continue
             if rec.security_issues:
                 reason = "; ".join(rec.security_issues[:3])
                 self._quarantine_plugin(rec, reason)
                 self.window.show_status_message(f"Plugin blocked by policy: {rec.plugin_id}", 4200)
+                continue
+            if rec.compatibility_issues:
+                self.window.show_status_message(f"Plugin incompatible: {rec.plugin_id}", 4200)
                 continue
             if rec.quarantined:
                 self.window.log_event("Info", f"Skipping quarantined plugin: {rec.plugin_id}")
@@ -634,6 +1723,7 @@ class PluginHost:
                     continue
                 self._mark_trusted(rec)
             try:
+                self._apply_plugin_settings_schema(rec)
                 spec = importlib.util.spec_from_file_location(f"np_plugin_{rec.plugin_id}", rec.path / "plugin.py")
                 if spec is None or spec.loader is None:
                     continue
@@ -643,12 +1733,30 @@ class PluginHost:
                 if cls is None:
                     continue
                 rec.instance = cls(PluginAPI(self.window, rec))
+                rec.load_count = int(rec.load_count) + 1
+                rec.last_run_at = datetime.now().isoformat(timespec="seconds")
+                self._clear_plugin_failure(rec.plugin_id)
+                rec.failure_count = 0
+                self.record_runtime_event(rec.plugin_id, "load", {"count": rec.load_count})
                 on_load = getattr(rec.instance, "on_load", None)
                 if callable(on_load):
                     on_load()
             except Exception as exc:  # noqa: BLE001
-                self._quarantine_plugin(rec, str(exc))
-                self.window.show_status_message(f"Plugin quarantined: {rec.plugin_id}", 3500)
+                rec.failure_count = self._record_plugin_failure(rec.plugin_id, str(exc))
+                rec.last_error = str(exc)
+                rec.last_error_at = datetime.now().isoformat(timespec="seconds")
+                self.record_runtime_event(rec.plugin_id, "error", {"message": str(exc)})
+                if rec.failure_count >= self._max_failures_before_disable():
+                    self._quarantine_plugin(rec, f"{exc} (failure threshold reached: {rec.failure_count})")
+                    self.window.show_status_message(
+                        f"Plugin auto-disabled after repeated failures: {rec.plugin_id}",
+                        4200,
+                    )
+                else:
+                    self.window.show_status_message(
+                        f"Plugin load failed ({rec.plugin_id}) [{rec.failure_count}/{self._max_failures_before_disable()}]",
+                        3500,
+                    )
 
     def set_enabled(self, plugin_id: str, enabled: bool) -> None:
         ids = self._enabled()
@@ -659,6 +1767,13 @@ class PluginHost:
                     self.window,
                     "Plugin Blocked by Policy",
                     f"Plugin '{plugin_id}' violates security policy:\n- " + "\n- ".join(rec.security_issues[:6]),
+                )
+                return
+            if rec.compatibility_issues:
+                QMessageBox.warning(
+                    self.window,
+                    "Plugin Incompatible",
+                    f"Plugin '{plugin_id}' is incompatible:\n- " + "\n- ".join(rec.compatibility_issues[:6]),
                 )
                 return
             if rec.quarantined:
@@ -678,38 +1793,286 @@ class PluginHost:
             ids.discard(plugin_id)
         self._save_enabled(ids)
 
+    def export_plugin(self, plugin_id: str, output_zip: Path) -> Path:
+        rec = next((x for x in self.discover() if x.plugin_id == plugin_id), None)
+        if rec is None:
+            raise FileNotFoundError(f"Plugin not found: {plugin_id}")
+        output_zip.parent.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(output_zip, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            for child in rec.path.rglob("*"):
+                if not child.is_file():
+                    continue
+                if "__pycache__" in child.parts:
+                    continue
+                rel = child.relative_to(rec.path)
+                zf.write(child, arcname=f"{rec.plugin_id}/{rel.as_posix()}")
+        return output_zip
+
+    @staticmethod
+    def _normalize_plugin_id(value: str) -> str:
+        return re.sub(r"[^a-z0-9_.-]+", "_", str(value or "").strip().lower())
+
+    @staticmethod
+    def _valid_plugin_id(value: str) -> bool:
+        text = str(value or "").strip().lower()
+        if not text:
+            return False
+        if keyword.iskeyword(text):
+            return False
+        return bool(re.fullmatch(r"[a-z0-9][a-z0-9_.-]{1,63}", text))
+
+    def scaffold_plugin(
+        self,
+        *,
+        plugin_id: str,
+        name: str,
+        description: str = "",
+        permissions: set[str] | None = None,
+    ) -> Path:
+        allowed_permissions = {
+            "file",
+            "network",
+            "ai",
+            "ui",
+            "menu",
+            "toolbar",
+            "panel",
+            "background",
+            "hooks",
+        }
+        pid = self._normalize_plugin_id(plugin_id)
+        if not self._valid_plugin_id(pid):
+            raise ValueError("Invalid plugin id. Use [a-z0-9][a-z0-9_.-]{1,63}.")
+        perms = sorted({str(p).strip().lower() for p in (permissions or {"menu"}) if str(p).strip().lower() in allowed_permissions})
+        if not perms:
+            perms = ["menu"]
+        title = str(name or pid).strip() or pid
+        desc = str(description or "").strip()
+        plugin_dir = self.plugins_dir / pid
+        if plugin_dir.exists():
+            raise FileExistsError(f"Plugin folder already exists: {plugin_dir}")
+        plugin_dir.mkdir(parents=True, exist_ok=False)
+        manifest = {
+            "id": pid,
+            "name": title,
+            "version": "1.0.0",
+            "plugin_api_version": PLUGIN_API_VERSION,
+            "description": desc or "Plugin scaffold generated from Plugin Manager.",
+            "min_app_version": self.app_version,
+            "max_app_version": "",
+            "update_url": "",
+            "homepage": "",
+            "depends_on": [],
+            "provides_services": [],
+            "requires_services": [],
+            "settings_schema": {
+                "enabled": {"type": "bool", "default": True, "description": "Enable plugin behavior."}
+            },
+            "permissions": perms,
+        }
+        (plugin_dir / "plugin.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        sample_code = (
+            "class Plugin:\n"
+            "    def __init__(self, api) -> None:\n"
+            "        self.api = api\n\n"
+            "    def on_load(self) -> None:\n"
+            f"        self.api.notify(\"{title} loaded.\")\n"
+            "        self.api.add_menu_action(\n"
+            f"            \"Plugins/{title}\",\n"
+            "            \"Hello\",\n"
+            "            self.say_hello,\n"
+            "        )\n\n"
+            "    def say_hello(self) -> None:\n"
+            "        self.api.show_status(\"Hello from scaffold plugin.\", 1800)\n"
+        )
+        (plugin_dir / "plugin.py").write_text(sample_code, encoding="utf-8")
+        return plugin_dir
+
 
 class PluginManagerDialog(QDialog):
     def __init__(self, parent, host: PluginHost) -> None:
         super().__init__(parent)
         self.host = host
         self.setWindowTitle("Plugin Manager")
-        self.resize(700, 460)
+        self.resize(620, 460)
         v = QVBoxLayout(self)
-        self.list_widget = QListWidget(self)
-        v.addWidget(self.list_widget, 1)
-        hint = QLabel("Permission changes apply after Reload.", self)
-        v.addWidget(hint)
-        row = QHBoxLayout()
-        reload_btn = QPushButton("Reload", self)
-        clear_quarantine_btn = QPushButton("Clear Quarantine", self)
-        reset_perms_btn = QPushButton("Reset to requested defaults", self)
-        close_btn = QPushButton("Close", self)
-        row.addWidget(reload_btn)
-        row.addWidget(clear_quarantine_btn)
-        row.addWidget(reset_perms_btn)
-        row.addStretch(1)
-        row.addWidget(close_btn)
-        v.addLayout(row)
+        self.search_input = QLineEdit(self)
+        self.search_input.setPlaceholderText("Filter plugins by id, name, or permission...")
+        self.search_input.textChanged.connect(self._populate)
+        v.addWidget(self.search_input)
+        self._visible_plugin_ids: list[str] = []
+        self.unsafe_ui_bridge_check = QCheckBox(
+            "Allow unsafe plugin UI bridge (exposes raw app window/tab objects)",
+            self,
+        )
+        self.unsafe_ui_bridge_check.setChecked(bool(self.host.window.settings.get("plugin_allow_unsafe_ui_bridge", False)))
+        self.unsafe_ui_bridge_check.setToolTip(
+            "Disabled by default. Enable only for fully trusted internal plugins."
+        )
+        self.unsafe_ui_bridge_check.toggled.connect(self._toggle_unsafe_ui_bridge)
+        v.addWidget(self.unsafe_ui_bridge_check)
+        self.dev_repo_plugins_check: QCheckBox | None = None
+        if self.host.runtime_mode_label() == "development":
+            self.dev_repo_plugins_check = QCheckBox(
+                "Dev Mode: load plugins from ../plugins (repo folder)",
+                self,
+            )
+            self.dev_repo_plugins_check.setChecked(bool(self.host.window.settings.get("plugin_dev_use_repo_plugins", False)))
+            self.dev_repo_plugins_check.toggled.connect(self._toggle_dev_repo_plugins_source)
+            v.addWidget(self.dev_repo_plugins_check)
+        content_splitter = QSplitter(Qt.Orientation.Horizontal, self)
+        left_pane = QWidget(content_splitter)
+        left_layout = QVBoxLayout(left_pane)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        self.list_widget = QListWidget(left_pane)
+        self.list_widget.currentRowChanged.connect(lambda _idx: self._refresh_diagnostics())
+        left_layout.addWidget(self.list_widget, 1)
+        hint = QLabel("Permission changes apply after Reload.", left_pane)
+        left_layout.addWidget(hint)
+        right_pane = QWidget(content_splitter)
+        right_layout = QVBoxLayout(right_pane)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        diag_label = QLabel("Runtime Diagnostics", right_pane)
+        right_layout.addWidget(diag_label)
+        self.diagnostics_view = QTextEdit(right_pane)
+        self.diagnostics_view.setReadOnly(True)
+        right_layout.addWidget(self.diagnostics_view, 1)
+        content_splitter.addWidget(left_pane)
+        content_splitter.addWidget(right_pane)
+        content_splitter.setStretchFactor(0, 3)
+        content_splitter.setStretchFactor(1, 2)
+        v.addWidget(content_splitter, 1)
+        self._action_bar_layout = QVBoxLayout()
+        self._action_row_top = QHBoxLayout()
+        self._action_row_bottom = QHBoxLayout()
+        self._action_bar_layout.addLayout(self._action_row_top)
+        self._action_bar_layout.addLayout(self._action_row_bottom)
+        scaffold_btn = self._icon_button("document-new", "Scaffold Plugin")
+        inspect_btn = self._icon_button("edit-find", "Inspect Plugin Zip")
+        install_btn = self._icon_button("document-open", "Install Plugin Zip")
+        export_btn = self._icon_button("document-save", "Export Plugin")
+        export_diag_btn = self._icon_button("ai-citations", "Export Diagnostics")
+        export_logs_btn = self._icon_button("ai-changelog", "Export Logs")
+        reset_failures_btn = self._icon_button("collab-resolve", "Reset Failures")
+        retry_plugin_btn = self._icon_button("sync-horizontal", "Retry Plugin")
+        plugin_settings_btn = self._icon_button("language-define", "Plugin Settings")
+        update_btn = self._icon_button("sync-vertical", "Check Update")
+        update_all_btn = self._icon_button("sync-horizontal", "Check All Updates")
+        run_command_btn = self._icon_button("macro-run-multi", "Run Command")
+        diagnostics_btn = self._icon_button("document-list", "Refresh Diagnostics")
+        reload_btn = self._icon_button("sync-vertical", "Reload")
+        clear_quarantine_btn = self._icon_button("ai-clear", "Clear Quarantine")
+        reset_perms_btn = self._icon_button("collab-resolve", "Reset to requested defaults")
+        close_btn = self._icon_button("tab-close", "Close")
+        self._action_buttons: list[QToolButton] = [
+            scaffold_btn,
+            inspect_btn,
+            install_btn,
+            export_btn,
+            export_diag_btn,
+            export_logs_btn,
+            reset_failures_btn,
+            retry_plugin_btn,
+            plugin_settings_btn,
+            update_btn,
+            update_all_btn,
+            run_command_btn,
+            diagnostics_btn,
+            reload_btn,
+            clear_quarantine_btn,
+            reset_perms_btn,
+        ]
+        self._close_button = close_btn
+        v.addLayout(self._action_bar_layout)
+        self._relayout_action_buttons()
+        scaffold_btn.clicked.connect(self._scaffold_plugin)
+        inspect_btn.clicked.connect(self._inspect_plugin_zip)
+        install_btn.clicked.connect(self._install_plugin_zip)
+        export_btn.clicked.connect(self._export_plugin)
+        export_diag_btn.clicked.connect(self._export_plugin_diagnostics)
+        export_logs_btn.clicked.connect(self._export_plugin_logs)
+        reset_failures_btn.clicked.connect(self._reset_selected_plugin_failures)
+        retry_plugin_btn.clicked.connect(self._retry_selected_plugin)
+        plugin_settings_btn.clicked.connect(self._open_plugin_settings)
+        update_btn.clicked.connect(self._check_selected_plugin_update)
+        update_all_btn.clicked.connect(self._check_all_plugin_updates)
+        run_command_btn.clicked.connect(self._run_selected_command)
+        diagnostics_btn.clicked.connect(self._refresh_diagnostics)
         reload_btn.clicked.connect(self._reload)
         clear_quarantine_btn.clicked.connect(self._clear_quarantine)
         reset_perms_btn.clicked.connect(self._reset_permission_overrides)
         close_btn.clicked.connect(self.accept)
         self._populate()
 
+    def _icon_button(self, icon_name: str, tooltip: str) -> QToolButton:
+        btn = QToolButton(self)
+        btn.setAutoRaise(False)
+        btn.setToolTip(tooltip)
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setFixedSize(28, 28)
+        btn.setIconSize(btn.size() - QSize(10, 10))
+        window = self.host.window
+        icon = None
+        if hasattr(window, "_svg_icon"):
+            try:
+                icon = window._svg_icon(icon_name)
+            except Exception:
+                icon = None
+        if icon is not None:
+            btn.setIcon(icon)
+        return btn
+
+    def _clear_layout(self, layout: QHBoxLayout) -> None:
+        while layout.count():
+            item = layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.setParent(self)
+
+    def _relayout_action_buttons(self) -> None:
+        self._clear_layout(self._action_row_top)
+        self._clear_layout(self._action_row_bottom)
+        available = max(220, self.width() - 80)
+        per_button = 32
+        max_top = max(6, min(len(self._action_buttons), available // per_button))
+        if len(self._action_buttons) <= max_top:
+            top_items = list(self._action_buttons)
+            bottom_items: list[QToolButton] = []
+        else:
+            split = (len(self._action_buttons) + 1) // 2
+            top_items = self._action_buttons[:split]
+            bottom_items = self._action_buttons[split:]
+        for btn in top_items:
+            self._action_row_top.addWidget(btn)
+        self._action_row_top.addStretch(1)
+        self._action_row_top.addWidget(self._close_button)
+        if bottom_items:
+            for btn in bottom_items:
+                self._action_row_bottom.addWidget(btn)
+            self._action_row_bottom.addStretch(1)
+
+    def resizeEvent(self, event):  # type: ignore[override]
+        super().resizeEvent(event)
+        self._relayout_action_buttons()
+
     def _populate(self) -> None:
         self.list_widget.clear()
-        for rec in self.host.discover():
+        self._visible_plugin_ids = []
+        query = self.search_input.text().strip().lower()
+        records = self.host.discover()
+        for rec in records:
+            hay = " ".join(
+                [
+                    rec.plugin_id,
+                    rec.name,
+                    rec.description,
+                    " ".join(sorted(rec.permissions)),
+                    " ".join(sorted(rec.requested_permissions)),
+                ]
+            ).lower()
+            if query and query not in hay:
+                continue
+            self._visible_plugin_ids.append(rec.plugin_id)
             holder = QListWidgetItem(self.list_widget)
             item_widget = QWidget(self.list_widget)
             outer = QVBoxLayout(item_widget)
@@ -719,10 +2082,24 @@ class PluginManagerDialog(QDialog):
             check.setChecked(rec.enabled)
             if rec.security_issues:
                 state = "BLOCKED"
+            elif rec.compatibility_issues:
+                state = "INCOMPATIBLE"
             else:
-                state = "QUARANTINED" if rec.quarantined else "ok"
+                if rec.instance is not None:
+                    state = "LOADED"
+                else:
+                    state = "QUARANTINED" if rec.quarantined else "ok"
             requested = ", ".join(sorted(rec.requested_permissions)) or "none"
             effective = ", ".join(sorted(rec.permissions)) or "none"
+            meta_parts = []
+            if rec.metadata.get("version"):
+                meta_parts.append(f"ver: {rec.metadata.get('version')}")
+            if rec.metadata.get("plugin_api_version"):
+                meta_parts.append(f"api: {rec.metadata.get('plugin_api_version')}")
+            if rec.metadata.get("min_app_version") or rec.metadata.get("max_app_version"):
+                meta_parts.append(
+                    f"compat: {rec.metadata.get('min_app_version') or '-'}..{rec.metadata.get('max_app_version') or '-'}"
+                )
             details = (
                 (
                     f"{rec.description} | perms: {effective} | requested: {requested} | "
@@ -732,6 +2109,8 @@ class PluginManagerDialog(QDialog):
                 else (
                     f"{rec.description} | perms: {effective} | requested: {requested} | "
                     f"state: {state} | sha256: {rec.digest[:12]}..."
+                    + (f" | {' | '.join(meta_parts)}" if meta_parts else "")
+                    + (f" | compat_issue: {rec.compatibility_issues[0]}" if rec.compatibility_issues else "")
                 )
             )
             info = QLabel(
@@ -769,7 +2148,10 @@ class PluginManagerDialog(QDialog):
             self.list_widget.setItemWidget(holder, item_widget)
             if rec.security_issues:
                 check.setEnabled(False)
+            if rec.compatibility_issues:
+                check.setEnabled(False)
             check.toggled.connect(lambda val, pid=rec.plugin_id: self.host.set_enabled(pid, val))
+        self._refresh_diagnostics()
 
     def _reload(self) -> None:
         self.host.reload()
@@ -782,6 +2164,435 @@ class PluginManagerDialog(QDialog):
 
     def _reset_permission_overrides(self) -> None:
         self.host.reset_permission_overrides()
+        self._populate()
+
+    def _toggle_unsafe_ui_bridge(self, enabled: bool) -> None:
+        self.host.window.settings["plugin_allow_unsafe_ui_bridge"] = bool(enabled)
+        self.host.window.save_settings_to_disk()
+
+    def _toggle_dev_repo_plugins_source(self, enabled: bool) -> None:
+        if self.host.runtime_mode_label() != "development":
+            return
+        self.host.set_dev_plugins_source(bool(enabled))
+        source = "..\\plugins" if enabled else "AppData plugins folder"
+        self.host.window.show_status_message(f"Plugin source switched to: {source}", 3000)
+        self._populate()
+
+    def _scaffold_plugin(self) -> None:
+        pid, ok = QInputDialog.getText(self, "Scaffold Plugin", "Plugin id (lowercase, 2-64 chars):")
+        if not ok:
+            return
+        pid = str(pid or "").strip()
+        if not pid:
+            return
+        name, ok = QInputDialog.getText(self, "Scaffold Plugin", "Display name:")
+        if not ok:
+            return
+        if not str(name or "").strip():
+            name = pid
+        desc, ok = QInputDialog.getText(self, "Scaffold Plugin", "Description:")
+        if not ok:
+            return
+        perms_text, ok = QInputDialog.getText(
+            self,
+            "Scaffold Plugin",
+            "Permissions (comma-separated, default: menu):",
+            text="menu",
+        )
+        if not ok:
+            return
+        perms = {part.strip().lower() for part in str(perms_text or "").split(",") if part.strip()}
+        try:
+            path = self.host.scaffold_plugin(
+                plugin_id=pid,
+                name=str(name or pid),
+                description=str(desc or ""),
+                permissions=perms,
+            )
+        except Exception as exc:
+            QMessageBox.warning(self, "Scaffold Plugin", f"Could not create plugin:\n{exc}")
+            return
+        self.host.window.show_status_message(f"Plugin scaffold created: {path}", 3000)
+        self._populate()
+
+    def _selected_plugin_record(self) -> PluginRecord | None:
+        row = int(self.list_widget.currentRow())
+        if row < 0 or row >= len(self._visible_plugin_ids):
+            return None
+        pid = self._visible_plugin_ids[row]
+        rec = next((x for x in self.host.discover() if x.plugin_id == pid), None)
+        if rec is None:
+            return None
+        runtime = next((x for x in self.host.records if x.plugin_id == rec.plugin_id), None)
+        return runtime or rec
+
+    def _refresh_diagnostics(self) -> None:
+        rec = self._selected_plugin_record()
+        if rec is None:
+            self.diagnostics_view.setPlainText("Select a plugin to view runtime diagnostics.")
+            return
+        hooks = ", ".join(f"{k}={v}" for k, v in sorted(rec.hook_counts.items())) or "(none)"
+        lines = [
+            f"Plugin: {rec.name} ({rec.plugin_id})",
+            f"Description: {rec.description}",
+            f"Version: {rec.metadata.get('version', '') or '(unknown)'}",
+            f"Plugin API Version: {rec.metadata.get('plugin_api_version', '') or '(unknown)'}",
+            f"Supported Plugin API: {PLUGIN_API_VERSION}",
+            f"App Version: {self.host.app_version}",
+            f"Compatibility Range: min={rec.metadata.get('min_app_version', '') or '-'} max={rec.metadata.get('max_app_version', '') or '-'}",
+            f"Permissions: {', '.join(sorted(rec.permissions)) or 'none'}",
+            f"Requested Permissions: {', '.join(sorted(rec.requested_permissions)) or 'none'}",
+            f"Settings Schema Keys: {', '.join(sorted(rec.settings_schema.keys())) or '(none)'}",
+            f"Dependencies: {', '.join(sorted(rec.dependencies)) or '(none)'}",
+            f"Provides Services: {', '.join(sorted(rec.provided_services)) or '(none)'}",
+            f"Requires Services: {', '.join(sorted(rec.required_services)) or '(none)'}",
+            f"Enabled: {rec.enabled}",
+            f"Loaded: {rec.instance is not None}",
+            f"Failure Count: {rec.failure_count}",
+            f"Health Score: {self.host.plugin_health_score(rec)}/100",
+            f"Load Count: {rec.load_count}",
+            f"Last Run: {rec.last_run_at or '-'}",
+            f"Last Event: {rec.last_event_at or '-'}",
+            f"Last Error At: {rec.last_error_at or '-'}",
+            f"Last Error: {rec.last_error or '-'}",
+            f"Hook Counters: {hooks}",
+            f"Security Issues: {'; '.join(rec.security_issues) if rec.security_issues else '(none)'}",
+            f"Compatibility Issues: {'; '.join(rec.compatibility_issues) if rec.compatibility_issues else '(none)'}",
+            f"Update URL: {rec.metadata.get('update_url', '') or '-'}",
+            f"Homepage: {rec.metadata.get('homepage', '') or '-'}",
+            f"Runtime Event Entries: {len(rec.runtime_events)}",
+        ]
+        jobs = list(self.host._job_registry.get(rec.plugin_id, {}).values())[:20]
+        lines.append(f"Jobs Tracked: {len(jobs)}")
+        for j in jobs:
+            lines.append(
+                f"- {j.get('job_name', 'job')} ({j.get('job_id', '?')}) status={j.get('status', '?')} progress={j.get('progress', 0.0)}"
+            )
+        cmd_specs = self.host.list_plugin_commands(rec.plugin_id)
+        lines.append(f"Registered Commands: {len(cmd_specs)}")
+        if cmd_specs:
+            for cmd in cmd_specs[:20]:
+                lines.append(f"- {cmd.get('name')} :: {cmd.get('description', '')}")
+        if rec.runtime_events:
+            lines.append("Recent Runtime Events:")
+            for row in rec.runtime_events[-5:]:
+                lines.append(
+                    f"- {row.get('ts', '?')} | {row.get('event', '?')} | {json.dumps(row.get('payload', {}), ensure_ascii=True)}"
+                )
+        logs = self.host.plugin_logs(rec.plugin_id)
+        lines.append(f"Plugin Logs: {len(logs)}")
+        if logs:
+            lines.append("Recent Plugin Logs:")
+            for row in logs[-8:]:
+                lines.append(f"- {row.get('ts', '?')} [{row.get('level', 'INFO')}] {row.get('message', '')}")
+        self.diagnostics_view.setPlainText("\n".join(lines))
+
+    def _export_plugin(self) -> None:
+        rec = self._selected_plugin_record()
+        if rec is None:
+            QMessageBox.information(self, "Export Plugin", "Select a plugin first.")
+            return
+        default_name = f"{rec.plugin_id}-{rec.metadata.get('version', '') or '1.0.0'}.zip"
+        path, _ = QFileDialog.getSaveFileName(self, "Export Plugin", str(self.host.plugins_dir / default_name), "Zip Files (*.zip)")
+        if not path:
+            return
+        out = Path(path)
+        if out.suffix.lower() != ".zip":
+            out = out.with_suffix(".zip")
+        try:
+            self.host.export_plugin(rec.plugin_id, out)
+        except Exception as exc:
+            QMessageBox.warning(self, "Export Plugin", f"Failed to export plugin:\n{exc}")
+            return
+        self.host.window.show_status_message(f"Plugin exported: {out}", 3500)
+
+    def _run_selected_command(self) -> None:
+        rec = self._selected_plugin_record()
+        if rec is None:
+            QMessageBox.information(self, "Run Command", "Select a plugin first.")
+            return
+        commands = self.host.list_plugin_commands(rec.plugin_id)
+        if not commands:
+            QMessageBox.information(self, "Run Command", "Selected plugin has no registered commands.")
+            return
+        labels = [f"{c['name']} - {c.get('description', '')}".strip() for c in commands]
+        choice, ok = QInputDialog.getItem(self, "Run Command", "Command:", labels, 0, False)
+        if not ok or not choice:
+            return
+        selected_name = commands[labels.index(choice)]["name"]
+        args_text, ok = QInputDialog.getText(
+            self,
+            "Run Command",
+            "Args JSON object (optional):",
+            text="{}",
+        )
+        if not ok:
+            return
+        try:
+            args = json.loads(str(args_text or "{}").strip() or "{}")
+            if not isinstance(args, dict):
+                raise ValueError("Args must be a JSON object.")
+        except Exception as exc:
+            QMessageBox.warning(self, "Run Command", f"Invalid args JSON:\n{exc}")
+            return
+        try:
+            result = self.host.run_plugin_command(rec.plugin_id, selected_name, args)
+        except Exception as exc:
+            QMessageBox.warning(self, "Run Command", f"Command failed:\n{exc}")
+            return
+        if result is not None:
+            self.host.window.show_status_message(f"Command '{selected_name}' returned: {result}", 3000)
+        else:
+            self.host.window.show_status_message(f"Command '{selected_name}' executed.", 2500)
+        self._refresh_diagnostics()
+
+    def _inspect_plugin_zip(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(self, "Inspect Plugin Zip", str(self.host.plugins_dir), "Zip Files (*.zip)")
+        if not path:
+            return
+        try:
+            info = self.host.inspect_plugin_archive(Path(path))
+        except Exception as exc:
+            QMessageBox.warning(self, "Inspect Plugin Zip", f"Could not inspect archive:\n{exc}")
+            return
+        lines = [
+            f"Plugin ID: {info.get('plugin_id', '')}",
+            f"Name: {info.get('name', '')}",
+            f"Version: {info.get('version', '')}",
+            f"Requested permissions: {', '.join(info.get('requested_permissions', [])) or 'none'}",
+        ]
+        issues = list(info.get("issues", []) or [])
+        if issues:
+            lines.append("")
+            lines.append("Policy issues:")
+            lines.extend([f"- {x}" for x in issues[:12]])
+        else:
+            lines.append("")
+            lines.append("Policy issues: none")
+        QMessageBox.information(self, "Inspect Plugin Zip", "\n".join(lines))
+
+    def _install_plugin_zip(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(self, "Install Plugin from Zip", str(self.host.plugins_dir), "Zip Files (*.zip)")
+        if not path:
+            return
+        try:
+            installed = self.host.install_plugin_archive(Path(path))
+        except Exception as exc:
+            QMessageBox.warning(self, "Install Plugin", f"Failed to install plugin:\n{exc}")
+            return
+        self.host.window.show_status_message(f"Plugin installed: {installed.name}", 3200)
+        self._populate()
+
+    def _check_selected_plugin_update(self) -> None:
+        rec = self._selected_plugin_record()
+        if rec is None:
+            QMessageBox.information(self, "Check Update", "Select a plugin first.")
+            return
+        info = self.host.check_plugin_update(rec)
+        if info.get("error"):
+            QMessageBox.information(self, "Check Update", f"Update check failed:\n{info.get('error')}")
+            return
+        latest = str(info.get("latest_version", "") or "")
+        current = str(info.get("current_version", "") or "")
+        if bool(info.get("update_available", False)):
+            QMessageBox.information(
+                self,
+                "Check Update",
+                f"Update available for {rec.plugin_id}:\nCurrent: {current}\nLatest: {latest}\nURL: {info.get('update_url', '')}",
+            )
+        else:
+            QMessageBox.information(
+                self,
+                "Check Update",
+                f"No update available for {rec.plugin_id}.\nCurrent: {current}\nLatest: {latest or current}",
+            )
+
+    def _check_all_plugin_updates(self) -> None:
+        results = self.host.check_all_plugin_updates()
+        if not results:
+            QMessageBox.information(self, "Check All Updates", "No plugins found.")
+            return
+        lines = []
+        updates = 0
+        errors = 0
+        for row in results:
+            pid = str(row.get("plugin_id", "") or "")
+            cur = str(row.get("current_version", "") or "")
+            latest = str(row.get("latest_version", "") or "")
+            if row.get("error"):
+                errors += 1
+                lines.append(f"- {pid}: error -> {row.get('error')}")
+                continue
+            if bool(row.get("update_available", False)):
+                updates += 1
+                lines.append(f"- {pid}: UPDATE {cur} -> {latest}")
+            else:
+                lines.append(f"- {pid}: up-to-date ({cur})")
+        summary = f"Updates: {updates} | Errors: {errors} | Total: {len(results)}"
+        QMessageBox.information(self, "Check All Updates", summary + "\n\n" + "\n".join(lines[:40]))
+
+    def _export_plugin_diagnostics(self) -> None:
+        rec = self._selected_plugin_record()
+        if rec is None:
+            QMessageBox.information(self, "Export Diagnostics", "Select a plugin first.")
+            return
+        default_name = f"{rec.plugin_id}_diagnostics.json"
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Plugin Diagnostics",
+            str(self.host.plugins_dir / default_name),
+            "JSON Files (*.json)",
+        )
+        if not path:
+            return
+        out = Path(path)
+        if out.suffix.lower() != ".json":
+            out = out.with_suffix(".json")
+        snapshot = self.host.plugin_diagnostics_snapshot(rec)
+        try:
+            out.write_text(json.dumps(snapshot, indent=2), encoding="utf-8")
+        except Exception as exc:
+            QMessageBox.warning(self, "Export Diagnostics", f"Could not write diagnostics:\n{exc}")
+            return
+        self.host.window.show_status_message(f"Plugin diagnostics exported: {out}", 3200)
+
+    def _retry_selected_plugin(self) -> None:
+        rec = self._selected_plugin_record()
+        if rec is None:
+            QMessageBox.information(self, "Retry Plugin", "Select a plugin first.")
+            return
+        quarantined = self.host.window.settings.get("quarantined_plugins", [])
+        if isinstance(quarantined, list):
+            self.host.window.settings["quarantined_plugins"] = [x for x in quarantined if str(x) != rec.plugin_id]
+        self.host.reset_plugin_failure_count(rec.plugin_id)
+        enabled = self.host._enabled()
+        enabled.add(rec.plugin_id)
+        self.host._save_enabled(enabled)
+        self.host.reload()
+        self._populate()
+        self.host.window.show_status_message(f"Retried plugin: {rec.plugin_id}", 2500)
+
+    def _open_plugin_settings(self) -> None:
+        rec = self._selected_plugin_record()
+        if rec is None:
+            QMessageBox.information(self, "Plugin Settings", "Select a plugin first.")
+            return
+        schema = dict(rec.settings_schema or {})
+        if not schema:
+            QMessageBox.information(self, "Plugin Settings", "Selected plugin has no settings schema.")
+            return
+        cfg = self.host._plugin_config_map().get(rec.plugin_id, {})
+        if not isinstance(cfg, dict):
+            cfg = {}
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"Plugin Settings - {rec.name}")
+        form = QFormLayout(dlg)
+        editors: dict[str, tuple[str, QWidget]] = {}
+        for key in sorted(schema.keys()):
+            spec = schema.get(key, {})
+            if not isinstance(spec, dict):
+                continue
+            typ = str(spec.get("type", "str")).strip().lower()
+            label = str(spec.get("label", key) or key)
+            value = cfg.get(key, spec.get("default", ""))
+            if isinstance(spec.get("enum"), list) and spec.get("enum"):
+                combo = QComboBox(dlg)
+                enum_values = [str(x) for x in spec.get("enum", [])]
+                combo.addItems(enum_values)
+                current_text = str(value if value is not None else "")
+                idx = combo.findText(current_text)
+                if idx >= 0:
+                    combo.setCurrentIndex(idx)
+                editors[key] = ("enum", combo)
+                form.addRow(label + ":", combo)
+                continue
+            if typ in {"bool", "boolean"}:
+                check = QCheckBox(dlg)
+                check.setChecked(bool(value) if isinstance(value, bool) else str(value).strip().lower() in {"1", "true", "yes", "on"})
+                editors[key] = ("bool", check)
+                form.addRow(label + ":", check)
+            elif typ in {"int", "integer"}:
+                spin = QSpinBox(dlg)
+                spin.setRange(int(spec.get("min", -1000000)), int(spec.get("max", 1000000)))
+                try:
+                    spin.setValue(int(value))
+                except Exception:
+                    spin.setValue(int(spec.get("default", 0) or 0))
+                editors[key] = ("int", spin)
+                form.addRow(label + ":", spin)
+            elif typ in {"float", "number"}:
+                dspin = QDoubleSpinBox(dlg)
+                dspin.setRange(float(spec.get("min", -1000000.0)), float(spec.get("max", 1000000.0)))
+                dspin.setDecimals(6)
+                try:
+                    dspin.setValue(float(value))
+                except Exception:
+                    dspin.setValue(float(spec.get("default", 0.0) or 0.0))
+                editors[key] = ("float", dspin)
+                form.addRow(label + ":", dspin)
+            else:
+                edit = QLineEdit(dlg)
+                edit.setText(str(value if value is not None else ""))
+                editors[key] = ("str", edit)
+                form.addRow(label + ":", edit)
+        buttons = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel, Qt.Orientation.Horizontal, dlg)
+        form.addRow(buttons)
+        buttons.rejected.connect(dlg.reject)
+
+        def _save() -> None:
+            try:
+                for key, (kind, widget) in editors.items():
+                    if kind == "bool":
+                        value = bool(widget.isChecked()) if hasattr(widget, "isChecked") else False
+                    elif kind == "int":
+                        value = int(widget.value()) if hasattr(widget, "value") else 0
+                    elif kind == "float":
+                        value = float(widget.value()) if hasattr(widget, "value") else 0.0
+                    elif kind == "enum":
+                        value = str(widget.currentText()) if hasattr(widget, "currentText") else ""
+                    else:
+                        value = str(widget.text()) if hasattr(widget, "text") else ""
+                    self.host.set_plugin_config(rec.plugin_id, key, value)
+            except Exception as exc:
+                QMessageBox.warning(dlg, "Plugin Settings", f"Could not save settings:\n{exc}")
+                return
+            dlg.accept()
+
+        buttons.accepted.connect(_save)
+        dlg.exec()
+        self._refresh_diagnostics()
+
+    def _export_plugin_logs(self) -> None:
+        rec = self._selected_plugin_record()
+        if rec is None:
+            QMessageBox.information(self, "Export Logs", "Select a plugin first.")
+            return
+        logs = self.host.plugin_logs(rec.plugin_id)
+        if not logs:
+            QMessageBox.information(self, "Export Logs", "Selected plugin has no logs.")
+            return
+        default_name = f"{rec.plugin_id}_logs.txt"
+        path, _ = QFileDialog.getSaveFileName(self, "Export Plugin Logs", str(self.host.plugins_dir / default_name), "Text Files (*.txt)")
+        if not path:
+            return
+        out = Path(path)
+        if out.suffix.lower() != ".txt":
+            out = out.with_suffix(".txt")
+        lines = [f"{row.get('ts','?')} [{row.get('level','INFO')}] {row.get('message','')}" for row in logs]
+        try:
+            out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        except Exception as exc:
+            QMessageBox.warning(self, "Export Logs", f"Could not write logs:\n{exc}")
+            return
+        self.host.window.show_status_message(f"Plugin logs exported: {out}", 3000)
+
+    def _reset_selected_plugin_failures(self) -> None:
+        rec = self._selected_plugin_record()
+        if rec is None:
+            QMessageBox.information(self, "Reset Failures", "Select a plugin first.")
+            return
+        self.host.reset_plugin_failure_count(rec.plugin_id)
+        self.host.window.show_status_message(f"Reset failure count: {rec.plugin_id}", 2500)
         self._populate()
 
 

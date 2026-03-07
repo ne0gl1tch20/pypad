@@ -1,0 +1,7 @@
+﻿{
+  "id": "example_tab_cycle",
+  "name": "Example Tab Cycle",
+  "version": "1.0.0",
+  "description": "Cycles across tabs and reports current tab info using controller API.",
+  "permissions": ["ui", "menu", "background"]
+}

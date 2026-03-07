@@ -1,0 +1,7 @@
+﻿{
+  "id": "example_workspace_file_sampler",
+  "name": "Example Workspace File Sampler",
+  "version": "1.0.0",
+  "description": "Creates a random workspace file sample report.",
+  "permissions": ["file", "menu"]
+}

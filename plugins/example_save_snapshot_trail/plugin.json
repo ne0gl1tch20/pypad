@@ -1,0 +1,7 @@
+﻿{
+  "id": "example_save_snapshot_trail",
+  "name": "Example Save Snapshot Trail",
+  "version": "1.0.0",
+  "description": "Tracks recent save events and renders a quick report.",
+  "permissions": ["hooks", "file", "menu"]
+}

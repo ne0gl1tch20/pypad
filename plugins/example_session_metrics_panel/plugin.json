@@ -1,0 +1,7 @@
+﻿{
+  "id": "example_session_metrics_panel",
+  "name": "Example Session Metrics Panel",
+  "version": "1.0.0",
+  "description": "Simple dock panel showing session counters from hooks.",
+  "permissions": ["panel", "hooks", "background"]
+}

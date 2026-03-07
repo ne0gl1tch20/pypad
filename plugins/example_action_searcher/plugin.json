@@ -1,0 +1,7 @@
+﻿{
+  "id": "example_action_searcher",
+  "name": "Example Action Searcher",
+  "version": "1.0.0",
+  "description": "Finds actions by keyword and can trigger best match.",
+  "permissions": ["menu", "ui"]
+}

@@ -44,6 +44,48 @@ The format is based on Keep a Changelog, and this project uses Semantic Versioni
   - left pane library list (title/version)
   - right pane per-library metadata preview (license/summary/home page)
   - copy selected preview text action
+- Plugin system advanced feature pass:
+  - Plugin Manager upgrades:
+    - live filter/search by id/name/description/permissions
+    - `Scaffold Plugin` flow (creates `plugin.json` + `plugin.py`)
+    - unsafe UI bridge toggle
+    - one-click plugin export (`Export Plugin`)
+    - plugin zip inspect/install flows (`Inspect Plugin Zip`, `Install Plugin Zip`)
+    - plugin diagnostics/log export (`Export Diagnostics`, `Export Logs`)
+    - plugin retry/failure controls (`Retry Plugin`, `Reset Failures`)
+    - plugin update checks (`Check Update`, `Check All Updates`)
+    - command runner (`Run Command`) with JSON args
+    - per-plugin runtime diagnostics panel (status, hook counters, errors, last run/event, metadata)
+  - Manifest/compatibility metadata support:
+    - `version`, `plugin_api_version`
+    - `min_app_version`, `max_app_version`
+    - `update_url`, `homepage`
+    - `settings_schema`
+    - `depends_on`, `provides_services`, `requires_services`
+  - Plugin API expansion:
+    - config/schema helpers: `plugin_config_schema`, `plugin_config_get`, `plugin_config_set`
+    - runtime telemetry hooks: `log_metric`, `emit_runtime_event`
+    - service contracts: `register_service`, `get_service`
+    - command contracts: `register_command`, `run_command`
+    - background jobs: `start_job`, `cancel_job`, `job_status`
+    - structured plugin logs: `log(level, message)`
+  - Host/runtime capabilities:
+    - dependency-aware load ordering with cycle/missing-dependency detection
+    - plugin API version compatibility enforcement
+    - typed plugin-config defaulting/coercion from `settings_schema`
+    - service registry and required-service resolution checks
+    - command registry/list/execute pipeline
+    - plugin runtime event bus and capped diagnostics event history
+    - background job registry (status/progress/cancel/error lifecycle tracking)
+    - plugin health scoring and failure-threshold auto-disable containment
+    - archive inspect + policy dry-run path prior to install
+    - per-plugin diagnostics JSON snapshot export support
+- New example plugin pack additions in `plugins/` to demonstrate advanced controller-first patterns:
+  - action flows: `example_action_runner`, `example_action_macro`, `example_action_bookmarks`, `example_action_searcher`
+  - workspace/reporting: `example_workspace_inspector`, `example_workspace_report`, `example_workspace_todo_index`, `example_workspace_file_sampler`
+  - text/edit workflows: `example_word_tools`, `example_selection_tools`, `example_selection_case_cycle`, `example_quick_insert`, `example_file_rotator`
+  - hooks/state/telemetry: `example_hook_logger`, `example_save_guard`, `example_save_snapshot_trail`, `example_tab_cycle`, `example_tab_health`, `example_session_metrics_panel`, `example_session_notes`
+  - AI/network/helpers: `example_ai_commit_message`, `example_hello_network`, `example_auto_tagger`
 
 ### Changed
 - HTML export now auto-detects markdown syntax and renders markdown as structured HTML elements during export.
@@ -67,6 +109,7 @@ The format is based on Keep a Changelog, and this project uses Semantic Versioni
 - Tab strip layout compactness improved for more editor vertical space:
   - reduced tab padding/heights
   - tighter tab accessory layout.
+- Plugin discovery now accepts UTF-8 BOM manifests (`utf-8-sig`) for broader editor/tool compatibility.
 
 ### Docs
 - Updated release metadata/docs for `1.7.9-prerelease`:
@@ -76,6 +119,28 @@ The format is based on Keep a Changelog, and this project uses Semantic Versioni
   - `APP_SUMMARY.md`
   - `CONTEXT_SUMMARY.md`
   - `CHANGELOG.md` (strict Scintilla parity and notification contract updates)
+- Plugin docs expanded and aligned with runtime:
+  - `docs/plugins.md`
+  - `docs/plugin_api.md`
+  - added example map and advanced manifest/API sections (compatibility, contracts, commands, jobs, diagnostics, updates, failure management)
+
+### Tests
+- Plugin-system hardening tests added/expanded:
+  - `tests/test_plugin_system_contracts.py`
+  - `tests/test_advanced_features.py` import path fix + compatibility with feature module layout
+  - coverage now includes:
+    - PluginAPI contract checks
+    - example plugin discovery/smoke load behavior
+    - scaffold + export flows
+    - manifest compatibility gating (app version + plugin API version)
+    - typed settings schema coercion/defaulting
+    - runtime event logging
+    - service contract resolution
+    - command registry/list/run behavior
+    - background job lifecycle status/cancel checks
+    - plugin archive inspect/install flows
+    - plugin health score and failure counter behavior
+    - update metadata checks (`update_url`) and diagnostics snapshot shape
 
 ### Fixed
 - Startup crash in Search Results theming caused by missing token attributes (`button_text`, `button_hover_bg`) now resolved using valid UI theme tokens.

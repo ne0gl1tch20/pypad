@@ -283,6 +283,7 @@ def migrate_settings(settings: dict) -> dict:
         0,
         15000,
     )
+    current["plugin_allow_unsafe_ui_bridge"] = coerce_bool(current.get("plugin_allow_unsafe_ui_bridge", False), False)
     current["status_show_position"] = coerce_bool(current.get("status_show_position", True), True)
     current["status_show_zoom"] = coerce_bool(current.get("status_show_zoom", True), True)
     current["status_show_eol"] = coerce_bool(current.get("status_show_eol", True), True)

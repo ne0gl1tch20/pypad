@@ -10,6 +10,7 @@ class Plugin:
         self.api.notify("Example Word Tools loaded.")
         self.api.add_menu_action("Plugins/Word Tools", "Uppercase Document", self.uppercase_document, "Ctrl+Alt+U")
         self.api.add_menu_action("Plugins/Word Tools", "Summarize with AI", self.summarize_document_with_ai)
+        self.api.add_menu_action("Plugins/Word Tools", "Show Action Count", self.show_action_count)
         self.api.add_toolbar_action("Main", "Uppercase", self.uppercase_document)
         panel = QWidget()
         layout = QVBoxLayout(panel)
@@ -28,7 +29,9 @@ class Plugin:
     def uppercase_document(self) -> None:
         text = self.api.current_text()
         self.api.replace_text(text.upper())
-        self.api.notify("Document converted to uppercase.")
+        runs = int(self.api.plugin_state_get("uppercase_runs", 0) or 0) + 1
+        self.api.plugin_state_set("uppercase_runs", runs)
+        self.api.notify(f"Document converted to uppercase. Runs: {runs}")
 
     def summarize_document_with_ai(self) -> None:
         text = self.api.current_text().strip()
@@ -44,3 +47,7 @@ class Plugin:
         text = self.api.current_text()
         words = len([w for w in text.split() if w.strip()])
         self.stats_label.setText(f"Words: {words} | Chars: {len(text)}")
+
+    def show_action_count(self) -> None:
+        actions = self.api.list_actions()
+        self.api.show_status(f"Controller sees {len(actions)} actions.", 2200)

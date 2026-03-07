@@ -1,0 +1,7 @@
+﻿{
+  "id": "example_save_guard",
+  "name": "Example Save Guard",
+  "version": "1.0.0",
+  "description": "Warns on save if risky content patterns are detected.",
+  "permissions": ["hooks", "menu"]
+}

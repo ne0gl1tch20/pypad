@@ -1,0 +1,7 @@
+﻿{
+  "id": "example_workspace_report",
+  "name": "Example Workspace Report",
+  "version": "1.0.0",
+  "description": "Generates a simple workspace snapshot report in a new tab.",
+  "permissions": ["file", "menu"]
+}
