@@ -1017,6 +1017,32 @@ class ScintillaCompatPhase1Tests(unittest.TestCase):
         self.assertEqual(ed.SendScintilla(ed.SCI_GETVSCROLLBAR), 0)
         self.assertEqual(ed.SendScintilla(ed.SCI_SETFOCUS, 1), 1)
 
+    def test_send_scintilla_engine_state_bank_has_500_plus_variables(self) -> None:
+        ed = ScintillaCompatEditor()
+        self.assertGreaterEqual(len(ed._engine_state.variables), 500)
+        self.assertEqual(ed.SendScintilla(ed.SCI_SETENGINEVAR, 0, 7), 7)
+        self.assertEqual(ed.SendScintilla(ed.SCI_GETENGINEVAR, 0), 7)
+        self.assertEqual(ed.SendScintilla(ed.SCI_SETENGINEVAR, 511, 123456), 123456)
+        self.assertEqual(ed.SendScintilla(ed.SCI_GETENGINEVAR, 511), 123456)
+        self.assertEqual(ed.SendScintilla(ed.SCI_SETENGINEVAR, 512, 1), -1)
+
+    def test_send_scintilla_engine_toggle_channel_and_checksum_logic(self) -> None:
+        ed = ScintillaCompatEditor()
+        self.assertEqual(ed.SendScintilla(ed.SCI_GETENGINEGENERATION), 0)
+        self.assertEqual(ed.SendScintilla(ed.SCI_SETENGINETOGGLE, 5, 1), 1)
+        self.assertEqual(ed.SendScintilla(ed.SCI_GETENGINETOGGLE, 5), 1)
+        self.assertEqual(ed.SendScintilla(ed.SCI_SETENGINECHANNEL, 3, 44), 44)
+        self.assertEqual(ed.SendScintilla(ed.SCI_GETENGINECHANNEL, 3), 44)
+        self.assertGreater(ed.SendScintilla(ed.SCI_GETENGINEGENERATION), 0)
+        checksum_before = ed.SendScintilla(ed.SCI_GETENGINECHECKSUM, 3)
+        self.assertGreaterEqual(checksum_before, 0)
+        ed.SendScintilla(ed.SCI_SETENGINEVAR, 3, 200)
+        checksum_after = ed.SendScintilla(ed.SCI_GETENGINECHECKSUM, 3)
+        self.assertNotEqual(checksum_after, checksum_before)
+        self.assertEqual(ed.SendScintilla(ed.SCI_RESETENGINESTATE), 1)
+        self.assertEqual(ed.SendScintilla(ed.SCI_GETENGINEGENERATION), 0)
+        self.assertEqual(ed.SendScintilla(ed.SCI_GETENGINEVAR, 3), 0)
+
     def test_editor_widget_scintilla_command_coverage_returns_true(self) -> None:
         ed = ScintillaCompatEditor()
         ed.setText("a\nb\nc\nd\n")

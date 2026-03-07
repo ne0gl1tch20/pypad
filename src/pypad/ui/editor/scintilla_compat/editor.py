@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 
 from PySide6.QtCore import QPoint, QRect, QSize, Qt, Signal, QTimer
@@ -8,7 +9,15 @@ from PySide6.QtCore import QStringListModel
 from PySide6.QtWidgets import QCompleter, QPlainTextEdit, QTextEdit, QWidget
 from PySide6.QtWidgets import QToolTip
 from PySide6.QtGui import QPalette
-from .models import ColumnBlock, FoldRegion, HotspotRange, IndicatorRange
+from .models import (
+    ColumnBlock,
+    FoldRegion,
+    HotspotRange,
+    IndicatorRange,
+    MultiSelectionRange,
+    ScintillaEngineState,
+    ScintillaNotification,
+)
 from .extra_state_handlers import handle_extra_state_command
 from .movement_edit_handlers import handle_movement_edit_command
 from .selection_undo_handlers import handle_selection_undo_command
@@ -37,6 +46,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
     marginClicked = Signal(int, int)
     indicatorClicked = Signal(int, int, str)
     indicatorHovered = Signal(int, int, str)
+    scnNotify = Signal(dict)
 
     WrapNone = 0
     WrapWord = 1
@@ -242,6 +252,35 @@ class ScintillaCompatEditor(QPlainTextEdit):
     SCI_SETVSCROLLBAR = 30172
     SCI_GETVSCROLLBAR = 30173
     SCI_SETFOCUS = 30174
+    SCI_CALLTIPSHOW = 2200
+    SCI_CALLTIPCANCEL = 2201
+    SCI_AUTOCSHOW = 2100
+    SCI_AUTOCCANCEL = 2101
+    SCI_AUTOCACTIVE = 2102
+    SCI_ANNOTATIONSETTEXT = 2540
+    SCI_ANNOTATIONGETTEXT = 2541
+    SCI_ANNOTATIONCLEARALL = 2547
+    SCI_MARKERDEFINE = 2040
+    SCI_MARKERADD = 2043
+    SCI_MARKERDELETE = 2044
+    SCI_MARKERDELETEALL = 2045
+    SCI_MARKERSETBACK = 2042
+    SCI_SETFOLDFLAGS = 2233
+    SCI_GETFOLDFLAGS = 2234
+    SCI_INDICGETSTYLE = 2083
+    SCI_INDICGETFORE = 2082
+    SCI_SETENGINEVAR = 31000
+    SCI_GETENGINEVAR = 31001
+    SCI_SETENGINETOGGLE = 31002
+    SCI_GETENGINETOGGLE = 31003
+    SCI_SETENGINECHANNEL = 31004
+    SCI_GETENGINECHANNEL = 31005
+    SCI_RESETENGINESTATE = 31006
+    SCI_GETENGINECHECKSUM = 31007
+    SCI_GETENGINEGENERATION = 31008
+    SCI_ENGINESTATESNAPSHOT = 31009
+    SCI_ENGINESTATEIMPORT = 31010
+    SCI_ENGINESTATEDIFF = 31011
     SCI_SETCARETFORE = 2069
     SCI_GETCARETFORE = 2137
     SCI_SETCARETSTYLE = 2512
@@ -392,6 +431,12 @@ class ScintillaCompatEditor(QPlainTextEdit):
     SCFIND_WHOLEWORD = 0x0002
     SCFIND_WORDSTART = 0x00100000
     SCFIND_REGEXP = 0x00200000
+    SCN_MODIFIED = "SCN_MODIFIED"
+    SCN_UPDATEUI = "SCN_UPDATEUI"
+    SCN_MARGINCLICK = "SCN_MARGINCLICK"
+    SCN_DWELLSTART = "SCN_DWELLSTART"
+    SCN_DWELLEND = "SCN_DWELLEND"
+    SCN_CHARADDED = "SCN_CHARADDED"
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -533,11 +578,23 @@ class ScintillaCompatEditor(QPlainTextEdit):
         self._search_flags = 0
         self._last_regex_match = None
         self._main_selection_index = 0
+        self._selection_ranges: list[MultiSelectionRange] = []
+        self._fold_flags = 0
+        self._notification_log: list[ScintillaNotification] = []
+        self._last_snapshot_json = ""
+        self._last_diff_json = ""
+        self._last_dwell_pos = -1
+        self._dwell_timer = QTimer(self)
+        self._dwell_timer.setSingleShot(True)
+        self._dwell_timer.setInterval(max(50, self._mouse_dwell_time_ms))
+        self._dwell_timer.timeout.connect(self._emit_dwell_start)
+        self._engine_state = ScintillaEngineState.create_default()
         self._rebuild_pending = False
         self._rebuild_timer = QTimer(self)
         self._rebuild_timer.setSingleShot(True)
         self._rebuild_timer.setInterval(12)
         self._rebuild_timer.timeout.connect(self._flush_deferred_rebuild)
+        self._named_dispatch = self._build_named_dispatch()
 
         self._margin = _MarginArea(self)
         self.blockCountChanged.connect(self._update_margin_width)
@@ -1081,24 +1138,246 @@ class ScintillaCompatEditor(QPlainTextEdit):
             self._refresh_visibility()
         return changed
 
+    def _engine_touch(self, slot: int, value: int) -> None:
+        state = self._engine_state
+        state.generation += 1
+        checksum_slot = int(slot) % len(state.checksums)
+        state.checksums[checksum_slot] = (
+            ((state.checksums[checksum_slot] << 5) - state.checksums[checksum_slot])
+            ^ (int(value) & 0xFFFFFFFF)
+            ^ state.generation
+        ) & 0x7FFFFFFF
+
+    def _engine_set_var(self, slot: int, value: int) -> int:
+        state = self._engine_state
+        if slot < 0 or slot >= len(state.variables):
+            return -1
+        masked = int(value) & 0xFFFFFFFF
+        state.variables[slot] = masked
+        # Mirror values into channel lanes to simulate compact cross-subsystem state flow.
+        if state.channels:
+            channel_slot = slot % len(state.channels)
+            state.channels[channel_slot] = (state.channels[channel_slot] + masked) & 0xFFFFFFFF
+        self._engine_touch(slot, masked)
+        return masked
+
+    def _engine_get_var(self, slot: int) -> int:
+        state = self._engine_state
+        if slot < 0 or slot >= len(state.variables):
+            return -1
+        return int(state.variables[slot])
+
+    def _engine_set_toggle(self, slot: int, value: int) -> int:
+        state = self._engine_state
+        if slot < 0 or slot >= len(state.toggles):
+            return -1
+        flag = bool(int(value))
+        state.toggles[slot] = flag
+        self._engine_touch(slot, 1 if flag else 0)
+        return 1 if flag else 0
+
+    def _engine_get_toggle(self, slot: int) -> int:
+        state = self._engine_state
+        if slot < 0 or slot >= len(state.toggles):
+            return -1
+        return 1 if state.toggles[slot] else 0
+
+    def _engine_set_channel(self, slot: int, value: int) -> int:
+        state = self._engine_state
+        if slot < 0 or slot >= len(state.channels):
+            return -1
+        state.channels[slot] = int(value) & 0xFFFFFFFF
+        self._engine_touch(slot, state.channels[slot])
+        return int(state.channels[slot])
+
+    def _engine_get_channel(self, slot: int) -> int:
+        state = self._engine_state
+        if slot < 0 or slot >= len(state.channels):
+            return -1
+        return int(state.channels[slot])
+
+    def _engine_reset_state(self) -> int:
+        self._engine_state = ScintillaEngineState.create_default()
+        return 1
+
+    def _engine_snapshot(self) -> str:
+        state = self._engine_state
+        payload = {
+            "generation": int(state.generation),
+            "variables": list(state.variables),
+            "toggles": [1 if v else 0 for v in state.toggles],
+            "channels": list(state.channels),
+            "checksums": list(state.checksums),
+            "selection_count": len(self._selection_ranges),
+        }
+        text = json.dumps(payload, separators=(",", ":"), sort_keys=True)
+        self._last_snapshot_json = text
+        return text
+
+    def _engine_import_snapshot(self, payload: str) -> int:
+        try:
+            data = json.loads(str(payload or "{}"))
+        except Exception:
+            return 0
+        state = self._engine_state
+        for key, target in (
+            ("variables", state.variables),
+            ("toggles", state.toggles),
+            ("channels", state.channels),
+            ("checksums", state.checksums),
+        ):
+            values = data.get(key)
+            if not isinstance(values, list):
+                continue
+            limit = min(len(values), len(target))
+            for idx in range(limit):
+                val = values[idx]
+                if key == "toggles":
+                    target[idx] = bool(int(val))
+                else:
+                    target[idx] = int(val) & 0xFFFFFFFF
+        state.generation = max(0, int(data.get("generation", state.generation)))
+        return 1
+
+    def _engine_diff_snapshot(self, payload: str) -> str:
+        try:
+            other = json.loads(str(payload or "{}"))
+        except Exception:
+            other = {}
+        state = self._engine_state
+        diffs: dict[str, int] = {}
+        for key, current in (
+            ("variables", state.variables),
+            ("toggles", [1 if v else 0 for v in state.toggles]),
+            ("channels", state.channels),
+            ("checksums", state.checksums),
+        ):
+            source = other.get(key, [])
+            if not isinstance(source, list):
+                source = []
+            change_count = 0
+            for idx, cur in enumerate(current):
+                old = int(source[idx]) if idx < len(source) else 0
+                if int(cur) != old:
+                    change_count += 1
+            diffs[key] = change_count
+        diffs["generation"] = int(state.generation) - int(other.get("generation", 0))
+        text = json.dumps(diffs, separators=(",", ":"), sort_keys=True)
+        self._last_diff_json = text
+        return text
+
+    def _build_named_dispatch(self) -> dict[str, tuple[int, object]]:
+        return {
+            "SCI_SETENGINEVAR": (2, self._named_engine_var),
+            "SCI_SETENGINETOGGLE": (2, self._named_engine_toggle),
+            "SCI_SETENGINECHANNEL": (2, self._named_engine_channel),
+            "SCI_RESETENGINESTATE": (0, self._named_engine_reset),
+            "SCI_HIDELINES": (2, self._named_hide_lines),
+            "SCI_SHOWLINES": (2, self._named_show_lines),
+            "SCI_SETSELECTIONMODE": (1, self._named_set_selection_mode),
+            "SCI_SETMULTIPLESELECTION": (1, self._named_set_multiple_selection),
+            "SCI_SETADDITIONALSELECTIONTYPING": (1, self._named_set_additional_selection_typing),
+            "SCI_SETMULTIPASTE": (1, self._named_set_multi_paste),
+        }
+
+    def _named_engine_var(self, *args: int) -> bool:
+        return self._engine_set_var(int(args[0]), int(args[1])) >= 0
+
+    def _named_engine_toggle(self, *args: int) -> bool:
+        return self._engine_set_toggle(int(args[0]), int(args[1])) >= 0
+
+    def _named_engine_channel(self, *args: int) -> bool:
+        return self._engine_set_channel(int(args[0]), int(args[1])) >= 0
+
+    def _named_engine_reset(self, *args: int) -> bool:
+        return self._engine_reset_state() == 1
+
+    def _named_hide_lines(self, *args: int) -> bool:
+        return self.hide_lines(int(args[0]), int(args[1]))
+
+    def _named_show_lines(self, *args: int) -> bool:
+        return self.show_lines(int(args[0]), int(args[1]))
+
+    def _named_set_selection_mode(self, *args: int) -> bool:
+        self.set_column_mode(int(args[0]) == self.SC_SEL_RECTANGLE)
+        return True
+
+    def _named_set_multiple_selection(self, *args: int) -> bool:
+        self.setMultipleSelectionEnabled(bool(args[0]))
+        return True
+
+    def _named_set_additional_selection_typing(self, *args: int) -> bool:
+        self.setAdditionalSelectionTyping(bool(args[0]))
+        return True
+
+    def _named_set_multi_paste(self, *args: int) -> bool:
+        self.setMultiPaste(bool(args[0]))
+        return True
+
+    def _emit_scn(self, code: str, *, position: int = -1, line: int = -1, text: str = "", value: int = 0, **metadata) -> None:
+        payload = {
+            "code": str(code),
+            "position": int(position),
+            "line": int(line),
+            "text": str(text),
+            "value": int(value),
+            "metadata": dict(metadata or {}),
+        }
+        self._notification_log.append(
+            ScintillaNotification(
+                code=payload["code"],
+                position=payload["position"],
+                line=payload["line"],
+                text=payload["text"],
+                value=payload["value"],
+                metadata=payload["metadata"],
+            )
+        )
+        self.scnNotify.emit(payload)
+
+    def _emit_dwell_start(self) -> None:
+        pos = int(self._last_dwell_pos)
+        if pos < 0:
+            return
+        line, _col = self._line_col_from_pos(pos)
+        self._emit_scn(self.SCN_DWELLSTART, position=pos, line=line)
+
+    def _sync_selection_ranges_from_editor(self) -> None:
+        cur = self.textCursor()
+        main = MultiSelectionRange(anchor=int(cur.anchor()), caret=int(cur.position()))
+        preserved: list[MultiSelectionRange] = []
+        existing = self._selection_ranges[1:] if len(self._selection_ranges) > 1 else []
+        if existing and len(existing) == len(self._additional_carets):
+            for idx, pos in enumerate(self._additional_carets):
+                prev = existing[idx]
+                if int(prev.caret) == int(pos):
+                    preserved.append(prev)
+                else:
+                    preserved.append(MultiSelectionRange(anchor=int(pos), caret=int(pos)))
+        else:
+            for pos in self._additional_carets:
+                preserved.append(MultiSelectionRange(anchor=int(pos), caret=int(pos)))
+        self._selection_ranges = [main, *preserved]
+
+    def _apply_selection_ranges_to_editor(self) -> None:
+        if not self._selection_ranges:
+            self._sync_selection_ranges_from_editor()
+            return
+        main = self._selection_ranges[min(max(0, self._main_selection_index), len(self._selection_ranges) - 1)]
+        c = self.textCursor()
+        c.setPosition(max(0, int(main.anchor)))
+        c.setPosition(max(0, int(main.caret)), QTextCursor.KeepAnchor)
+        self.setTextCursor(c)
+        self._additional_carets = [int(s.caret) for i, s in enumerate(self._selection_ranges) if i != self._main_selection_index]
+
     def send_scintilla_named(self, command_name: str, *args: int) -> bool:
         command = str(command_name).strip().upper()
-        if command == "SCI_HIDELINES" and len(args) >= 2:
-            return self.hide_lines(int(args[0]), int(args[1]))
-        if command == "SCI_SHOWLINES" and len(args) >= 2:
-            return self.show_lines(int(args[0]), int(args[1]))
-        if command == "SCI_SETSELECTIONMODE" and len(args) >= 1:
-            self.set_column_mode(int(args[0]) == self.SC_SEL_RECTANGLE)
-            return True
-        if command == "SCI_SETMULTIPLESELECTION" and len(args) >= 1:
-            self.setMultipleSelectionEnabled(bool(args[0]))
-            return True
-        if command == "SCI_SETADDITIONALSELECTIONTYPING" and len(args) >= 1:
-            self.setAdditionalSelectionTyping(bool(args[0]))
-            return True
-        if command == "SCI_SETMULTIPASTE" and len(args) >= 1:
-            self.setMultiPaste(bool(args[0]))
-            return True
+        entry = self._named_dispatch.get(command)
+        if entry is not None:
+            min_args, fn = entry
+            if len(args) < int(min_args):
+                return False
+            return bool(fn(*args))
         if command == "SCI_SETVIEWWS" and len(args) >= 1:
             self._view_whitespace = bool(int(args[0]))
             self.viewport().update()
@@ -1267,6 +1546,143 @@ class ScintillaCompatEditor(QPlainTextEdit):
             if len(args) < min_args:
                 return 0
             return 1 if self.send_scintilla_named(command_name, *args) else 0
+        if msg == int(self.SCI_SETENGINEVAR):
+            if len(args) < 2:
+                return -1
+            return int(self._engine_set_var(int(args[0]), int(args[1])))
+        if msg == int(self.SCI_GETENGINEVAR):
+            if not args:
+                return -1
+            return int(self._engine_get_var(int(args[0])))
+        if msg == int(self.SCI_SETENGINETOGGLE):
+            if len(args) < 2:
+                return -1
+            return int(self._engine_set_toggle(int(args[0]), int(args[1])))
+        if msg == int(self.SCI_GETENGINETOGGLE):
+            if not args:
+                return -1
+            return int(self._engine_get_toggle(int(args[0])))
+        if msg == int(self.SCI_SETENGINECHANNEL):
+            if len(args) < 2:
+                return -1
+            return int(self._engine_set_channel(int(args[0]), int(args[1])))
+        if msg == int(self.SCI_GETENGINECHANNEL):
+            if not args:
+                return -1
+            return int(self._engine_get_channel(int(args[0])))
+        if msg == int(self.SCI_RESETENGINESTATE):
+            return int(self._engine_reset_state())
+        if msg == int(self.SCI_GETENGINECHECKSUM):
+            slot = int(args[0]) if args else 0
+            if slot < 0 or slot >= len(self._engine_state.checksums):
+                return -1
+            return int(self._engine_state.checksums[slot])
+        if msg == int(self.SCI_GETENGINEGENERATION):
+            return int(self._engine_state.generation)
+        if msg == int(self.SCI_ENGINESTATESNAPSHOT):
+            snapshot = self._engine_snapshot()
+            if args:
+                self._write_scintilla_text_target(args[0], snapshot)
+            return int(len(snapshot))
+        if msg == int(self.SCI_ENGINESTATEIMPORT):
+            if len(args) >= 2 and isinstance(args[0], int):
+                payload = self._read_scintilla_text_arg(args[1], int(args[0]))
+            elif args:
+                payload = self._read_scintilla_text_arg(args[0], len(self.toPlainText()))
+            else:
+                payload = ""
+            return int(self._engine_import_snapshot(payload))
+        if msg == int(self.SCI_ENGINESTATEDIFF):
+            if len(args) >= 2 and isinstance(args[0], int):
+                payload = self._read_scintilla_text_arg(args[1], int(args[0]))
+            elif args:
+                payload = self._read_scintilla_text_arg(args[0], len(self.toPlainText()))
+            else:
+                payload = ""
+            diff = self._engine_diff_snapshot(payload)
+            if len(args) >= 3:
+                self._write_scintilla_text_target(args[2], diff)
+            return int(len(diff))
+        if msg == int(self.SCI_CALLTIPSHOW):
+            if len(args) >= 2:
+                text = self._read_scintilla_text_arg(args[1], int(args[0]))
+            else:
+                text = ""
+            pos = int(self.textCursor().position())
+            self.callTipShow(pos, text)
+            return 1
+        if msg == int(self.SCI_CALLTIPCANCEL):
+            self.callTipCancel()
+            return 1
+        if msg == int(self.SCI_AUTOCSHOW):
+            prefix_len = max(0, int(args[0]) if args else 0)
+            text = self._read_scintilla_text_arg(args[1], int(args[0])) if len(args) >= 2 else ""
+            words = [w.strip() for w in str(text).split(" ") if w.strip()]
+            if words:
+                self.set_auto_completion_words(words)
+                start, end = self._current_word_span()
+                if prefix_len == 0 or (end - start) >= prefix_len:
+                    self._invoke_completion(force=True)
+            return 1
+        if msg == int(self.SCI_AUTOCCANCEL):
+            self._completer.popup().hide()
+            return 1
+        if msg == int(self.SCI_AUTOCACTIVE):
+            return 1 if self._completer.popup().isVisible() else 0
+        if msg == int(self.SCI_ANNOTATIONSETTEXT):
+            if len(args) >= 2:
+                line = int(args[0])
+                text = self._read_scintilla_text_arg(args[1], len(self.toPlainText()))
+                self.annotationSetText(line, text)
+                return 1
+            return 0
+        if msg == int(self.SCI_ANNOTATIONGETTEXT):
+            line = int(args[0]) if args else 0
+            text = str(self._annotations.get(max(0, line), ""))
+            if len(args) >= 2:
+                self._write_scintilla_text_target(args[1], text)
+            return len(text)
+        if msg == int(self.SCI_ANNOTATIONCLEARALL):
+            self.annotationClearAll()
+            return 1
+        if msg == int(self.SCI_MARKERDEFINE):
+            symbol = int(args[0]) if args else self.Circle
+            return int(self.markerDefine(symbol))
+        if msg == int(self.SCI_MARKERADD):
+            if len(args) < 2:
+                return -1
+            line = int(args[0])
+            marker_id = int(args[1])
+            self.markerAdd(line, marker_id)
+            return marker_id
+        if msg == int(self.SCI_MARKERDELETE):
+            if len(args) < 2:
+                return 0
+            self.markerDelete(int(args[0]), int(args[1]))
+            return 1
+        if msg == int(self.SCI_MARKERDELETEALL):
+            marker_id = int(args[0]) if args else 0
+            self.markerDeleteAll(marker_id)
+            return 1
+        if msg == int(self.SCI_MARKERSETBACK):
+            if len(args) < 2:
+                return 0
+            marker_id = int(args[0])
+            color = int(args[1])
+            self.setMarkerBackgroundColor(self._qcolor_from_scintilla_rgb(color), marker_id)
+            return 1
+        if msg == int(self.SCI_SETFOLDFLAGS):
+            self._fold_flags = int(args[0]) if args else 0
+            return int(self._fold_flags)
+        if msg == int(self.SCI_GETFOLDFLAGS):
+            return int(self._fold_flags)
+        if msg == int(self.SCI_INDICGETSTYLE):
+            idx = int(args[0]) if args else 0
+            return int(self._indicator_styles.get(idx, self.INDIC_PLAIN))
+        if msg == int(self.SCI_INDICGETFORE):
+            idx = int(args[0]) if args else 0
+            c = self._indicator_colors.get(idx, QColor("#f4d03f"))
+            return int(c.red()) | (int(c.green()) << 8) | (int(c.blue()) << 16)
         if msg == int(self.SCI_GETLINECOUNT):
             return max(1, int(self.blockCount()))
         if msg == int(self.SCI_GETTEXTLENGTH):
@@ -1762,9 +2178,8 @@ class ScintillaCompatEditor(QPlainTextEdit):
             c = self.textCursor()
             return int(max(c.selectionStart(), c.selectionEnd()))
         if msg == int(self.SCI_GETSELECTIONS):
-            if self._multiple_selection_enabled and self._additional_carets:
-                return int(len(self._additional_carets) + 1)
-            return 1
+            self._sync_selection_ranges_from_editor()
+            return int(max(1, len(self._selection_ranges)))
         if msg == int(self.SCI_GETMAINSELECTION):
             return int(self._coerce_main_selection_index(self._main_selection_index))
         if msg == int(self.SCI_SETMAINSELECTION):
@@ -2122,23 +2537,19 @@ class ScintillaCompatEditor(QPlainTextEdit):
         return int(p)
 
     def _selection_n_range(self, idx: int) -> tuple[int, int]:
+        self._sync_selection_ranges_from_editor()
         index = max(0, int(idx))
-        c = self.textCursor()
-        main = (int(min(c.selectionStart(), c.selectionEnd())), int(max(c.selectionStart(), c.selectionEnd())))
-        if index == 0:
-            return main
-        if not self._multiple_selection_enabled:
-            return main
-        extra_i = index - 1
-        if 0 <= extra_i < len(self._additional_carets):
-            p = int(self._additional_carets[extra_i])
-            return p, p
-        return main
+        if 0 <= index < len(self._selection_ranges):
+            sel = self._selection_ranges[index]
+            return int(sel.start), int(sel.end)
+        if self._selection_ranges:
+            sel = self._selection_ranges[0]
+            return int(sel.start), int(sel.end)
+        return 0, 0
 
     def _coerce_main_selection_index(self, idx: int) -> int:
-        total = 1
-        if self._multiple_selection_enabled and self._additional_carets:
-            total = len(self._additional_carets) + 1
+        self._sync_selection_ranges_from_editor()
+        total = max(1, len(self._selection_ranges))
         return max(0, min(int(idx), max(0, total - 1)))
 
     def _rotate_main_selection(self) -> None:
@@ -2151,63 +2562,72 @@ class ScintillaCompatEditor(QPlainTextEdit):
         self._main_selection_index = (int(self._main_selection_index) + 1) % int(total)
 
     def _swap_main_anchor_caret(self) -> None:
+        self._sync_selection_ranges_from_editor()
         main_idx = self._coerce_main_selection_index(self._main_selection_index)
-        if main_idx != 0:
+        if not (0 <= main_idx < len(self._selection_ranges)):
             return
-        c = self.textCursor()
-        pos = int(c.position())
-        anc = int(c.anchor())
-        if pos == anc:
-            return
-        c.setPosition(pos)
-        c.setPosition(anc, QTextCursor.KeepAnchor)
-        self.setTextCursor(c)
+        sel = self._selection_ranges[main_idx]
+        self._selection_ranges[main_idx] = MultiSelectionRange(
+            anchor=int(sel.caret),
+            caret=int(sel.anchor),
+            virtual_space_anchor=int(sel.virtual_space_caret),
+            virtual_space_caret=int(sel.virtual_space_anchor),
+        )
+        self._apply_selection_ranges_to_editor()
 
     def _set_selection_n_boundary(self, idx: int, pos: int, *, is_start: bool) -> None:
+        self._sync_selection_ranges_from_editor()
         index = max(0, int(idx))
         p = max(0, min(int(pos), len(self.toPlainText())))
-        if index == 0:
-            c = self.textCursor()
-            other = c.selectionEnd() if is_start else c.selectionStart()
-            c.setPosition(p)
-            c.setPosition(max(0, min(int(other), len(self.toPlainText()))), QTextCursor.KeepAnchor)
-            self.setTextCursor(c)
-            return
-        if not self._multiple_selection_enabled:
-            return
-        extra_i = index - 1
-        if extra_i < 0:
-            return
-        while len(self._additional_carets) <= extra_i:
-            self._additional_carets.append(int(self.textCursor().position()))
-        self._additional_carets[extra_i] = p
+        while len(self._selection_ranges) <= index:
+            base = self._selection_ranges[0] if self._selection_ranges else MultiSelectionRange(anchor=0, caret=0)
+            self._selection_ranges.append(MultiSelectionRange(anchor=int(base.anchor), caret=int(base.caret)))
+        sel = self._selection_ranges[index]
+        if is_start:
+            if index > 0 and int(sel.anchor) == int(sel.caret):
+                self._selection_ranges[index] = MultiSelectionRange(anchor=p, caret=p)
+            else:
+                self._selection_ranges[index] = MultiSelectionRange(anchor=p, caret=int(sel.caret))
+        else:
+            if index > 0 and int(sel.anchor) == int(sel.caret):
+                self._selection_ranges[index] = MultiSelectionRange(anchor=p, caret=p)
+            else:
+                self._selection_ranges[index] = MultiSelectionRange(anchor=int(sel.anchor), caret=p)
+        self._apply_selection_ranges_to_editor()
         self.viewport().update()
 
     def _add_selection(self, *, caret: int, anchor: int) -> None:
-        # Compat model stores additional selections as carets; selection ranges are not fully tracked yet.
+        self._sync_selection_ranges_from_editor()
         self._multiple_selection_enabled = True
-        cp = int(caret)
-        if cp not in self._additional_carets and cp != int(self.textCursor().position()):
-            self._additional_carets.append(cp)
+        candidate = MultiSelectionRange(anchor=int(anchor), caret=int(caret))
+        if all(int(s.anchor) != int(candidate.anchor) or int(s.caret) != int(candidate.caret) for s in self._selection_ranges):
+            self._selection_ranges.append(candidate)
+        self._apply_selection_ranges_to_editor()
         self.viewport().update()
 
     def _drop_selection_n(self, idx: int) -> None:
+        self._sync_selection_ranges_from_editor()
         index = int(idx)
-        if index <= 0:
+        if index < 0:
             return
-        if not self._multiple_selection_enabled:
+        if len(self._selection_ranges) <= 1:
             return
-        extra_i = index - 1
-        if 0 <= extra_i < len(self._additional_carets):
-            del self._additional_carets[extra_i]
-        self._main_selection_index = self._coerce_main_selection_index(self._main_selection_index)
+        if 0 <= index < len(self._selection_ranges):
+            del self._selection_ranges[index]
+        total = max(1, len(self._selection_ranges))
+        self._main_selection_index = max(0, min(int(self._main_selection_index), total - 1))
+        self._apply_selection_ranges_to_editor()
         self.viewport().update()
 
     def _clear_additional_selections(self) -> None:
+        self._sync_selection_ranges_from_editor()
+        if self._selection_ranges:
+            self._selection_ranges = [self._selection_ranges[0]]
         self._additional_carets = []
         self._multiple_selection_enabled = False
         self._additional_selection_typing = False
         self._main_selection_index = 0
+        self._apply_selection_ranges_to_editor()
         self.viewport().update()
 
     def _style_at_pos(self, pos: int) -> int:
@@ -2216,6 +2636,43 @@ class ScintillaCompatEditor(QPlainTextEdit):
             if int(lo) <= p < int(hi):
                 return int(style_id)
         return 0
+
+    def _resolve_style_layers(self, pos: int) -> dict[str, object]:
+        p = max(0, min(int(pos), len(self.toPlainText())))
+        style_id = int(self._style_at_pos(p))
+        indicator_id = -1
+        indicator_color = None
+        for idx, ranges in self._indicator_ranges.items():
+            if any(int(r.start) <= p < int(r.end) for r in ranges):
+                indicator_id = int(idx)
+                indicator_color = self._indicator_colors.get(idx)
+                break
+        overlay_color = None
+        for channel_ranges in self._background_overlays.values():
+            for lo, hi, col in channel_ranges:
+                if int(lo) <= p < int(hi):
+                    overlay_color = col
+                    break
+            if overlay_color is not None:
+                break
+        hotspot_idx = self._hotspot_index_at_pos(p)
+        hotspot_active = hotspot_idx >= 0
+        effective_bg = overlay_color
+        if effective_bg is None and style_id in self._style_formats:
+            bg = self._style_formats[style_id].background()
+            if bg.style() != Qt.NoBrush:
+                effective_bg = bg.color()
+        if hotspot_active:
+            effective_bg = self._hotspot_active_back
+        return {
+            "style_id": style_id,
+            "indicator_id": indicator_id,
+            "indicator_color": indicator_color,
+            "overlay_color": overlay_color,
+            "selection_alpha": int(self._sel_alpha),
+            "hotspot_active": hotspot_active,
+            "effective_background": effective_bg,
+        }
 
     def _marker_mask_for_line(self, line: int) -> int:
         ln = max(0, int(line))
@@ -2497,9 +2954,11 @@ class ScintillaCompatEditor(QPlainTextEdit):
                 self.fold_line(line, expand=True)
             else:
                 self.fold_line(line, expand=False)
+            self._emit_scn(self.SCN_MARGINCLICK, line=line, value=margin_idx, folded=1)
             return
         if margin_idx >= 0 and self._margin_sensitive.get(margin_idx, False):
             self.marginClicked.emit(margin_idx, line)
+            self._emit_scn(self.SCN_MARGINCLICK, line=line, value=margin_idx, sensitive=1)
         self.setCursorPosition(line, 0)
         self.setFocus()
 
@@ -2531,6 +2990,9 @@ class ScintillaCompatEditor(QPlainTextEdit):
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:
+        self._last_dwell_pos = int(self.cursorForPosition(event.position().toPoint()).position())
+        self._dwell_timer.setInterval(max(50, int(self._mouse_dwell_time_ms)))
+        self._dwell_timer.start()
         if self._column_drag_active and self._column_drag_anchor is not None:
             cursor = self.cursorForPosition(event.position().toPoint())
             self._apply_column_drag(cursor.blockNumber(), cursor.columnNumber())
@@ -2566,6 +3028,9 @@ class ScintillaCompatEditor(QPlainTextEdit):
             self.viewport().update()
             return
         if event.button() == Qt.LeftButton:
+            if self._last_dwell_pos >= 0:
+                line, _col = self._line_col_from_pos(self._last_dwell_pos)
+                self._emit_scn(self.SCN_DWELLEND, position=self._last_dwell_pos, line=line)
             pos = int(self.cursorForPosition(event.position().toPoint()).position())
             idx = self._hotspot_index_at_pos(pos)
             if idx >= 0:
@@ -2582,6 +3047,11 @@ class ScintillaCompatEditor(QPlainTextEdit):
         super().mouseReleaseEvent(event)
 
     def keyPressEvent(self, event) -> None:
+        typed = event.text() if hasattr(event, "text") else ""
+        if typed and not (event.modifiers() & (Qt.ControlModifier | Qt.MetaModifier)):
+            cur_pos = int(self.textCursor().position())
+            line, _col = self._line_col_from_pos(cur_pos)
+            self._emit_scn(self.SCN_CHARADDED, position=cur_pos, line=line, text=typed, value=ord(typed[0]))
         if event.key() == Qt.Key_Escape:
             if self._completer.popup().isVisible():
                 self._completer.popup().hide()
@@ -2875,11 +3345,27 @@ class ScintillaCompatEditor(QPlainTextEdit):
             return ""
 
     def _on_text_changed(self) -> None:
+        self._sync_selection_ranges_from_editor()
+        c = self.textCursor()
+        self._emit_scn(
+            self.SCN_MODIFIED,
+            position=int(c.position()),
+            line=int(c.blockNumber()),
+            value=int(len(self.toPlainText())),
+        )
         self._rebuild_pending = True
         if not self._rebuild_timer.isActive():
             self._rebuild_timer.start()
 
     def _on_cursor_changed(self) -> None:
+        self._sync_selection_ranges_from_editor()
+        c = self.textCursor()
+        self._emit_scn(
+            self.SCN_UPDATEUI,
+            position=int(c.position()),
+            line=int(c.blockNumber()),
+            selections=len(self._selection_ranges),
+        )
         self._auto_brace_match()
         self._margin.update()
         self.viewport().update()
@@ -3376,7 +3862,8 @@ class ScintillaCompatEditor(QPlainTextEdit):
             current_line.format = line_fmt
             selections.append(current_line)
         doc_len = len(self.toPlainText())
-        for lo, hi, style_id in [*self._lexer_ranges, *self._style_ranges]:
+        ordered_style_ranges = sorted([*self._lexer_ranges, *self._style_ranges], key=lambda x: (int(x[0]), int(x[1]), int(x[2])))
+        for lo, hi, style_id in ordered_style_ranges:
             fmt = self._style_formats.get(style_id)
             if fmt is None:
                 continue
@@ -3386,7 +3873,8 @@ class ScintillaCompatEditor(QPlainTextEdit):
             sel.cursor.setPosition(max(0, min(hi, doc_len)), QTextCursor.KeepAnchor)
             sel.format = QTextCharFormat(fmt)
             selections.append(sel)
-        for indic_id, ranges in self._indicator_ranges.items():
+        for indic_id in sorted(self._indicator_ranges.keys()):
+            ranges = self._indicator_ranges.get(indic_id, [])
             color = self._indicator_colors.get(indic_id, QColor("#f4d03f"))
             style = int(self._indicator_styles.get(indic_id, 0))
             for idx, seg in enumerate(ranges):
@@ -3435,7 +3923,8 @@ class ScintillaCompatEditor(QPlainTextEdit):
             fmt.setFontUnderline(self._hotspot_underline)
             sel.format = fmt
             selections.append(sel)
-        for ranges in self._background_overlays.values():
+        for channel in sorted(self._background_overlays.keys()):
+            ranges = self._background_overlays.get(channel, [])
             for lo, hi, color in ranges:
                 sel = QTextEdit.ExtraSelection()
                 sel.cursor = self.textCursor()

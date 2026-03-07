@@ -1,0 +1,145 @@
+import os
+import random
+import sys
+import unittest
+from pathlib import Path
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
+from PySide6.QtWidgets import QApplication
+from PySide6.QtGui import QKeyEvent
+from PySide6.QtCore import Qt, QEvent
+
+from pypad.ui.editor.scintilla_compat import ScintillaCompatEditor
+
+
+class ScintillaCompatPhase2EngineTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.app = QApplication.instance() or QApplication([])
+
+    def test_notifications_modified_updateui_and_charadded(self) -> None:
+        ed = ScintillaCompatEditor()
+        events: list[dict] = []
+        ed.scnNotify.connect(events.append)
+        ed.setText("abc")
+        ed.SendScintilla(ed.SCI_GOTOPOS, 3)
+        ed.insertPlainText("d")
+        self.assertTrue(any(e.get("code") == ed.SCN_MODIFIED for e in events))
+        self.assertTrue(any(e.get("code") == ed.SCN_UPDATEUI for e in events))
+        ed.SendScintilla(ed.SCI_GOTOPOS, 4)
+        event = QKeyEvent(QEvent.KeyPress, Qt.Key_X, Qt.NoModifier, "x")
+        ed.keyPressEvent(event)
+        self.assertTrue(any(e.get("code") == ed.SCN_CHARADDED for e in events))
+
+    def test_engine_snapshot_import_and_diff_roundtrip(self) -> None:
+        ed = ScintillaCompatEditor()
+        ed.SendScintilla(ed.SCI_SETENGINEVAR, 10, 99)
+        ed.SendScintilla(ed.SCI_SETENGINETOGGLE, 2, 1)
+        holder: dict[str, str] = {}
+        snap_len = ed.SendScintilla(ed.SCI_ENGINESTATESNAPSHOT, holder)
+        self.assertGreater(snap_len, 10)
+        snap = holder.get("text", "")
+        ed.SendScintilla(ed.SCI_SETENGINEVAR, 10, 123)
+        diff_holder: dict[str, str] = {}
+        diff_len = ed.SendScintilla(ed.SCI_ENGINESTATEDIFF, snap_len, snap, diff_holder)
+        self.assertGreater(diff_len, 2)
+        self.assertIn("variables", diff_holder.get("text", ""))
+        self.assertEqual(ed.SendScintilla(ed.SCI_ENGINESTATEIMPORT, snap_len, snap), 1)
+        self.assertEqual(ed.SendScintilla(ed.SCI_GETENGINEVAR, 10), 99)
+
+    def test_multi_selection_fidelity_selection_boundaries(self) -> None:
+        ed = ScintillaCompatEditor()
+        ed.setText("alpha beta gamma")
+        ed.SendScintilla(ed.SCI_SETSELECTIONNSTART, 0, 0)
+        ed.SendScintilla(ed.SCI_SETSELECTIONNEND, 0, 5)
+        ed.SendScintilla(ed.SCI_ADDSELECTION, 10, 6)
+        self.assertEqual(ed.SendScintilla(ed.SCI_GETSELECTIONS), 2)
+        self.assertEqual(ed.SendScintilla(ed.SCI_GETSELECTIONNSTART, 0), 0)
+        self.assertEqual(ed.SendScintilla(ed.SCI_GETSELECTIONNEND, 0), 5)
+        self.assertEqual(ed.SendScintilla(ed.SCI_GETSELECTIONNSTART, 1), 6)
+        self.assertEqual(ed.SendScintilla(ed.SCI_GETSELECTIONNEND, 1), 10)
+        ed.SendScintilla(ed.SCI_DROPSELECTIONN, 1)
+        self.assertEqual(ed.SendScintilla(ed.SCI_GETSELECTIONS), 1)
+
+    def test_extended_scintilla_coverage_calltip_autoc_marker_annotation_indicator_foldflags(self) -> None:
+        ed = ScintillaCompatEditor()
+        ed.setText("one two")
+        self.assertEqual(ed.SendScintilla(ed.SCI_CALLTIPSHOW, 3, "tip"), 1)
+        self.assertEqual(ed.SendScintilla(ed.SCI_CALLTIPCANCEL), 1)
+        self.assertEqual(ed.SendScintilla(ed.SCI_AUTOCSHOW, 0, "one two"), 1)
+        self.assertIn(ed.SendScintilla(ed.SCI_AUTOCACTIVE), (0, 1))
+        self.assertEqual(ed.SendScintilla(ed.SCI_AUTOCCANCEL), 1)
+        self.assertEqual(ed.SendScintilla(ed.SCI_ANNOTATIONSETTEXT, 0, "note"), 1)
+        h: dict[str, str] = {}
+        self.assertEqual(ed.SendScintilla(ed.SCI_ANNOTATIONGETTEXT, 0, h), 4)
+        self.assertEqual(h.get("text"), "note")
+        self.assertEqual(ed.SendScintilla(ed.SCI_ANNOTATIONCLEARALL), 1)
+        marker_id = ed.SendScintilla(ed.SCI_MARKERDEFINE, ed.Circle)
+        self.assertGreaterEqual(marker_id, 1)
+        self.assertEqual(ed.SendScintilla(ed.SCI_MARKERADD, 0, marker_id), marker_id)
+        self.assertEqual(ed.SendScintilla(ed.SCI_MARKERSETBACK, marker_id, 0x112233), 1)
+        self.assertEqual(ed.SendScintilla(ed.SCI_SETFOLDFLAGS, 5), 5)
+        self.assertEqual(ed.SendScintilla(ed.SCI_GETFOLDFLAGS), 5)
+        self.assertEqual(ed.SendScintilla(ed.SCI_INDICSETSTYLE, 4, ed.INDIC_SQUIGGLE), 1)
+        self.assertEqual(ed.SendScintilla(ed.SCI_INDICSETFORE, 4, 0x223344), 1)
+        self.assertEqual(ed.SendScintilla(ed.SCI_INDICGETSTYLE, 4), ed.INDIC_SQUIGGLE)
+        self.assertEqual(ed.SendScintilla(ed.SCI_INDICGETFORE, 4), 0x223344)
+
+    def test_stress_fuzz_random_command_sequences_invariants(self) -> None:
+        ed = ScintillaCompatEditor()
+        rng = random.Random(1337)
+        ed.setText("seed text")
+        for _ in range(250):
+            op = rng.randint(0, 9)
+            if op == 0:
+                pos = rng.randint(0, len(ed.text()))
+                ed.SendScintilla(ed.SCI_GOTOPOS, pos)
+            elif op == 1:
+                s = rng.randint(0, len(ed.text()))
+                e = rng.randint(0, len(ed.text()))
+                ed.SendScintilla(ed.SCI_SETSEL, s, e)
+            elif op == 2:
+                ed.SendScintilla(ed.SCI_SETENGINEVAR, rng.randint(0, 511), rng.randint(0, 100000))
+            elif op == 3:
+                ed.SendScintilla(ed.SCI_SETENGINECHANNEL, rng.randint(0, 63), rng.randint(0, 100000))
+            elif op == 4:
+                ed.SendScintilla(ed.SCI_SETENGINETOGGLE, rng.randint(0, 127), rng.randint(0, 1))
+            elif op == 5:
+                ed.SendScintilla(ed.SCI_SETSTYLEBITS, rng.randint(0, 12))
+            elif op == 6:
+                ed.SendScintilla(ed.SCI_SETTARGETSTART, rng.randint(0, len(ed.text())))
+                ed.SendScintilla(ed.SCI_SETTARGETEND, rng.randint(0, len(ed.text())))
+                ed.SendScintilla(ed.SCI_SEARCHINTARGET, 4, "text")
+            elif op == 7:
+                ed.SendScintilla(ed.SCI_SETFIRSTVISIBLELINE, rng.randint(0, 50))
+            elif op == 8:
+                ed.SendScintilla(ed.SCI_SETXOFFSET, rng.randint(0, 200))
+            else:
+                ed.SendScintilla(ed.SCI_SETMOUSEDWELLTIME, rng.randint(0, 5000))
+            self.assertGreaterEqual(ed.SendScintilla(ed.SCI_GETSTYLEBITS), 1)
+            self.assertLessEqual(ed.SendScintilla(ed.SCI_GETSTYLEBITS), 8)
+            self.assertGreaterEqual(ed.SendScintilla(ed.SCI_GETENGINEGENERATION), 0)
+
+    def test_golden_known_sequence_expectations(self) -> None:
+        ed = ScintillaCompatEditor()
+        ed.setText("abc def")
+        ed.SendScintilla(ed.SCI_SETSEL, 0, 3)
+        ed.SendScintilla(ed.SCI_REPLACESEL, 1, "X")
+        ed.SendScintilla(ed.SCI_APPENDTEXT, 4, " END")
+        ed.SendScintilla(ed.SCI_SETENGINEVAR, 1, 42)
+        ed.SendScintilla(ed.SCI_SETENGINETOGGLE, 1, 1)
+        ed.SendScintilla(ed.SCI_SETENGINECHANNEL, 1, 99)
+        self.assertEqual(ed.text(), "X def END")
+        self.assertEqual(ed.SendScintilla(ed.SCI_GETENGINEVAR, 1), 42)
+        self.assertEqual(ed.SendScintilla(ed.SCI_GETENGINETOGGLE, 1), 1)
+        self.assertEqual(ed.SendScintilla(ed.SCI_GETENGINECHANNEL, 1), 99)
+
+
+if __name__ == "__main__":
+    unittest.main()
