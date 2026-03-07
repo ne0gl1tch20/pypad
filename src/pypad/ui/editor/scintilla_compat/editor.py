@@ -17,6 +17,8 @@ from .models import (
     MultiSelectionRange,
     ScintillaEngineState,
     ScintillaNotification,
+    UndoFrame,
+    LexerWindow,
 )
 from .extra_state_handlers import handle_extra_state_command
 from .movement_edit_handlers import handle_movement_edit_command
@@ -254,9 +256,15 @@ class ScintillaCompatEditor(QPlainTextEdit):
     SCI_SETFOCUS = 30174
     SCI_CALLTIPSHOW = 2200
     SCI_CALLTIPCANCEL = 2201
+    SCI_CALLTIPACTIVE = 2202
     SCI_AUTOCSHOW = 2100
     SCI_AUTOCCANCEL = 2101
     SCI_AUTOCACTIVE = 2102
+    SCI_AUTOCSETSEPARATOR = 2106
+    SCI_AUTOCGETSEPARATOR = 2107
+    SCI_AUTOCSETFILLUPS = 2108
+    SCI_AUTOCGETFILLUPS = 2109
+    SCI_AUTOCSELECT = 2110
     SCI_ANNOTATIONSETTEXT = 2540
     SCI_ANNOTATIONGETTEXT = 2541
     SCI_ANNOTATIONCLEARALL = 2547
@@ -267,6 +275,8 @@ class ScintillaCompatEditor(QPlainTextEdit):
     SCI_MARKERSETBACK = 2042
     SCI_SETFOLDFLAGS = 2233
     SCI_GETFOLDFLAGS = 2234
+    SCI_FOLDSETTEXT = 2235
+    SCI_FOLDGETTEXT = 2236
     SCI_INDICGETSTYLE = 2083
     SCI_INDICGETFORE = 2082
     SCI_SETENGINEVAR = 31000
@@ -281,6 +291,8 @@ class ScintillaCompatEditor(QPlainTextEdit):
     SCI_ENGINESTATESNAPSHOT = 31009
     SCI_ENGINESTATEIMPORT = 31010
     SCI_ENGINESTATEDIFF = 31011
+    SCI_GETLASTNOTIFICATION = 31120
+    SCI_CLEARNOTIFICATIONS = 31121
     SCI_SETCARETFORE = 2069
     SCI_GETCARETFORE = 2137
     SCI_SETCARETSTYLE = 2512
@@ -338,8 +350,16 @@ class ScintillaCompatEditor(QPlainTextEdit):
     SCI_GETMAINSELEND = 2576
     SCI_GETSELECTIONNSTART = 2573
     SCI_GETSELECTIONNEND = 2574
+    SCI_GETSELECTIONNCARET = 31140
+    SCI_GETSELECTIONNANCHOR = 31141
     SCI_SETSELECTIONNSTART = 2580
     SCI_SETSELECTIONNEND = 2581
+    SCI_SETSELECTIONNCARET = 31142
+    SCI_SETSELECTIONNANCHOR = 31143
+    SCI_GETSELECTIONNCARETVIRTUALSPACE = 31144
+    SCI_GETSELECTIONNANCHORVIRTUALSPACE = 31145
+    SCI_SETSELECTIONNCARETVIRTUALSPACE = 31146
+    SCI_SETSELECTIONNANCHORVIRTUALSPACE = 31147
     SCI_ADDSELECTION = 2572
     SCI_DROPSELECTIONN = 2671
     SCI_CLEARSELECTIONS = 2571 + 6
@@ -431,12 +451,25 @@ class ScintillaCompatEditor(QPlainTextEdit):
     SCFIND_WHOLEWORD = 0x0002
     SCFIND_WORDSTART = 0x00100000
     SCFIND_REGEXP = 0x00200000
+    SCFIND_POSIX = 0x00400000
     SCN_MODIFIED = "SCN_MODIFIED"
     SCN_UPDATEUI = "SCN_UPDATEUI"
     SCN_MARGINCLICK = "SCN_MARGINCLICK"
     SCN_DWELLSTART = "SCN_DWELLSTART"
     SCN_DWELLEND = "SCN_DWELLEND"
     SCN_CHARADDED = "SCN_CHARADDED"
+    SC_MOD_INSERTTEXT = 0x1
+    SC_MOD_DELETETEXT = 0x2
+    SC_MOD_CHANGESTYLE = 0x4
+    SC_MOD_CHANGEFOLD = 0x8
+    SC_MOD_UPDATEUI = 0x10
+    SC_MOD_MARGIN = 0x20
+    SC_MOD_DWELL = 0x40
+    SC_MOD_CHARINPUT = 0x80
+    SC_MODTYPE_GENERIC = 0
+    SC_MODTYPE_INSERT = 1
+    SC_MODTYPE_DELETE = 2
+    SC_MODTYPE_REPLACE = 3
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -581,6 +614,25 @@ class ScintillaCompatEditor(QPlainTextEdit):
         self._selection_ranges: list[MultiSelectionRange] = []
         self._fold_flags = 0
         self._notification_log: list[ScintillaNotification] = []
+        self._calltip_active = False
+        self._calltip_anchor_pos = -1
+        self._calltip_text = ""
+        self._autoc_separator = ord(" ")
+        self._autoc_fillups = " ()[]{}.,;:+-*/"
+        self._autoc_anchor_pos = -1
+        self._autoc_last_prefix = ""
+        self._undo_frames: list[UndoFrame] = []
+        self._redo_frames: list[UndoFrame] = []
+        self._undo_action_depth = 0
+        self._undo_action_before_text = ""
+        self._undo_action_before_cursor = 0
+        self._doc_mutation_seq = 0
+        self._last_text_snapshot = self.toPlainText()
+        self._last_cursor_snapshot = int(self.textCursor().position())
+        self._suppress_text_changed_modified_once = False
+        self._lexer_dirty_window = LexerWindow(start=0, end=0, prev_state=0)
+        self._lexer_line_states: dict[int, int] = {}
+        self._fold_display_text: dict[int, str] = {}
         self._last_snapshot_json = ""
         self._last_diff_json = ""
         self._last_dwell_pos = -1
@@ -614,6 +666,8 @@ class ScintillaCompatEditor(QPlainTextEdit):
 
     def setText(self, text: str) -> None:
         self.setPlainText(text)
+        self._last_text_snapshot = str(self.toPlainText())
+        self._last_cursor_snapshot = int(self.textCursor().position())
 
     def insertAt(self, text: str, line: int, index: int) -> None:
         pos = self._index_from_line_col(int(line), int(index))
@@ -773,14 +827,21 @@ class ScintillaCompatEditor(QPlainTextEdit):
         self.viewport().update()
 
     def callTipShow(self, pos: int, text: str) -> None:
+        anchor = max(0, min(int(pos), len(self.toPlainText())))
         cursor = QTextCursor(self.document())
-        cursor.setPosition(max(0, min(int(pos), len(self.toPlainText()))))
+        cursor.setPosition(anchor)
         rect = self.cursorRect(cursor)
-        point = self.viewport().mapToGlobal(rect.bottomRight())
+        point = self.viewport().mapToGlobal(rect.bottomLeft() + QPoint(0, self.fontMetrics().height() // 2))
         QToolTip.showText(point, str(text), self)
+        self._calltip_active = True
+        self._calltip_anchor_pos = anchor
+        self._calltip_text = str(text)
 
     def callTipCancel(self) -> None:
         QToolTip.hideText()
+        self._calltip_active = False
+        self._calltip_anchor_pos = -1
+        self._calltip_text = ""
 
     def setMarginSensitivity(self, margin: int, sensitive: bool) -> None:
         self._margin_sensitive[int(margin)] = bool(sensitive)
@@ -1029,6 +1090,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
 
     def setLexer(self, lexer) -> None:
         self._lexer = lexer
+        self._lexer_dirty_window = LexerWindow(start=0, end=len(self.toPlainText()), prev_state=0)
         self._rebuild_lexer_ranges()
         self._refresh_extra_selections()
 
@@ -1200,6 +1262,105 @@ class ScintillaCompatEditor(QPlainTextEdit):
         self._engine_state = ScintillaEngineState.create_default()
         return 1
 
+    def _begin_undo_action(self) -> None:
+        self._undo_action_depth += 1
+        if self._undo_action_depth == 1:
+            self._undo_action_before_text = self.toPlainText()
+            self._undo_action_before_cursor = int(self.textCursor().position())
+
+    def _end_undo_action(self) -> None:
+        if self._undo_action_depth <= 0:
+            self._undo_action_depth = 0
+            return
+        self._undo_action_depth -= 1
+        if self._undo_action_depth == 0:
+            before = self._undo_action_before_text
+            after = self.toPlainText()
+            if before != after:
+                self._undo_frames.append(
+                    UndoFrame(
+                        before_text=before,
+                        after_text=after,
+                        before_cursor=int(self._undo_action_before_cursor),
+                        after_cursor=int(self.textCursor().position()),
+                        op="group",
+                    )
+                )
+                self._redo_frames = []
+
+    def _record_change(self, before: str, after: str, *, op: str, pos_start: int = 0, pos_end_before: int = 0, pos_end_after: int = 0) -> None:
+        if before == after:
+            return
+        self._doc_mutation_seq += 1
+        if self._undo_action_depth > 0:
+            self._suppress_text_changed_modified_once = True
+            self._last_text_snapshot = str(after)
+            self._last_cursor_snapshot = int(self.textCursor().position())
+            return
+        self._undo_frames.append(
+            UndoFrame(
+                before_text=str(before),
+                after_text=str(after),
+                before_cursor=int(pos_end_before),
+                after_cursor=int(pos_end_after),
+                op=str(op),
+                pos_start=int(pos_start),
+                pos_end_before=int(pos_end_before),
+                pos_end_after=int(pos_end_after),
+            )
+        )
+        self._redo_frames = []
+        self._suppress_text_changed_modified_once = True
+        mod_type = self.SC_MODTYPE_GENERIC
+        reason_flags = ["edit"]
+        if str(op) in {"insert", "append"}:
+            mod_type = self.SC_MODTYPE_INSERT
+            reason_flags = ["insert"]
+        elif str(op) in {"delete"}:
+            mod_type = self.SC_MODTYPE_DELETE
+            reason_flags = ["delete"]
+        elif str(op) in {"replace_sel", "replace_target"}:
+            mod_type = self.SC_MODTYPE_REPLACE
+            reason_flags = ["replace"]
+        self._emit_scn(
+            self.SCN_MODIFIED,
+            position=int(pos_start),
+            line=int(self._line_col_from_pos(int(pos_start))[0]),
+            value=int(mod_type),
+            op=str(op),
+            seq=int(self._doc_mutation_seq),
+            reason_flags=list(reason_flags),
+            tokenized_reasons="|".join(reason_flags),
+            range_before={"start": int(pos_start), "end": int(pos_end_before)},
+            range_after={"start": int(pos_start), "end": int(pos_end_after)},
+            before_length=int(len(str(before))),
+            after_length=int(len(str(after))),
+        )
+        self._last_text_snapshot = str(after)
+        self._last_cursor_snapshot = int(self.textCursor().position())
+
+    def _undo_from_frames(self) -> int:
+        if not self._undo_frames:
+            return 0
+        frame = self._undo_frames.pop()
+        self._redo_frames.append(frame)
+        self.setPlainText(frame.before_text)
+        c = self.textCursor()
+        c.setPosition(max(0, min(int(frame.before_cursor), len(self.toPlainText()))))
+        self.setTextCursor(c)
+        return 1
+
+    def _redo_from_frames(self) -> int:
+        if not self._redo_frames:
+            return 0
+        frame = self._redo_frames.pop()
+        self._undo_frames.append(frame)
+        self.setPlainText(frame.after_text)
+        c = self.textCursor()
+        c.setPosition(max(0, min(int(frame.after_cursor), len(self.toPlainText()))))
+        self.setTextCursor(c)
+        return 1
+
     def _engine_snapshot(self) -> str:
         state = self._engine_state
         payload = {
@@ -1315,6 +1476,17 @@ class ScintillaCompatEditor(QPlainTextEdit):
         return True
 
     def _emit_scn(self, code: str, *, position: int = -1, line: int = -1, text: str = "", value: int = 0, **metadata) -> None:
+        mask_by_code = {
+            self.SCN_MODIFIED: int(self.SC_MOD_INSERTTEXT | self.SC_MOD_DELETETEXT | self.SC_MOD_CHANGESTYLE | self.SC_MOD_CHANGEFOLD),
+            self.SCN_UPDATEUI: int(self.SC_MOD_UPDATEUI),
+            self.SCN_MARGINCLICK: int(self.SC_MOD_MARGIN),
+            self.SCN_DWELLSTART: int(self.SC_MOD_DWELL),
+            self.SCN_DWELLEND: int(self.SC_MOD_DWELL),
+            self.SCN_CHARADDED: int(self.SC_MOD_CHARINPUT),
+        }
+        needed = int(mask_by_code.get(str(code), 0))
+        if int(self._mod_event_mask) != 0 and needed != 0 and (int(self._mod_event_mask) & needed) == 0:
+            return
         payload = {
             "code": str(code),
             "position": int(position),
@@ -1604,20 +1776,27 @@ class ScintillaCompatEditor(QPlainTextEdit):
                 self._write_scintilla_text_target(args[2], diff)
             return int(len(diff))
         if msg == int(self.SCI_CALLTIPSHOW):
+            pos = int(args[0]) if args else int(self.textCursor().position())
             if len(args) >= 2:
-                text = self._read_scintilla_text_arg(args[1], int(args[0]))
+                arg1 = args[1]
+                if isinstance(arg1, str):
+                    text = str(arg1)
+                else:
+                    text = self._read_scintilla_text_arg(arg1, len(self.toPlainText()))
             else:
                 text = ""
-            pos = int(self.textCursor().position())
             self.callTipShow(pos, text)
             return 1
         if msg == int(self.SCI_CALLTIPCANCEL):
             self.callTipCancel()
             return 1
+        if msg == int(self.SCI_CALLTIPACTIVE):
+            return 1 if self._calltip_active else 0
         if msg == int(self.SCI_AUTOCSHOW):
             prefix_len = max(0, int(args[0]) if args else 0)
             text = self._read_scintilla_text_arg(args[1], int(args[0])) if len(args) >= 2 else ""
-            words = [w.strip() for w in str(text).split(" ") if w.strip()]
+            sep = chr(max(1, int(self._autoc_separator)))
+            words = [w.strip() for w in str(text).split(sep) if w.strip()]
             if words:
                 self.set_auto_completion_words(words)
                 start, end = self._current_word_span()
@@ -1626,9 +1805,28 @@ class ScintillaCompatEditor(QPlainTextEdit):
             return 1
         if msg == int(self.SCI_AUTOCCANCEL):
             self._completer.popup().hide()
+            self._autoc_anchor_pos = -1
+            self._autoc_last_prefix = ""
             return 1
         if msg == int(self.SCI_AUTOCACTIVE):
             return 1 if self._completer.popup().isVisible() else 0
+        if msg == int(self.SCI_AUTOCSETSEPARATOR):
+            self._autoc_separator = max(1, int(args[0]) if args else ord(" "))
+            return int(self._autoc_separator)
+        if msg == int(self.SCI_AUTOCGETSEPARATOR):
+            return int(self._autoc_separator)
+        if msg == int(self.SCI_AUTOCSETFILLUPS):
+            self._autoc_fillups = self._read_scintilla_text_arg(args[0], len(self.toPlainText())) if args else ""
+            return int(len(self._autoc_fillups))
+        if msg == int(self.SCI_AUTOCGETFILLUPS):
+            if args:
+                self._write_scintilla_text_target(args[0], self._autoc_fillups)
+            return int(len(self._autoc_fillups))
+        if msg == int(self.SCI_AUTOCSELECT):
+            text = self._read_scintilla_text_arg(args[0], len(self.toPlainText())) if args else ""
+            self._insert_completion(text)
+            self._completer.popup().hide()
+            return 1
         if msg == int(self.SCI_ANNOTATIONSETTEXT):
             if len(args) >= 2:
                 line = int(args[0])
@@ -1676,6 +1874,20 @@ class ScintillaCompatEditor(QPlainTextEdit):
             return int(self._fold_flags)
         if msg == int(self.SCI_GETFOLDFLAGS):
             return int(self._fold_flags)
+        if msg == int(self.SCI_FOLDSETTEXT):
+            if len(args) < 2:
+                return 0
+            line = max(0, int(args[0]))
+            text = self._read_scintilla_text_arg(args[1], len(self.toPlainText()))
+            self._fold_display_text[line] = text
+            self.viewport().update()
+            return len(text)
+        if msg == int(self.SCI_FOLDGETTEXT):
+            line = max(0, int(args[0]) if args else 0)
+            text = self._fold_display_text.get(line, "")
+            if len(args) >= 2:
+                self._write_scintilla_text_target(args[1], text)
+            return int(len(text))
         if msg == int(self.SCI_INDICGETSTYLE):
             idx = int(args[0]) if args else 0
             return int(self._indicator_styles.get(idx, self.INDIC_PLAIN))
@@ -1863,6 +2075,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         if msg == int(self.SCI_SETMOUSEDWELLTIME):
             dwell = int(args[0]) if args else 0
             self._mouse_dwell_time_ms = dwell
+            self._dwell_timer.setInterval(max(50, int(self._mouse_dwell_time_ms)))
             return int(dwell)
         if msg == int(self.SCI_GETMOUSEDWELLTIME):
             return int(self._mouse_dwell_time_ms)
@@ -2127,18 +2340,21 @@ class ScintillaCompatEditor(QPlainTextEdit):
                 return 0
             if self.isReadOnly():
                 return 0
+            before_text = self.toPlainText()
             pos = max(0, min(int(args[0]), len(self.toPlainText())))
             text = self._read_scintilla_text_arg(args[2], int(args[1]))
             c = self.textCursor()
             c.setPosition(pos)
             c.insertText(text)
             self.setTextCursor(c)
+            self._record_change(before_text, self.toPlainText(), op="insert", pos_start=pos, pos_end_before=pos, pos_end_after=pos + len(text))
             return len(text)
         if msg == int(self.SCI_DELETERANGE):
             if len(args) < 2:
                 return 0
             if self.isReadOnly():
                 return 0
+            before_text = self.toPlainText()
             pos = max(0, min(int(args[0]), len(self.toPlainText())))
             length = max(0, int(args[1]))
             end = max(pos, min(pos + length, len(self.toPlainText())))
@@ -2149,27 +2365,32 @@ class ScintillaCompatEditor(QPlainTextEdit):
             c.setPosition(end, QTextCursor.KeepAnchor)
             c.removeSelectedText()
             self.setTextCursor(c)
+            self._record_change(before_text, self.toPlainText(), op="delete", pos_start=pos, pos_end_before=end, pos_end_after=pos)
             return end - pos
         if msg == int(self.SCI_REPLACESEL):
             if len(args) < 2:
                 return 0
             if self.isReadOnly():
                 return 0
+            before_text = self.toPlainText()
             replacement = self._read_scintilla_text_arg(args[1], int(args[0]))
             c = self.textCursor()
             c.insertText(replacement)
             self.setTextCursor(c)
+            self._record_change(before_text, self.toPlainText(), op="replace_sel", pos_end_after=int(c.position()))
             return len(replacement)
         if msg == int(self.SCI_APPENDTEXT):
             if len(args) < 2:
                 return 0
             if self.isReadOnly():
                 return 0
+            before_text = self.toPlainText()
             append_text = self._read_scintilla_text_arg(args[1], int(args[0]))
             c = self.textCursor()
             c.movePosition(QTextCursor.End)
             c.insertText(append_text)
             self.setTextCursor(c)
+            self._record_change(before_text, self.toPlainText(), op="append", pos_end_after=int(c.position()))
             return len(append_text)
         if msg == int(self.SCI_GETSELECTIONSTART):
             c = self.textCursor()
@@ -2208,6 +2429,18 @@ class ScintillaCompatEditor(QPlainTextEdit):
             idx = int(args[0]) if args else 0
             _start, end = self._selection_n_range(idx)
             return int(end)
+        if msg == int(self.SCI_GETSELECTIONNCARET):
+            idx = int(args[0]) if args else 0
+            self._sync_selection_ranges_from_editor()
+            if 0 <= idx < len(self._selection_ranges):
+                return int(self._selection_ranges[idx].caret)
+            return int(self.textCursor().position())
+        if msg == int(self.SCI_GETSELECTIONNANCHOR):
+            idx = int(args[0]) if args else 0
+            self._sync_selection_ranges_from_editor()
+            if 0 <= idx < len(self._selection_ranges):
+                return int(self._selection_ranges[idx].anchor)
+            return int(self.textCursor().anchor())
         if msg == int(self.SCI_SETSELECTIONNSTART):
             if len(args) < 2:
                 return 0
@@ -2217,6 +2450,38 @@ class ScintillaCompatEditor(QPlainTextEdit):
             if len(args) < 2:
                 return 0
             self._set_selection_n_boundary(int(args[0]), int(args[1]), is_start=False)
+            return 1
+        if msg == int(self.SCI_SETSELECTIONNCARET):
+            if len(args) < 2:
+                return 0
+            self._set_selection_n_caret(int(args[0]), int(args[1]))
+            return 1
+        if msg == int(self.SCI_SETSELECTIONNANCHOR):
+            if len(args) < 2:
+                return 0
+            self._set_selection_n_anchor(int(args[0]), int(args[1]))
+            return 1
+        if msg == int(self.SCI_GETSELECTIONNCARETVIRTUALSPACE):
+            idx = int(args[0]) if args else 0
+            self._sync_selection_ranges_from_editor()
+            if 0 <= idx < len(self._selection_ranges):
+                return int(self._selection_ranges[idx].virtual_space_caret)
+            return 0
+        if msg == int(self.SCI_GETSELECTIONNANCHORVIRTUALSPACE):
+            idx = int(args[0]) if args else 0
+            self._sync_selection_ranges_from_editor()
+            if 0 <= idx < len(self._selection_ranges):
+                return int(self._selection_ranges[idx].virtual_space_anchor)
+            return 0
+        if msg == int(self.SCI_SETSELECTIONNCARETVIRTUALSPACE):
+            if len(args) < 2:
+                return 0
+            self._set_selection_n_virtual_space(int(args[0]), int(args[1]), caret=True)
+            return 1
+        if msg == int(self.SCI_SETSELECTIONNANCHORVIRTUALSPACE):
+            if len(args) < 2:
+                return 0
+            self._set_selection_n_virtual_space(int(args[0]), int(args[1]), caret=False)
             return 1
         if msg == int(self.SCI_ADDSELECTION):
             if len(args) < 2:
@@ -2349,6 +2614,31 @@ class ScintillaCompatEditor(QPlainTextEdit):
             return 1 if self.hide_lines(int(args[0]), int(args[1])) else 0
         if msg == int(self.SCI_SHOWLINES) and len(args) >= 2:
             return 1 if self.show_lines(int(args[0]), int(args[1])) else 0
+        if msg == int(self.SCI_GETLASTNOTIFICATION):
+            if not self._notification_log:
+                if args:
+                    self._write_scintilla_text_target(args[0], "")
+                return 0
+            last = self._notification_log[-1]
+            payload = json.dumps(
+                {
+                    "code": last.code,
+                    "position": last.position,
+                    "line": last.line,
+                    "text": last.text,
+                    "value": last.value,
+                    "metadata": dict(last.metadata or {}),
+                },
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+            if args:
+                self._write_scintilla_text_target(args[0], payload)
+            return int(len(payload))
+        if msg == int(self.SCI_CLEARNOTIFICATIONS):
+            n = len(self._notification_log)
+            self._notification_log = []
+            return int(n)
         return 0
 
     @staticmethod
@@ -2403,6 +2693,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         whole_word = bool(int(self._search_flags) & int(self.SCFIND_WHOLEWORD))
         word_start = bool(int(self._search_flags) & int(self.SCFIND_WORDSTART))
         regex_mode = bool(int(self._search_flags) & int(self.SCFIND_REGEXP))
+        posix_mode = bool(int(self._search_flags) & int(self.SCFIND_POSIX))
         if regex_mode:
             return self._regex_search_in_target(
                 text,
@@ -2413,6 +2704,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
                 whole_word=whole_word,
                 word_start=word_start,
                 match_case=match_case,
+                posix_mode=posix_mode,
             )
         hay = text if match_case else text.lower()
         ndl = needle if match_case else needle.lower()
@@ -2423,13 +2715,23 @@ class ScintillaCompatEditor(QPlainTextEdit):
         if reverse:
             idx = hay.rfind(ndl, start, end)
             while idx >= 0:
-                if self._matches_word_constraints(text, idx, idx + len(needle), whole_word=whole_word, word_start=word_start):
+                constraints_ok = (
+                    self._matches_word_constraints_posix(text, idx, idx + len(needle), whole_word=whole_word, word_start=word_start)
+                    if posix_mode
+                    else self._matches_word_constraints(text, idx, idx + len(needle), whole_word=whole_word, word_start=word_start)
+                )
+                if constraints_ok:
                     return int(idx)
                 idx = hay.rfind(ndl, start, idx)
             return -1
         idx = hay.find(ndl, start, end)
         while idx >= 0:
-            if self._matches_word_constraints(text, idx, idx + len(needle), whole_word=whole_word, word_start=word_start):
+            constraints_ok = (
+                self._matches_word_constraints_posix(text, idx, idx + len(needle), whole_word=whole_word, word_start=word_start)
+                if posix_mode
+                else self._matches_word_constraints(text, idx, idx + len(needle), whole_word=whole_word, word_start=word_start)
+            )
+            if constraints_ok:
                 return int(idx)
             idx = hay.find(ndl, idx + 1, end)
         return -1
@@ -2445,6 +2747,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         whole_word: bool,
         word_start: bool,
         match_case: bool,
+        posix_mode: bool,
     ) -> int:
         flags = 0 if match_case else re.IGNORECASE
         try:
@@ -2459,6 +2762,8 @@ class ScintillaCompatEditor(QPlainTextEdit):
                 continue
             if not self._matches_word_constraints(text, s, e, whole_word=whole_word, word_start=word_start):
                 continue
+            if posix_mode and not self._matches_word_constraints_posix(text, s, e, whole_word=whole_word, word_start=word_start):
+                continue
             matches.append(m)
         if not matches:
             return -1
@@ -2470,6 +2775,10 @@ class ScintillaCompatEditor(QPlainTextEdit):
     def _is_word_char(ch: str) -> bool:
         return ch.isalnum() or ch == "_"
 
+    @staticmethod
+    def _is_word_char_posix(ch: str) -> bool:
+        return ch.isalnum()
+
     def _is_whole_word_match(self, text: str, start: int, end: int) -> bool:
         left_ok = start <= 0 or not self._is_word_char(text[start - 1])
         right_ok = end >= len(text) or not self._is_word_char(text[end])
@@ -2478,6 +2787,14 @@ class ScintillaCompatEditor(QPlainTextEdit):
     def _is_word_start_match(self, text: str, start: int) -> bool:
         return bool(start <= 0 or not self._is_word_char(text[start - 1]))
 
+    def _is_whole_word_match_posix(self, text: str, start: int, end: int) -> bool:
+        left_ok = start <= 0 or not self._is_word_char_posix(text[start - 1])
+        right_ok = end >= len(text) or not self._is_word_char_posix(text[end])
+        return bool(left_ok and right_ok)
+
+    def _is_word_start_match_posix(self, text: str, start: int) -> bool:
+        return bool(start <= 0 or not self._is_word_char_posix(text[start - 1]))
+
     def _matches_word_constraints(self, text: str, start: int, end: int, *, whole_word: bool, word_start: bool) -> bool:
         if whole_word:
             return self._is_whole_word_match(text, start, end)
@@ -2485,7 +2802,15 @@ class ScintillaCompatEditor(QPlainTextEdit):
             return self._is_word_start_match(text, start)
         return True
 
+    def _matches_word_constraints_posix(self, text: str, start: int, end: int, *, whole_word: bool, word_start: bool) -> bool:
+        if whole_word:
+            return self._is_whole_word_match_posix(text, start, end)
+        if word_start:
+            return self._is_word_start_match_posix(text, start)
+        return True
+
     def _replace_target_span(self, lo: int, hi: int, replacement: str) -> int:
+        before_text = self.toPlainText()
         cursor = self.textCursor()
         cursor.setPosition(max(0, int(lo)))
         cursor.setPosition(max(0, int(hi)), QTextCursor.KeepAnchor)
@@ -2493,6 +2818,14 @@ class ScintillaCompatEditor(QPlainTextEdit):
         self.setTextCursor(cursor)
         self._target_start = int(lo)
         self._target_end = int(lo + len(str(replacement)))
+        self._record_change(
+            before_text,
+            self.toPlainText(),
+            op="replace_target",
+            pos_start=int(lo),
+            pos_end_before=int(hi),
+            pos_end_after=int(lo + len(str(replacement))),
+        )
         return len(str(replacement))
 
     def _page_move(self, *, up: bool, extend: bool) -> int:
@@ -2595,6 +2928,51 @@ class ScintillaCompatEditor(QPlainTextEdit):
                 self._selection_ranges[index] = MultiSelectionRange(anchor=int(sel.anchor), caret=p)
         self._apply_selection_ranges_to_editor()
         self.viewport().update()
+
+    def _set_selection_n_caret(self, idx: int, pos: int) -> None:
+        self._sync_selection_ranges_from_editor()
+        index = max(0, int(idx))
+        p = max(0, min(int(pos), len(self.toPlainText())))
+        while len(self._selection_ranges) <= index:
+            self._selection_ranges.append(MultiSelectionRange(anchor=p, caret=p))
+        sel = self._selection_ranges[index]
+        self._selection_ranges[index] = MultiSelectionRange(
+            anchor=int(sel.anchor),
+            caret=p,
+            virtual_space_anchor=int(sel.virtual_space_anchor),
+            virtual_space_caret=int(sel.virtual_space_caret),
+        )
+        self._apply_selection_ranges_to_editor()
+
+    def _set_selection_n_anchor(self, idx: int, pos: int) -> None:
+        self._sync_selection_ranges_from_editor()
+        index = max(0, int(idx))
+        p = max(0, min(int(pos), len(self.toPlainText())))
+        while len(self._selection_ranges) <= index:
+            self._selection_ranges.append(MultiSelectionRange(anchor=p, caret=p))
+        sel = self._selection_ranges[index]
+        self._selection_ranges[index] = MultiSelectionRange(
+            anchor=p,
+            caret=int(sel.caret),
+            virtual_space_anchor=int(sel.virtual_space_anchor),
+            virtual_space_caret=int(sel.virtual_space_caret),
+        )
+        self._apply_selection_ranges_to_editor()
+
+    def _set_selection_n_virtual_space(self, idx: int, value: int, *, caret: bool) -> None:
+        self._sync_selection_ranges_from_editor()
+        index = max(0, int(idx))
+        v = max(0, int(value))
+        while len(self._selection_ranges) <= index:
+            p = int(self.textCursor().position())
+            self._selection_ranges.append(MultiSelectionRange(anchor=p, caret=p))
+        sel = self._selection_ranges[index]
+        self._selection_ranges[index] = MultiSelectionRange(
+            anchor=int(sel.anchor),
+            caret=int(sel.caret),
+            virtual_space_anchor=int(sel.virtual_space_anchor if caret else v),
+            virtual_space_caret=int(v if caret else sel.virtual_space_caret),
+        )
 
     def _add_selection(self, *, caret: int, anchor: int) -> None:
         self._sync_selection_ranges_from_editor()
@@ -2761,6 +3139,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         super().paintEvent(event)
         self._paint_multi_ranges()
         self._paint_annotations()
+        self._paint_fold_display_texts()
         self._paint_symbol_overlays()
         self._paint_brace_match()
         if not self._additional_carets:
@@ -2777,6 +3156,27 @@ class ScintillaCompatEditor(QPlainTextEdit):
             if not rect.isValid():
                 continue
             painter.drawLine(rect.left(), rect.top(), rect.left(), rect.bottom())
+        painter.end()
+
+    def _paint_fold_display_texts(self) -> None:
+        if not self._fold_display_text:
+            return
+        painter = QPainter(self.viewport())
+        painter.setPen(QColor("#9097a5"))
+        block = self.firstVisibleBlock()
+        top = round(self.blockBoundingGeometry(block).translated(self.contentOffset()).top())
+        bottom = top + round(self.blockBoundingRect(block).height())
+        while block.isValid() and top <= self.viewport().height():
+            if block.isVisible() and bottom >= 0:
+                line = int(block.blockNumber())
+                text = self._fold_display_text.get(line, "")
+                if text:
+                    base_x = int(self.contentOffset().x() + self.fontMetrics().horizontalAdvance(block.text()) + 12)
+                    y = int(top + self.fontMetrics().ascent())
+                    painter.drawText(base_x, y, text)
+            block = block.next()
+            top = bottom
+            bottom = top + round(self.blockBoundingRect(block).height())
         painter.end()
 
     def _paint_annotations(self) -> None:
@@ -3053,8 +3453,13 @@ class ScintillaCompatEditor(QPlainTextEdit):
             line, _col = self._line_col_from_pos(cur_pos)
             self._emit_scn(self.SCN_CHARADDED, position=cur_pos, line=line, text=typed, value=ord(typed[0]))
         if event.key() == Qt.Key_Escape:
+            if self._calltip_active:
+                self.callTipCancel()
+                return
             if self._completer.popup().isVisible():
                 self._completer.popup().hide()
+                self._autoc_anchor_pos = -1
+                self._autoc_last_prefix = ""
                 return
             self._clear_multi_ranges()
             self._additional_carets = []
@@ -3347,12 +3752,56 @@ class ScintillaCompatEditor(QPlainTextEdit):
     def _on_text_changed(self) -> None:
         self._sync_selection_ranges_from_editor()
         c = self.textCursor()
-        self._emit_scn(
-            self.SCN_MODIFIED,
-            position=int(c.position()),
-            line=int(c.blockNumber()),
-            value=int(len(self.toPlainText())),
+        pos = int(c.position())
+        doc_len = len(self.toPlainText())
+        win = max(256, int(self._auto_max_width or 256))
+        self._lexer_dirty_window = LexerWindow(
+            start=max(0, pos - win),
+            end=min(doc_len, pos + win),
+            prev_state=int(self._lexer_line_states.get(max(0, c.blockNumber() - 1), 0)),
         )
+        if self._suppress_text_changed_modified_once:
+            self._suppress_text_changed_modified_once = False
+        else:
+            before_text = str(self._last_text_snapshot)
+            after_text = str(self.toPlainText())
+            self._doc_mutation_seq += 1
+            lo = 0
+            max_lo = min(len(before_text), len(after_text))
+            while lo < max_lo and before_text[lo] == after_text[lo]:
+                lo += 1
+            hi_before = len(before_text)
+            hi_after = len(after_text)
+            while hi_before > lo and hi_after > lo and before_text[hi_before - 1] == after_text[hi_after - 1]:
+                hi_before -= 1
+                hi_after -= 1
+            mod_type = self.SC_MODTYPE_GENERIC
+            reasons = ["edit"]
+            if len(after_text) > len(before_text):
+                mod_type = self.SC_MODTYPE_INSERT
+                reasons = ["insert", "unknown_path"]
+            elif len(after_text) < len(before_text):
+                mod_type = self.SC_MODTYPE_DELETE
+                reasons = ["delete", "unknown_path"]
+            elif before_text != after_text:
+                mod_type = self.SC_MODTYPE_REPLACE
+                reasons = ["replace", "unknown_path"]
+            self._emit_scn(
+                self.SCN_MODIFIED,
+                position=int(lo),
+                line=int(self._line_col_from_pos(int(lo))[0]),
+                value=int(mod_type),
+                op="text_changed",
+                seq=int(self._doc_mutation_seq),
+                reason_flags=list(reasons),
+                tokenized_reasons="|".join(reasons),
+                range_before={"start": int(lo), "end": int(hi_before)},
+                range_after={"start": int(lo), "end": int(hi_after)},
+                before_length=int(len(before_text)),
+                after_length=int(len(after_text)),
+            )
+            self._last_text_snapshot = after_text
+            self._last_cursor_snapshot = pos
         self._rebuild_pending = True
         if not self._rebuild_timer.isActive():
             self._rebuild_timer.start()
@@ -3360,9 +3809,23 @@ class ScintillaCompatEditor(QPlainTextEdit):
     def _on_cursor_changed(self) -> None:
         self._sync_selection_ranges_from_editor()
         c = self.textCursor()
+        cursor_pos = int(c.position())
+        if self._calltip_active and self._calltip_anchor_pos >= 0 and cursor_pos < int(self._calltip_anchor_pos):
+            self.callTipCancel()
+        if self._completer.popup().isVisible():
+            start, end = self._current_word_span()
+            prefix = self.toPlainText()[start:end]
+            if self._auto_cancel_at_start and self._autoc_anchor_pos >= 0 and cursor_pos < int(self._autoc_anchor_pos):
+                self._completer.popup().hide()
+                self._autoc_anchor_pos = -1
+                self._autoc_last_prefix = ""
+            elif not prefix:
+                self._completer.popup().hide()
+                self._autoc_anchor_pos = -1
+                self._autoc_last_prefix = ""
         self._emit_scn(
             self.SCN_UPDATEUI,
-            position=int(c.position()),
+            position=cursor_pos,
             line=int(c.blockNumber()),
             selections=len(self._selection_ranges),
         )
@@ -3744,14 +4207,21 @@ class ScintillaCompatEditor(QPlainTextEdit):
         threshold = max(1, int(self._auto_completion_threshold))
         if not force and len(prefix) < threshold:
             self._completer.popup().hide()
+            self._autoc_anchor_pos = -1
+            self._autoc_last_prefix = ""
             return
         self._completer.setCompletionPrefix(prefix)
         popup = self._completer.popup()
         if popup is None:
             return
-        cr = self.cursorRect()
+        anchor_cursor = QTextCursor(self.document())
+        anchor_cursor.setPosition(max(0, start))
+        cr = self.cursorRect(anchor_cursor)
+        cr.moveTop(cr.bottom() + 1)
         cr.setWidth(max(220, popup.sizeHintForColumn(0) + 24))
         self._completer.complete(cr)
+        self._autoc_anchor_pos = int(start)
+        self._autoc_last_prefix = str(prefix)
 
     def _insert_completion(self, completion: str) -> None:
         text = str(completion or "")
@@ -3773,6 +4243,24 @@ class ScintillaCompatEditor(QPlainTextEdit):
         if not source:
             self._lexer_ranges = []
             return
+        if hasattr(self._lexer, "lex_incremental"):
+            try:
+                win = self._lexer_dirty_window
+                ranges, fold_regions, end_state = self._lexer.lex_incremental(
+                    source,
+                    int(win.start),
+                    int(win.end),
+                    int(win.prev_state),
+                )
+                self._lexer_ranges = list(ranges)
+                if isinstance(fold_regions, dict) and fold_regions:
+                    self._fold_regions.update(fold_regions)
+                cur_line = int(self.textCursor().blockNumber())
+                self._lexer_line_states[cur_line] = int(end_state)
+                self._ensure_default_styles()
+                return
+            except Exception:
+                pass
         ranges: list[tuple[int, int, int]] = []
         if language == "python":
             kw = r"\b(?:and|as|assert|break|class|continue|def|del|elif|else|except|False|finally|for|from|global|if|import|in|is|lambda|None|nonlocal|not|or|pass|raise|return|True|try|while|with|yield)\b"
@@ -3861,18 +4349,31 @@ class ScintillaCompatEditor(QPlainTextEdit):
             line_fmt.setProperty(QTextCharFormat.FullWidthSelection, True)
             current_line.format = line_fmt
             selections.append(current_line)
+        layers = self._compose_render_layers()
         doc_len = len(self.toPlainText())
+        for layer in layers:
+            for lo, hi, fmt in layer:
+                sel = QTextEdit.ExtraSelection()
+                sel.cursor = self.textCursor()
+                sel.cursor.setPosition(max(0, min(int(lo), doc_len)))
+                sel.cursor.setPosition(max(0, min(int(hi), doc_len)), QTextCursor.KeepAnchor)
+                sel.format = QTextCharFormat(fmt)
+                selections.append(sel)
+        self.setExtraSelections(selections)
+
+    def _compose_render_layers(self) -> list[list[tuple[int, int, QTextCharFormat]]]:
+        doc_len = len(self.toPlainText())
+        style_layer: list[tuple[int, int, QTextCharFormat]] = []
+        indicator_layer: list[tuple[int, int, QTextCharFormat]] = []
+        hotspot_layer: list[tuple[int, int, QTextCharFormat]] = []
+        overlay_layer: list[tuple[int, int, QTextCharFormat]] = []
+
         ordered_style_ranges = sorted([*self._lexer_ranges, *self._style_ranges], key=lambda x: (int(x[0]), int(x[1]), int(x[2])))
         for lo, hi, style_id in ordered_style_ranges:
             fmt = self._style_formats.get(style_id)
-            if fmt is None:
-                continue
-            sel = QTextEdit.ExtraSelection()
-            sel.cursor = self.textCursor()
-            sel.cursor.setPosition(max(0, min(lo, doc_len)))
-            sel.cursor.setPosition(max(0, min(hi, doc_len)), QTextCursor.KeepAnchor)
-            sel.format = QTextCharFormat(fmt)
-            selections.append(sel)
+            if fmt is not None:
+                style_layer.append((max(0, min(lo, doc_len)), max(0, min(hi, doc_len)), fmt))
+
         for indic_id in sorted(self._indicator_ranges.keys()):
             ranges = self._indicator_ranges.get(indic_id, [])
             color = self._indicator_colors.get(indic_id, QColor("#f4d03f"))
@@ -3880,10 +4381,6 @@ class ScintillaCompatEditor(QPlainTextEdit):
             for idx, seg in enumerate(ranges):
                 lo = int(seg.start)
                 hi = int(seg.end)
-                sel = QTextEdit.ExtraSelection()
-                sel.cursor = self.textCursor()
-                sel.cursor.setPosition(max(0, min(lo, doc_len)))
-                sel.cursor.setPosition(max(0, min(hi, doc_len)), QTextCursor.KeepAnchor)
                 fmt = QTextCharFormat()
                 hit = self._active_indicator_hit == (int(indic_id), int(idx))
                 active_color = color.lighter(130) if hit else color
@@ -3908,33 +4405,24 @@ class ScintillaCompatEditor(QPlainTextEdit):
                     shade = QColor(active_color)
                     shade.setAlpha(90 if style == self.INDIC_BOX else 70)
                     fmt.setBackground(shade)
-                    if style == self.INDIC_ROUNDBOX:
-                        fmt.setUnderlineStyle(QTextCharFormat.SingleUnderline)
-                        fmt.setUnderlineColor(active_color.darker(120))
-                sel.format = fmt
-                selections.append(sel)
+                indicator_layer.append((max(0, min(lo, doc_len)), max(0, min(hi, doc_len)), fmt))
+
         for idx, hs in enumerate(self._hotspot_ranges):
-            sel = QTextEdit.ExtraSelection()
-            sel.cursor = self.textCursor()
-            sel.cursor.setPosition(max(0, min(hs.start, doc_len)))
-            sel.cursor.setPosition(max(0, min(hs.end, doc_len)), QTextCursor.KeepAnchor)
             fmt = QTextCharFormat()
             fmt.setForeground(self._hotspot_active_color if idx == self._active_hotspot_index else self._hotspot_color)
             fmt.setFontUnderline(self._hotspot_underline)
-            sel.format = fmt
-            selections.append(sel)
+            hotspot_layer.append((max(0, min(hs.start, doc_len)), max(0, min(hs.end, doc_len)), fmt))
+
         for channel in sorted(self._background_overlays.keys()):
-            ranges = self._background_overlays.get(channel, [])
-            for lo, hi, color in ranges:
-                sel = QTextEdit.ExtraSelection()
-                sel.cursor = self.textCursor()
-                sel.cursor.setPosition(max(0, min(lo, doc_len)))
-                sel.cursor.setPosition(max(0, min(hi, doc_len)), QTextCursor.KeepAnchor)
+            for lo, hi, color in self._background_overlays.get(channel, []):
                 fmt = QTextCharFormat()
-                fmt.setBackground(color)
-                sel.format = fmt
-                selections.append(sel)
-        self.setExtraSelections(selections)
+                shaded = QColor(color)
+                alpha = max(0, min(255, int(self._sel_alpha if self._sel_alpha <= 255 else 255)))
+                shaded.setAlpha(alpha)
+                fmt.setBackground(shaded)
+                overlay_layer.append((max(0, min(lo, doc_len)), max(0, min(hi, doc_len)), fmt))
+
+        return [style_layer, indicator_layer, hotspot_layer, overlay_layer]
 
     @staticmethod
     def _qcolor_from_scintilla_rgb(value: int) -> QColor:

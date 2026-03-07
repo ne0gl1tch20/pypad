@@ -5,6 +5,9 @@ from .models import (
     HotspotRange,
     IndicatorRange,
     MultiSelectionRange,
+    UndoFrame,
+    LexerWindow,
+    CompatLexerProtocol,
     ScintillaEngineState,
     ScintillaNotification,
 )
@@ -16,6 +19,9 @@ __all__ = [
     "HotspotRange",
     "IndicatorRange",
     "MultiSelectionRange",
+    "UndoFrame",
+    "LexerWindow",
+    "CompatLexerProtocol",
     "ScintillaEngineState",
     "ScintillaNotification",
 ]

@@ -91,7 +91,7 @@ from pypad.logging_utils import (
     normalize_log_level_name,
 )
 from pypad.app_settings.scintilla_profile import ScintillaProfile
-from pypad.ui.theme.theme_tokens import build_tokens_from_settings
+from pypad.ui.theme.theme_tokens import build_tokens_from_settings, resolve_dark_mode_from_settings
 from .notepadpp_pref_runtime import (
     apply_indentation_defaults_to_tab,
     new_document_defaults,
@@ -692,7 +692,7 @@ class UiSetupMixin:
         if isinstance(configured, QColor) and configured.isValid():
             color = QColor(configured)
         else:
-            dark_mode = bool(getattr(self, "settings", {}).get("dark_mode", False))
+            dark_mode = resolve_dark_mode_from_settings(getattr(self, "settings", {}))
             color = QColor("#ffffff" if dark_mode else "#000000")
         svg_text = icon_path.read_text(encoding="utf-8")
         svg_text = self._force_svg_monochrome(svg_text, color.name())
@@ -773,6 +773,8 @@ class UiSetupMixin:
         tab.text_edit.copyAvailable.connect(self.update_action_states)
         tab.text_edit.undoAvailable.connect(self.update_action_states)
         tab.text_edit.redoAvailable.connect(self.update_action_states)
+        if hasattr(tab.text_edit, "scintillaNotification"):
+            tab.text_edit.scintillaNotification.connect(self._handle_scintilla_notification)
         tab.text_edit.widget.installEventFilter(cast(QObject, self))
         if hasattr(self, "_on_editor_splitter_moved") and hasattr(tab, "editor_splitter"):
             tab.editor_splitter.splitterMoved.connect(
@@ -821,6 +823,11 @@ class UiSetupMixin:
             tab.text_edit.redoAvailable.disconnect(self.update_action_states)
         except (TypeError, RuntimeError):
             pass
+        if hasattr(tab.text_edit, "scintillaNotification"):
+            try:
+                tab.text_edit.scintillaNotification.disconnect(self._handle_scintilla_notification)
+            except (TypeError, RuntimeError):
+                pass
         tab.text_edit.widget.removeEventFilter(cast(QObject, self))
         if hasattr(tab, "editor_splitter"):
             try:
@@ -879,6 +886,23 @@ class UiSetupMixin:
         if tab is None:
             return
         self._emit_plugin_event("selection_changed", tab=tab)
+
+    def _handle_scintilla_notification(self, payload: dict) -> None:
+        sender = self.sender()
+        tab = None
+        if sender is not None:
+            tab = self._tab_for_editor(sender)
+        if tab is None:
+            tab = self.active_tab()
+        code = str((payload or {}).get("code", "")).strip()
+        metadata = dict((payload or {}).get("metadata", {}) or {})
+        self._emit_plugin_event(
+            "scintilla_notification",
+            tab=tab,
+            code=code,
+            scintilla_payload=dict(payload or {}),
+            scintilla_metadata=metadata,
+        )
 
     def _seed_version_history(self, tab: EditorTab, label: str = "Opened") -> None:
         if tab.large_file:
@@ -941,7 +965,7 @@ class UiSetupMixin:
             return
         profile = ScintillaProfile.from_settings(self.settings)
         effective_style_theme = str(profile.style_theme or "default")
-        if effective_style_theme == "default" and bool(self.settings.get("dark_mode", False)):
+        if effective_style_theme == "default" and resolve_dark_mode_from_settings(self.settings):
             # The "default" syntax palette is tuned for light backgrounds.
             # In dark mode, use a higher-contrast preset unless user chose explicitly.
             effective_style_theme = "high_contrast"
@@ -4573,5 +4597,6 @@ class UiSetupMixin:
             if show_find_panel:
                 self.addToolBarBreak(Qt.ToolBarArea.TopToolBarArea)
                 self.addToolBar(Qt.ToolBarArea.TopToolBarArea, search_toolbar)
+
 
 

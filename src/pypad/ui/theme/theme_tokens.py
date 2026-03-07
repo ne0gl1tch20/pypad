@@ -4,6 +4,8 @@ from dataclasses import asdict, dataclass
 import hashlib
 import json
 from typing import Any
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QGuiApplication
 
 
 def _normalize_hex(value: object, fallback: str) -> str:
@@ -59,6 +61,29 @@ def _contrast_fg(bg: str, *, dark: str = "#111111", light: str = "#ffffff", thre
     return dark if _relative_luma(bg) >= threshold else light
 
 
+def resolve_dark_mode_from_settings(settings: dict[str, Any]) -> bool:
+    s = settings if isinstance(settings, dict) else {}
+    if not bool(s.get("follow_system_theme", False)):
+        return bool(s.get("dark_mode", False))
+    app = QGuiApplication.instance()
+    if app is None:
+        return bool(s.get("dark_mode", False))
+    try:
+        style_hints = app.styleHints()
+        color_scheme = style_hints.colorScheme() if style_hints is not None else None
+        if color_scheme == Qt.ColorScheme.Dark:
+            return True
+        if color_scheme == Qt.ColorScheme.Light:
+            return False
+    except Exception:
+        pass
+    try:
+        win = app.palette().window().color()
+        return bool(win.isValid() and win.lightnessF() < 0.5)
+    except Exception:
+        return bool(s.get("dark_mode", False))
+
+
 @dataclass(frozen=True)
 class UIThemeTokens:
     dark_mode: bool
@@ -107,7 +132,7 @@ class UIThemeTokens:
 
 def build_tokens_from_settings(settings: dict[str, Any]) -> UIThemeTokens:
     s = settings if isinstance(settings, dict) else {}
-    dark = bool(s.get("dark_mode", False))
+    dark = resolve_dark_mode_from_settings(s)
     theme = str(s.get("theme", "Default") or "Default")
     density = str(s.get("ui_density", "comfortable") or "comfortable").lower()
     accent = _normalize_hex(s.get("accent_color", "#4a90e2"), "#4a90e2")
@@ -889,9 +914,15 @@ def build_main_window_qss(*, tokens: UIThemeTokens, tab_close_icon_url: str, clo
             min-height: 20px;
             text-align: left;
         }}
+        QDockWidget::title:active,
+        QDockWidget::title:!active {{
+            color: {tokens.text};
+        }}
         QDockWidget#explorerDock::title,
         QDockWidget#markdownPreviewDock::title,
         QDockWidget#editorDock::title {{
+            background: {tokens.chrome_bg};
+            color: {tokens.text};
             padding: 2px 8px;
             min-height: 18px;
             border-radius: 0px;

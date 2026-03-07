@@ -21,6 +21,7 @@ class EditorWidget(QObject):
     undoAvailable = Signal(bool)
     redoAvailable = Signal(bool)
     selectionChanged = Signal()
+    scintillaNotification = Signal(dict)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -55,6 +56,8 @@ class EditorWidget(QObject):
             w.document().modificationChanged.connect(self.modificationChanged)
         if hasattr(w, "selectionChanged"):
             w.selectionChanged.connect(self._emit_selection_changed)
+        if hasattr(w, "scnNotify"):
+            w.scnNotify.connect(self._emit_scintilla_notification)
 
     def _send_scintilla(self, command_name: str, *args: int) -> bool:
         if not self._is_scintilla:
@@ -94,6 +97,9 @@ class EditorWidget(QObject):
         has_sel = self.has_selection()
         self.copyAvailable.emit(has_sel)
         self.selectionChanged.emit()
+
+    def _emit_scintilla_notification(self, payload: dict) -> None:
+        self.scintillaNotification.emit(dict(payload or {}))
 
     # ---- text access ----
     def get_text(self) -> str:

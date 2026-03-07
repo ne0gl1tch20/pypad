@@ -27,14 +27,16 @@ def handle_selection_undo_command(editor, msg: int, args: tuple[int, ...]) -> in
     if msg == int(editor.SCI_GETREADONLY):
         return 1 if editor.isReadOnly() else 0
     if msg == int(editor.SCI_UNDO):
-        editor.undo()
-        return 1
+        return int(editor._undo_from_frames() or 1)
     if msg == int(editor.SCI_REDO):
-        editor.redo()
-        return 1
+        return int(editor._redo_from_frames() or 1)
     if msg == int(editor.SCI_CANUNDO):
+        if getattr(editor, "_undo_frames", None):
+            return 1
         return 1 if editor.isUndoAvailable() else 0
     if msg == int(editor.SCI_CANREDO):
+        if getattr(editor, "_redo_frames", None):
+            return 1
         return 1 if editor.isRedoAvailable() else 0
     if msg == int(editor.SCI_SETUNDOCOLLECTION):
         editor._undo_collection_enabled = bool(int(args[0])) if args else True
@@ -42,14 +44,18 @@ def handle_selection_undo_command(editor, msg: int, args: tuple[int, ...]) -> in
     if msg == int(editor.SCI_GETUNDOCOLLECTION):
         return 1 if editor._undo_collection_enabled else 0
     if msg == int(editor.SCI_BEGINUNDOACTION):
+        editor._begin_undo_action()
         return 1
     if msg == int(editor.SCI_ENDUNDOACTION):
+        editor._end_undo_action()
         return 1
     if msg == int(editor.SCI_EMPTYUNDOBUFFER):
         try:
             editor.document().clearUndoRedoStacks()
         except Exception:
             pass
+        editor._undo_frames = []
+        editor._redo_frames = []
         return 1
     if msg == int(editor.SCI_GETMODIFY):
         return 1 if editor.document().isModified() else 0

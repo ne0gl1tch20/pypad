@@ -93,6 +93,7 @@ THEME_SETTINGS_KEYS: tuple[str, ...] = (
     "theme",
     "app_style",
     "dark_mode",
+    "follow_system_theme",
     "use_custom_colors",
     "custom_editor_bg",
     "custom_editor_fg",
@@ -121,7 +122,7 @@ from pypad.ui.system.updater_controller import UpdaterController
 from pypad.ui.system.version_history import VersionEntry, VersionHistoryDialog
 from pypad.ui.workspace.workspace_controller import WorkspaceController
 from pypad.ui.theme.dialog_theme import apply_dialog_theme_from_window, ensure_dialog_theme_filter_installed
-from pypad.ui.theme.theme_tokens import build_main_window_qss, build_tokens_from_settings
+from pypad.ui.theme.theme_tokens import build_main_window_qss, build_tokens_from_settings, resolve_dark_mode_from_settings
 from pypad.ui.system.session_recovery import local_history_key
 from pypad.ui.editor.advanced_text_tools import build_line_refs, export_line_refs_text
 from pypad.ui.document.document_fidelity import DocumentFidelityError, export_document_text, render_text_to_html
@@ -3420,9 +3421,10 @@ class MiscMixin(
             self.snap_dock_bottom_action.setShortcut(QKeySequence("Ctrl+Alt+Down") if enable_snap else QKeySequence())
 
         # Theming: token-driven soft modern chrome while preserving existing settings.
+        effective_dark = resolve_dark_mode_from_settings(self.settings)
         tokens = build_tokens_from_settings(self.settings)
         density = str(self.settings.get("ui_density", "comfortable"))
-        tab_close_icon_name = "tab-close-dark.svg" if self.settings.get("dark_mode") else "tab-close-light.svg"
+        tab_close_icon_name = "tab-close-dark.svg" if effective_dark else "tab-close-light.svg"
         tab_close_icon_path = resolve_asset_path("icons", tab_close_icon_name) or resolve_asset_path("icons", "tab-close.svg")
         tab_close_icon_url = tab_close_icon_path.as_posix() if tab_close_icon_path else ""
 
@@ -3445,7 +3447,7 @@ class MiscMixin(
         if chrome_color.isValid():
             self._icon_color = QColor(tokens.icon_fg)
         else:
-            self._icon_color = QColor("#ffffff" if self.settings.get("dark_mode") else "#000000")
+            self._icon_color = QColor("#ffffff" if effective_dark else "#000000")
 
         qss = build_main_window_qss(
             tokens=tokens,
@@ -3458,7 +3460,7 @@ class MiscMixin(
             tab_close_icon_url,
             int(self.settings.get("icon_size_px", 18)),
             str(self.settings.get("toolbar_label_mode", "icons_only")),
-            bool(self.settings.get("dark_mode")),
+            bool(effective_dark),
         )
         icons_changed = icon_signature != getattr(self, "_last_applied_icon_signature", None)
         if qss_changed:
@@ -4906,39 +4908,7 @@ class MiscMixin(
         self.explorer_tree.setItemDelegate(self._ExplorerItemDelegate(self.explorer_tree, self))
         self.explorer_tree.doubleClicked.connect(self._on_explorer_tree_open)
         self.explorer_tree.setObjectName("explorerTree")
-        self.explorer_tree.setStyleSheet(
-            """
-            QTreeView#explorerTree {
-                border: none;
-                padding: 0px;
-                show-decoration-selected: 1;
-            }
-            QLabel#explorerTitleLabel {
-                font-weight: 600;
-                letter-spacing: 0.5px;
-            }
-            QLabel#explorerPathLabel {
-                opacity: 0.8;
-                padding-left: 2px;
-            }
-            QTreeView#explorerTree::item {
-                height: 20px;
-                padding-left: 2px;
-            }
-            QTreeView#explorerTree::item:selected {
-                border-radius: 4px;
-            }
-            QTreeView#explorerTree::branch {
-                background: transparent;
-            }
-            QTreeView#explorerTree::branch:has-siblings:!adjoins-item,
-            QTreeView#explorerTree::branch:has-siblings:adjoins-item,
-            QTreeView#explorerTree::branch:!has-children:!has-siblings:adjoins-item {
-                border-image: none;
-                image: none;
-            }
-            """
-        )
+        self._apply_explorer_theme()
         layout.addWidget(self.explorer_tree, 1)
         dock.setWidget(container)
         self.explorer_dock = dock
@@ -4969,6 +4939,7 @@ class MiscMixin(
     def _refresh_explorer_dock(self) -> None:
         if not hasattr(self, "explorer_dock"):
             return
+        self._apply_explorer_theme()
         # Reattach icon provider so icons re-render with current theme tint.
         try:
             self.explorer_model.setIconProvider(self._ExplorerIconProvider(self))
@@ -4984,6 +4955,50 @@ class MiscMixin(
         self.explorer_tree.setRootIndex(self.explorer_model.index(root))
         for col in range(1, self.explorer_model.columnCount()):
             self.explorer_tree.hideColumn(col)
+
+    def _apply_explorer_theme(self) -> None:
+        if not hasattr(self, "explorer_tree"):
+            return
+        tokens = build_tokens_from_settings(self.settings)
+        self.explorer_tree.setStyleSheet(
+            f"""
+            QTreeView#explorerTree {{
+                border: none;
+                padding: 0px;
+                show-decoration-selected: 1;
+                background: {tokens.input_bg};
+                color: {tokens.text};
+                selection-background-color: {tokens.accent};
+                selection-color: {tokens.text_on_accent};
+            }}
+            QLabel#explorerTitleLabel {{
+                font-weight: 600;
+                letter-spacing: 0.5px;
+                color: {tokens.text};
+            }}
+            QLabel#explorerPathLabel {{
+                color: {tokens.text_muted};
+                padding-left: 2px;
+            }}
+            QTreeView#explorerTree::item {{
+                height: 20px;
+                padding-left: 2px;
+                color: {tokens.text};
+            }}
+            QTreeView#explorerTree::item:selected {{
+                border-radius: 4px;
+            }}
+            QTreeView#explorerTree::branch {{
+                background: transparent;
+            }}
+            QTreeView#explorerTree::branch:has-siblings:!adjoins-item,
+            QTreeView#explorerTree::branch:has-siblings:adjoins-item,
+            QTreeView#explorerTree::branch:!has-children:!has-siblings:adjoins-item {{
+                border-image: none;
+                image: none;
+            }}
+            """
+        )
 
     def _explorer_icon_name_for_info(self, info: QFileInfo) -> str:
         if info.isDir():
@@ -6947,4 +6962,6 @@ Pypad User Guide
             QTimer.singleShot(step_ms, lambda: apply_step(index + 1))
 
         apply_step(0)
+
+
 

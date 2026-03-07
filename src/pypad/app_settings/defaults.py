@@ -10,6 +10,7 @@ def build_default_settings(*, default_style: str, font_family: str, font_size: i
         "settings_schema_version": 2,
         "app_style": default_style,
         "dark_mode": False,
+        "follow_system_theme": False,
         "theme": "Default",
         "accent_color": "#4a90e2",
         "use_custom_colors": False,

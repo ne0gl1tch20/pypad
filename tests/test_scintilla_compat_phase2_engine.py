@@ -37,6 +37,35 @@ class ScintillaCompatPhase2EngineTests(unittest.TestCase):
         ed.keyPressEvent(event)
         self.assertTrue(any(e.get("code") == ed.SCN_CHARADDED for e in events))
 
+    def test_modified_payload_contract_contains_ranges_reasons_and_seq(self) -> None:
+        ed = ScintillaCompatEditor()
+        events: list[dict] = []
+        ed.scnNotify.connect(events.append)
+        ed.setText("abc")
+        ed.SendScintilla(ed.SCI_INSERTTEXT, 3, 1, "z")
+        modified = [e for e in events if e.get("code") == ed.SCN_MODIFIED]
+        self.assertTrue(modified)
+        payload = modified[-1]
+        meta = dict(payload.get("metadata", {}) or {})
+        self.assertIn("seq", meta)
+        self.assertIn("reason_flags", meta)
+        self.assertIn("tokenized_reasons", meta)
+        self.assertIn("range_before", meta)
+        self.assertIn("range_after", meta)
+        self.assertIn("before_length", meta)
+        self.assertIn("after_length", meta)
+        self.assertEqual(payload.get("value"), ed.SC_MODTYPE_INSERT)
+
+    def test_notification_mask_filters_emission(self) -> None:
+        ed = ScintillaCompatEditor()
+        events: list[dict] = []
+        ed.scnNotify.connect(events.append)
+        ed.SendScintilla(ed.SCI_SETMODEVENTMASK, ed.SC_MOD_UPDATEUI)
+        ed.setText("abc")
+        self.assertFalse(any(e.get("code") == ed.SCN_MODIFIED for e in events))
+        ed.SendScintilla(ed.SCI_GOTOPOS, 1)
+        self.assertTrue(any(e.get("code") == ed.SCN_UPDATEUI for e in events))
+
     def test_engine_snapshot_import_and_diff_roundtrip(self) -> None:
         ed = ScintillaCompatEditor()
         ed.SendScintilla(ed.SCI_SETENGINEVAR, 10, 99)
@@ -71,8 +100,12 @@ class ScintillaCompatPhase2EngineTests(unittest.TestCase):
         ed = ScintillaCompatEditor()
         ed.setText("one two")
         self.assertEqual(ed.SendScintilla(ed.SCI_CALLTIPSHOW, 3, "tip"), 1)
+        self.assertEqual(ed.SendScintilla(ed.SCI_CALLTIPACTIVE), 1)
         self.assertEqual(ed.SendScintilla(ed.SCI_CALLTIPCANCEL), 1)
-        self.assertEqual(ed.SendScintilla(ed.SCI_AUTOCSHOW, 0, "one two"), 1)
+        self.assertEqual(ed.SendScintilla(ed.SCI_CALLTIPACTIVE), 0)
+        self.assertEqual(ed.SendScintilla(ed.SCI_AUTOCSETSEPARATOR, ord("|")), ord("|"))
+        self.assertEqual(ed.SendScintilla(ed.SCI_AUTOCGETSEPARATOR), ord("|"))
+        self.assertEqual(ed.SendScintilla(ed.SCI_AUTOCSHOW, 0, "one|two"), 1)
         self.assertIn(ed.SendScintilla(ed.SCI_AUTOCACTIVE), (0, 1))
         self.assertEqual(ed.SendScintilla(ed.SCI_AUTOCCANCEL), 1)
         self.assertEqual(ed.SendScintilla(ed.SCI_ANNOTATIONSETTEXT, 0, "note"), 1)
@@ -90,6 +123,75 @@ class ScintillaCompatPhase2EngineTests(unittest.TestCase):
         self.assertEqual(ed.SendScintilla(ed.SCI_INDICSETFORE, 4, 0x223344), 1)
         self.assertEqual(ed.SendScintilla(ed.SCI_INDICGETSTYLE, 4), ed.INDIC_SQUIGGLE)
         self.assertEqual(ed.SendScintilla(ed.SCI_INDICGETFORE, 4), 0x223344)
+
+    def test_calltip_and_autocomplete_cancellation_semantics(self) -> None:
+        ed = ScintillaCompatEditor()
+        ed.setText("alpha beta")
+        ed.SendScintilla(ed.SCI_CALLTIPSHOW, 5, "tip")
+        self.assertEqual(ed.SendScintilla(ed.SCI_CALLTIPACTIVE), 1)
+        ed.SendScintilla(ed.SCI_GOTOPOS, 1)
+        self.assertEqual(ed.SendScintilla(ed.SCI_CALLTIPACTIVE), 0)
+        ed.SendScintilla(ed.SCI_SETAUTOCANCELATSTART, 1)
+        ed.SendScintilla(ed.SCI_GOTOPOS, 5)
+        ed.SendScintilla(ed.SCI_AUTOCSHOW, 0, "alpha beta")
+        self.assertIn(ed.SendScintilla(ed.SCI_AUTOCACTIVE), (0, 1))
+        ed.SendScintilla(ed.SCI_GOTOPOS, 0)
+        self.assertEqual(ed.SendScintilla(ed.SCI_AUTOCACTIVE), 0)
+
+    def test_selection_caret_anchor_virtual_space_and_notification_log(self) -> None:
+        ed = ScintillaCompatEditor()
+        ed.setText("abcdef")
+        ed.SendScintilla(ed.SCI_ADDSELECTION, 5, 2)
+        self.assertEqual(ed.SendScintilla(ed.SCI_GETSELECTIONNCARET, 1), 5)
+        self.assertEqual(ed.SendScintilla(ed.SCI_GETSELECTIONNANCHOR, 1), 2)
+        self.assertEqual(ed.SendScintilla(ed.SCI_SETSELECTIONNCARETVIRTUALSPACE, 1, 3), 1)
+        self.assertEqual(ed.SendScintilla(ed.SCI_SETSELECTIONNANCHORVIRTUALSPACE, 1, 1), 1)
+        self.assertEqual(ed.SendScintilla(ed.SCI_GETSELECTIONNCARETVIRTUALSPACE, 1), 3)
+        self.assertEqual(ed.SendScintilla(ed.SCI_GETSELECTIONNANCHORVIRTUALSPACE, 1), 1)
+        holder: dict[str, str] = {}
+        self.assertGreaterEqual(ed.SendScintilla(ed.SCI_GETLASTNOTIFICATION, holder), 0)
+        self.assertIn("code", holder.get("text", "{}"))
+        cleared = ed.SendScintilla(ed.SCI_CLEARNOTIFICATIONS)
+        self.assertGreaterEqual(cleared, 0)
+
+    def test_undo_grouping_and_change_history_path(self) -> None:
+        ed = ScintillaCompatEditor()
+        ed.setText("abc")
+        ed.SendScintilla(ed.SCI_BEGINUNDOACTION)
+        ed.SendScintilla(ed.SCI_INSERTTEXT, 3, 1, "x")
+        ed.SendScintilla(ed.SCI_INSERTTEXT, 4, 1, "y")
+        ed.SendScintilla(ed.SCI_ENDUNDOACTION)
+        self.assertEqual(ed.text(), "abcxy")
+        self.assertEqual(ed.SendScintilla(ed.SCI_CANUNDO), 1)
+        self.assertEqual(ed.SendScintilla(ed.SCI_UNDO), 1)
+        self.assertEqual(ed.text(), "abc")
+        self.assertEqual(ed.SendScintilla(ed.SCI_REDO), 1)
+        self.assertEqual(ed.text(), "abcxy")
+
+    def test_posix_search_word_constraints(self) -> None:
+        ed = ScintillaCompatEditor()
+        ed.setText("aa_a aa")
+        n = ed.SendScintilla(ed.SCI_GETLENGTH)
+        ed.SendScintilla(ed.SCI_SETTARGETSTART, 0)
+        ed.SendScintilla(ed.SCI_SETTARGETEND, n)
+        ed.SendScintilla(ed.SCI_SETSEARCHFLAGS, ed.SCFIND_WHOLEWORD)
+        self.assertEqual(ed.SendScintilla(ed.SCI_SEARCHINTARGET, 2, "aa"), 5)
+        ed.SendScintilla(ed.SCI_SETTARGETSTART, 0)
+        ed.SendScintilla(ed.SCI_SETTARGETEND, n)
+        ed.SendScintilla(ed.SCI_SETSEARCHFLAGS, ed.SCFIND_WHOLEWORD | ed.SCFIND_POSIX)
+        self.assertEqual(ed.SendScintilla(ed.SCI_SEARCHINTARGET, 2, "aa"), 0)
+
+    def test_fold_display_text_and_autoc_fillups_apis(self) -> None:
+        ed = ScintillaCompatEditor()
+        ed.setText("one\ntwo\n")
+        self.assertEqual(ed.SendScintilla(ed.SCI_FOLDSETTEXT, 0, "..."), 3)
+        h: dict[str, str] = {}
+        self.assertEqual(ed.SendScintilla(ed.SCI_FOLDGETTEXT, 0, h), 3)
+        self.assertEqual(h.get("text"), "...")
+        self.assertEqual(ed.SendScintilla(ed.SCI_AUTOCSETFILLUPS, ";."), 2)
+        h2: dict[str, str] = {}
+        self.assertEqual(ed.SendScintilla(ed.SCI_AUTOCGETFILLUPS, h2), 2)
+        self.assertEqual(h2.get("text"), ";.")
 
     def test_stress_fuzz_random_command_sequences_invariants(self) -> None:
         ed = ScintillaCompatEditor()

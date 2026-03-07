@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 
 
 @dataclass
@@ -79,3 +79,27 @@ class ScintillaEngineState:
             checksums=[0] * 16,
             generation=0,
         )
+
+
+@dataclass
+class UndoFrame:
+    before_text: str
+    after_text: str
+    before_cursor: int
+    after_cursor: int
+    op: str = ""
+    pos_start: int = 0
+    pos_end_before: int = 0
+    pos_end_after: int = 0
+
+
+@dataclass
+class LexerWindow:
+    start: int
+    end: int
+    prev_state: int = 0
+
+
+class CompatLexerProtocol(Protocol):
+    def lex_incremental(self, text: str, start: int, end: int, prev_state: int = 0) -> tuple[list[tuple[int, int, int]], dict[int, FoldRegion], int]:
+        ...

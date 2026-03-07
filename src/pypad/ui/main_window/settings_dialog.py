@@ -169,6 +169,7 @@ class SettingsDialog(QDialog):
         self._load_controls_from_settings(self._settings)
         self._apply_dialog_theme()
         self.dark_checkbox.toggled.connect(lambda _checked: self._apply_dialog_theme())
+        self.follow_system_theme_checkbox.toggled.connect(lambda _checked: self._on_follow_system_theme_changed())
         npp_dark_combo = self._npp_dark_mode_preference_combo()
         if npp_dark_combo is not None:
             npp_dark_combo.currentTextChanged.connect(lambda _text: self._sync_dark_checkbox_from_npp_preference())
@@ -535,6 +536,14 @@ class SettingsDialog(QDialog):
         if isinstance(rate_spin, QSpinBox) and isinstance(blink_toggle, QCheckBox):
             rate_spin.setEnabled(bool(blink_toggle.isChecked()))
 
+    def _on_follow_system_theme_changed(self) -> None:
+        self._sync_theme_controls_enabled()
+        self._apply_dialog_theme()
+
+    def _sync_theme_controls_enabled(self) -> None:
+        follow = bool(getattr(self, "follow_system_theme_checkbox", None).isChecked())
+        self.dark_checkbox.setEnabled(not follow)
+
     def _build_pages(self) -> None:
         # Appearance
         appearance = QWidget(self)
@@ -545,6 +554,7 @@ class SettingsDialog(QDialog):
         self._register_route_aliases(idx, "appearance", "theme", "look", "npp-dark-mode")
 
         self.dark_checkbox = self._add_check(appearance_form, idx, "Enable dark mode")
+        self.follow_system_theme_checkbox = self._add_check(appearance_form, idx, "Follow system theme")
         styles = sorted(QStyleFactory.keys())
         self.app_style_combo = self._add_combo(appearance_form, idx, "Widget style engine", ["System Default"] + styles)
         self.theme_combo = self._add_combo(
@@ -1142,6 +1152,7 @@ class SettingsDialog(QDialog):
     def _apply_dialog_theme(self) -> None:
         preview_settings = dict(self._settings)
         preview_settings["dark_mode"] = bool(self.dark_checkbox.isChecked())
+        preview_settings["follow_system_theme"] = bool(self.follow_system_theme_checkbox.isChecked())
         preview_settings["accent_color"] = self._normalize_hex(self._label_color_value(self.accent_color_label), "#4a90e2")
         if hasattr(self, "theme_combo"):
             preview_settings["theme"] = str(self.theme_combo.currentText() or preview_settings.get("theme", "Default"))
@@ -1227,6 +1238,7 @@ class SettingsDialog(QDialog):
         preview_settings = dict(self._settings)
         if hasattr(self, "dark_checkbox"):
             preview_settings["dark_mode"] = bool(self.dark_checkbox.isChecked())
+        preview_settings["follow_system_theme"] = bool(self.follow_system_theme_checkbox.isChecked())
         if hasattr(self, "accent_color_label"):
             preview_settings["accent_color"] = self._normalize_hex(self._label_color_value(self.accent_color_label), "#4a90e2")
         if hasattr(self, "theme_combo"):
@@ -1507,6 +1519,8 @@ class SettingsDialog(QDialog):
 
     def _load_controls_from_settings(self, s: dict) -> None:
         self.dark_checkbox.setChecked(bool(s.get("dark_mode", False)))
+        self.follow_system_theme_checkbox.setChecked(bool(s.get("follow_system_theme", False)))
+        self._sync_theme_controls_enabled()
         self.app_style_combo.setCurrentText(str(s.get("app_style", "System Default")))
         self.theme_combo.setCurrentText(str(s.get("theme", "Default")))
         self._set_color_label(self.accent_color_label, self._normalize_hex(str(s.get("accent_color", "#4a90e2")), "#4a90e2"))
@@ -1659,6 +1673,7 @@ class SettingsDialog(QDialog):
         s = dict(self._settings)
         s["app_style"] = self.app_style_combo.currentText()
         s["dark_mode"] = self.dark_checkbox.isChecked()
+        s["follow_system_theme"] = self.follow_system_theme_checkbox.isChecked()
         s["theme"] = self.theme_combo.currentText()
         s["accent_color"] = self._normalize_hex(self._label_color_value(self.accent_color_label), "#4a90e2")
         s["use_custom_colors"] = self.use_custom_colors_checkbox.isChecked()
@@ -1920,5 +1935,9 @@ class SettingsDialog(QDialog):
         if hasattr(self._parent_window, "clear_translation_cache"):
             self._parent_window.clear_translation_cache()
             QMessageBox.information(self, "Translation Cache", "Translation cache cleared.")
+
+
+
+
 
 
