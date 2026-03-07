@@ -21,6 +21,16 @@ Development happens during my free time, so updates may be irregular.
 - 🎨 Token-based UI theming
 - 🎨 Command Palette (Ctrl+Shift+P) for quick commands
 
+## Goals
+
+The long-term goals of PyPad include:
+
+- Build a fast and reliable desktop editor for everyday writing and coding
+- Provide powerful navigation tools for large projects
+- Keep the UI customizable through token-based theming
+- Expand AI-assisted workflows while keeping the editor lightweight
+- Maintain a clean architecture that is easy to extend
+
 ## Preview
 
 *The picture below does not reflect on the actual app experience as the app ui layout can be updated anytime.
