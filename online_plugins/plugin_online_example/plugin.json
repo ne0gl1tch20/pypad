@@ -1,6 +1,7 @@
 ﻿{
   "id": "plugin_online_example",
   "name": "Online Example Plugin",
+  "author": "ne0gl1tch20",
   "version": "1.0.0",
   "plugin_api_version": "1.0",
   "description": "Shows a message after being downloaded via Online Plugins.",

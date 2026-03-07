@@ -67,6 +67,7 @@ The format is based on Keep a Changelog, and this project uses Semantic Versioni
     - GitHub-backed catalog support via `plugin_online_catalog_url`
     - one-click install flow for catalog plugins (policy/security checks still enforced)
   - Manifest/compatibility metadata support:
+    - `author`
     - `version`, `plugin_api_version`
     - `min_app_version`, `max_app_version`
     - `update_url`, `homepage`
@@ -121,6 +122,7 @@ The format is based on Keep a Changelog, and this project uses Semantic Versioni
   - tighter tab accessory layout.
 - Plugin discovery now accepts UTF-8 BOM manifests (`utf-8-sig`) for broader editor/tool compatibility.
 - Online plugin discovery/install moved to dedicated `Online Plugins` dialog, while Plugin Manager remains focused on local plugin runtime/admin tooling.
+- Online plugin catalog and UI now surface plugin `author` metadata across list/details/diagnostics/inspect flows.
 
 ### Docs
 - Updated release metadata/docs for `1.7.9-prerelease`:
@@ -172,6 +174,8 @@ The format is based on Keep a Changelog, and this project uses Semantic Versioni
   - preview direction now syncs to active editor tab direction (prevents RTL/LTR mismatch rendering).
 - Crash recovery no longer leaves stray blank startup tabs when restoring or discarding recovery entries.
 - Tab close/pin badge accessory sizing tuned to prevent icon/text cropping in compact tab mode.
+- Online plugin catalog fetch now uses resilient mixed-source decode fallback (`utf-8` then `utf-8-sig`) to tolerate BOM/non-BOM remote JSON.
+- Online plugin install now normalizes fetched `plugin.json`/`plugin.py` text to UTF-8 without BOM before policy parsing, fixing `U+FEFF` parser/policy failures.
 
 ## [1.7.8-prerelease] - 2026-03-06
 

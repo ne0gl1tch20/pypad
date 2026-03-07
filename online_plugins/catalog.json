@@ -3,6 +3,7 @@
     {
       "id": "plugin_online_example",
       "name": "Online Example Plugin",
+      "author": "ne0gl1tch20",
       "description": "Example plugin installed from online catalog.",
       "version": "1.0.0",
       "repo": "https://github.com/ne0gl1tch20/pypad",

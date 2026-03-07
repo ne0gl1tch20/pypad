@@ -1297,8 +1297,11 @@ class PluginHost:
         if payload is None and catalog_url:
             try:
                 with urlopen(catalog_url, timeout=6.0) as resp:
-                    raw = resp.read().decode("utf-8-sig", errors="replace")
-                payload = json.loads(raw)
+                    raw_bytes = resp.read()
+                try:
+                    payload = json.loads(raw_bytes.decode("utf-8", errors="strict"))
+                except Exception:
+                    payload = json.loads(raw_bytes.decode("utf-8-sig", errors="replace"))
             except Exception as exc:
                 errors.append(f"Remote catalog fetch failed: {exc}")
         if payload is None:
@@ -1322,6 +1325,7 @@ class PluginHost:
                     "id": plugin_id,
                     "name": str(row.get("name", plugin_id) or plugin_id),
                     "description": str(row.get("description", "") or ""),
+                    "author": str(row.get("author", "") or ""),
                     "version": str(row.get("version", "") or ""),
                     "repo": str(row.get("repo", "") or "").strip(),
                     "source": source,
@@ -1329,6 +1333,13 @@ class PluginHost:
                 }
             )
         return out
+
+    @staticmethod
+    def _decode_text_bytes_with_fallback(payload: bytes) -> str:
+        try:
+            return payload.decode("utf-8", errors="strict")
+        except Exception:
+            return payload.decode("utf-8-sig", errors="replace")
 
     def install_online_plugin(self, entry: dict[str, str]) -> Path:
         plugin_id = self._normalize_plugin_id(str(entry.get("id", "")).strip())
@@ -1355,7 +1366,7 @@ class PluginHost:
                 file_url = f"{raw_base}/{rel}"
                 with urlopen(file_url, timeout=8.0) as resp:
                     payload = resp.read()
-                (staging / rel).write_bytes(payload)
+                (staging / rel).write_text(self._decode_text_bytes_with_fallback(payload), encoding="utf-8")
             try:
                 meta = json.loads((staging / "plugin.json").read_text(encoding="utf-8-sig"))
             except Exception as exc:
@@ -1453,6 +1464,7 @@ class PluginHost:
             return {
                 "plugin_id": pid,
                 "name": str(meta.get("name", pid)),
+                "author": str(meta.get("author", "") or ""),
                 "version": str(meta.get("version", "") or ""),
                 "requested_permissions": sorted(requested),
                 "issues": list(issues),
@@ -1691,6 +1703,7 @@ class PluginHost:
                     compatibility_issues=compatibility_issues,
                     metadata={
                         "version": str(meta.get("version", "") or "").strip(),
+                        "author": str(meta.get("author", "") or "").strip(),
                         "plugin_api_version": plugin_api_version,
                         "min_app_version": min_app_version,
                         "max_app_version": max_app_version,
@@ -1979,6 +1992,7 @@ class PluginHost:
         manifest = {
             "id": pid,
             "name": title,
+            "author": "",
             "version": "1.0.0",
             "plugin_api_version": PLUGIN_API_VERSION,
             "description": desc or "Plugin scaffold generated from Plugin Manager.",
@@ -2218,6 +2232,8 @@ class PluginManagerDialog(QDialog):
             meta_parts = []
             if rec.metadata.get("version"):
                 meta_parts.append(f"ver: {rec.metadata.get('version')}")
+            if rec.metadata.get("author"):
+                meta_parts.append(f"author: {rec.metadata.get('author')}")
             if rec.metadata.get("plugin_api_version"):
                 meta_parts.append(f"api: {rec.metadata.get('plugin_api_version')}")
             if rec.metadata.get("min_app_version") or rec.metadata.get("max_app_version"):
@@ -2360,6 +2376,7 @@ class PluginManagerDialog(QDialog):
             f"Plugin: {rec.name} ({rec.plugin_id})",
             f"Description: {rec.description}",
             f"Version: {rec.metadata.get('version', '') or '(unknown)'}",
+            f"Author: {rec.metadata.get('author', '') or '(unknown)'}",
             f"Plugin API Version: {rec.metadata.get('plugin_api_version', '') or '(unknown)'}",
             f"Supported Plugin API: {PLUGIN_API_VERSION}",
             f"App Version: {self.host.app_version}",
@@ -2482,6 +2499,7 @@ class PluginManagerDialog(QDialog):
         lines = [
             f"Plugin ID: {info.get('plugin_id', '')}",
             f"Name: {info.get('name', '')}",
+            f"Author: {info.get('author', '') or '-'}",
             f"Version: {info.get('version', '')}",
             f"Requested permissions: {', '.join(info.get('requested_permissions', [])) or 'none'}",
         ]
@@ -2781,10 +2799,13 @@ class OnlinePluginsDialog(QDialog):
             plugin_id = str(row.get("id", "") or "")
             name = str(row.get("name", plugin_id) or plugin_id)
             version = str(row.get("version", "") or "")
+            author = str(row.get("author", "") or "")
             status = "installed" if plugin_id in installed_ids else "available"
             text = f"{name} ({plugin_id}) | {status}"
             if version:
                 text += f" | v{version}"
+            if author:
+                text += f" | by {author}"
             self.list_widget.addItem(QListWidgetItem(text))
         self._refresh_details()
 
@@ -2798,6 +2819,7 @@ class OnlinePluginsDialog(QDialog):
             f"Name: {row.get('name', '')}",
             f"ID: {row.get('id', '')}",
             f"Version: {row.get('version', '') or '-'}",
+            f"Author: {row.get('author', '') or '-'}",
             f"Description: {row.get('description', '') or '-'}",
             f"Repository: {row.get('repo', '') or '-'}",
             f"Source: {row.get('source', '') or '-'}",

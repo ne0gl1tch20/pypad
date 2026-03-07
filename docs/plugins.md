@@ -19,6 +19,7 @@ Plugins are discovered from:
 {
   "id": "my_plugin",
   "name": "My Plugin",
+  "author": "Plugin Author",
   "version": "1.0.0",
   "plugin_api_version": "1.0",
   "description": "What this plugin does",
@@ -136,4 +137,5 @@ For full method and hook references, see `docs/plugin_api.md`.
 
 - Catalog URL setting: `plugin_online_catalog_url` (defaults to the PyPad GitHub `online_plugins/catalog.json`).
 - Catalog entries can point to plugin source folders in GitHub (raw `plugin.json` + `plugin.py`).
+- Catalog/manifest metadata supports `author` and `description` for richer plugin identity.
 - Example online plugin in this repo: `online_plugins/plugin_online_example/`.

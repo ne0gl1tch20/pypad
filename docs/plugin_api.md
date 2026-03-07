@@ -28,6 +28,7 @@ Plugins declare permissions in `plugin.json`. Users can allow/deny requested per
 Optional compatibility/update fields in `plugin.json`:
 
 - `version`: plugin version string.
+- `author`: plugin author/publisher label.
 - `plugin_api_version`: plugin API contract version expected by plugin.
 - `min_app_version`: minimum app version required.
 - `max_app_version`: maximum app version supported.
