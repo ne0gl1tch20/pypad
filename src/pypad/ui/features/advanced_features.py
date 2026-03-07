@@ -1297,7 +1297,7 @@ class PluginHost:
         if payload is None and catalog_url:
             try:
                 with urlopen(catalog_url, timeout=6.0) as resp:
-                    raw = resp.read().decode("utf-8", errors="replace")
+                    raw = resp.read().decode("utf-8-sig", errors="replace")
                 payload = json.loads(raw)
             except Exception as exc:
                 errors.append(f"Remote catalog fetch failed: {exc}")
