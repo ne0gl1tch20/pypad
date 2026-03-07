@@ -95,6 +95,30 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
         "Checklist": "## Checklist\n\n- [ ] Item 1\n- [ ] Item 2\n- [ ] Item 3\n",
     }
 
+    @staticmethod
+    def _demo_templates_root() -> Path:
+        return Path(__file__).resolve().parents[4] / "templates" / "demo_pack"
+
+    @staticmethod
+    def _demo_display_name(path: Path) -> str:
+        stem = path.stem.strip()
+        stem = stem.lstrip("0123456789._- ").strip()
+        cleaned = stem.replace("_", " ").replace("-", " ").strip()
+        return " ".join(part.capitalize() for part in cleaned.split()) or "Demo"
+
+    def _load_demo_templates(self) -> None:
+        self.templates = dict(type(self).templates)
+        root = self._demo_templates_root()
+        if not root.exists() or not root.is_dir():
+            return
+        for path in sorted(root.glob("*.md")):
+            try:
+                text = path.read_text(encoding="utf-8")
+            except Exception:
+                continue
+            name = f"Demo: {self._demo_display_name(path)}"
+            self.templates[name] = text
+
     def __init__(self) -> None:
         super().__init__()
         startup_t0 = time.perf_counter()
@@ -116,6 +140,7 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
 
         self.setWindowTitle("Untitled - Pypad")
         self.resize(800, 600)
+        self._load_demo_templates()
 
         self.word_wrap_enabled = True
         self.last_search_text: str | None = None

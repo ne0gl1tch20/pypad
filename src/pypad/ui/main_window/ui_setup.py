@@ -188,7 +188,14 @@ class UiSetupMixin:
                 border: 1px solid {tokens.border};
             }}
         """
-        for attr_name in ("editor_dock_title_bar", "markdown_preview_dock_title_bar", "explorer_dock_title_bar"):
+        for attr_name in (
+            "editor_dock_title_bar",
+            "markdown_preview_dock_title_bar",
+            "explorer_dock_title_bar",
+            "search_results_dock_title_bar",
+            "minimap_dock_title_bar",
+            "outline_dock_title_bar",
+        ):
             bar = getattr(self, attr_name, None)
             if bar is None:
                 continue
@@ -199,6 +206,64 @@ class UiSetupMixin:
                 bar.float_btn.setIcon(float_icon)
             if not close_icon.isNull():
                 bar.close_btn.setIcon(close_icon)
+
+    def _apply_search_panel_theme(self) -> None:
+        toolbar = getattr(self, "search_toolbar", None)
+        if toolbar is None:
+            return
+        tokens = build_tokens_from_settings(self.settings)
+        toolbar.setStyleSheet(
+            f"""
+            QToolBar#searchToolbar {{
+                background: {tokens.panel_bg};
+                border: 1px solid {tokens.border};
+                border-radius: {tokens.radius_md}px;
+                spacing: {tokens.space_sm}px;
+                padding: 4px;
+            }}
+            QToolBar#searchToolbar QLabel#searchFindLabel {{
+                color: {tokens.text};
+                font-weight: 600;
+                padding-left: 2px;
+                padding-right: 2px;
+            }}
+            QToolBar#searchToolbar QLineEdit#searchInput {{
+                background: {tokens.input_bg};
+                color: {tokens.text};
+                border: 1px solid {tokens.border};
+                border-radius: {tokens.radius_sm}px;
+                padding: 4px 7px;
+                min-height: {max(24, int(tokens.input_height) - 2)}px;
+            }}
+            QToolBar#searchToolbar QLineEdit#searchInput:focus {{
+                border: 1px solid {tokens.accent};
+            }}
+            QToolBar#searchToolbar QCheckBox#searchHighlightCheckbox,
+            QToolBar#searchToolbar QCheckBox#searchCaseCheckbox {{
+                color: {tokens.text};
+            }}
+            QToolBar#searchToolbar QPushButton#searchPrevBtn,
+            QToolBar#searchToolbar QPushButton#searchNextBtn,
+            QToolBar#searchToolbar QPushButton#searchCloseBtn {{
+                background: {tokens.button_bg};
+                color: {tokens.text};
+                border: 1px solid {tokens.border};
+                border-radius: {tokens.radius_sm}px;
+                padding: 4px 8px;
+                min-height: {max(24, int(tokens.input_height) - 2)}px;
+            }}
+            QToolBar#searchToolbar QPushButton#searchPrevBtn:hover,
+            QToolBar#searchToolbar QPushButton#searchNextBtn:hover,
+            QToolBar#searchToolbar QPushButton#searchCloseBtn:hover {{
+                background: {tokens.toolbar_hover_bg};
+            }}
+            QToolBar#searchToolbar QPushButton#searchPrevBtn:pressed,
+            QToolBar#searchToolbar QPushButton#searchNextBtn:pressed,
+            QToolBar#searchToolbar QPushButton#searchCloseBtn:pressed {{
+                background: {tokens.toolbar_checked_bg};
+            }}
+            """
+        )
     def _active_logging_level(self) -> str:
         settings = getattr(self, "settings", {}) or {}
         return normalize_log_level_name(settings.get("logging_level", "INFO"))
@@ -1740,9 +1805,7 @@ class UiSetupMixin:
             "Block Uncomment": "Uncomment the selected block",
             "Find": "Find text in the current tab",
             "Find Panel": "Open persistent search panel",
-            "Workspace Panel": "Show workspace file tree panel",
             "Search Results Panel": "Show search results panel",
-            "Status Panel": "Show dockable status panel",
             "Save Layout": "Save current panel layout",
             "Save Layout As": "Save current panel layout with a new name",
             "Load Layout": "Load a saved panel layout",
@@ -1965,6 +2028,12 @@ class UiSetupMixin:
         if hasattr(self, "search_bing_action"):
             self.search_bing_action.setText(f"Search with &{provider_text}")
 
+    def _demo_template_names(self) -> list[str]:
+        templates = getattr(self, "templates", {})
+        if not isinstance(templates, dict):
+            return []
+        return sorted(str(name) for name in templates.keys() if str(name).startswith("Demo: "))
+
     def update_action_states(self, *_args) -> None:
         if not hasattr(self, "save_action"):
             return
@@ -2077,6 +2146,8 @@ class UiSetupMixin:
         self.insert_meeting_template_action.setEnabled(has_tab)
         self.insert_daily_template_action.setEnabled(has_tab)
         self.insert_checklist_template_action.setEnabled(has_tab)
+        for action in getattr(self, "demo_insert_template_actions", []):
+            action.setEnabled(has_tab)
         self.quick_open_action.setEnabled(True)
 
         # Edit actions
@@ -2188,8 +2259,6 @@ class UiSetupMixin:
             self.explorer_panel_action.setEnabled(True)
         if hasattr(self, "search_results_panel_action"):
             self.search_results_panel_action.setEnabled(True)
-        if hasattr(self, "status_panel_action"):
-            self.status_panel_action.setEnabled(True)
         if hasattr(self, "editor_panel_action"):
             self.editor_panel_action.setEnabled(True)
         if hasattr(self, "lock_layout_action"):
@@ -2538,6 +2607,17 @@ class UiSetupMixin:
         self.insert_checklist_template_action.triggered.connect(
             lambda: self.insert_template_into_active_tab("Checklist")
         )
+        self.demo_new_template_actions: list[QAction] = []
+        self.demo_insert_template_actions: list[QAction] = []
+        for template_name in self._demo_template_names():
+            new_action = QAction(f"New From {template_name}", self)
+            new_action.triggered.connect(lambda _checked=False, name=template_name: self.new_tab_from_template(name))
+            self.demo_new_template_actions.append(new_action)
+            insert_action = QAction(f"Insert {template_name}", self)
+            insert_action.triggered.connect(
+                lambda _checked=False, name=template_name: self.insert_template_into_active_tab(name)
+            )
+            self.demo_insert_template_actions.append(insert_action)
 
         self.export_pdf_action = QAction("Export as PDF...", self)
         self.export_pdf_action.triggered.connect(self.export_active_as_pdf)
@@ -2632,18 +2712,12 @@ class UiSetupMixin:
         self.search_panel_action.setCheckable(True)
         self.search_panel_action.toggled.connect(self.toggle_search_panel)
 
-        self.workspace_panel_action = QAction("Workspace Panel", self)
-        self.workspace_panel_action.setCheckable(True)
-        self.workspace_panel_action.triggered.connect(self.toggle_workspace_panel)
         self.explorer_panel_action = QAction("Explorer Panel", self)
         self.explorer_panel_action.setCheckable(True)
         self.explorer_panel_action.triggered.connect(self.toggle_explorer_panel)
         self.search_results_panel_action = QAction("Search Results Panel", self)
         self.search_results_panel_action.setCheckable(True)
         self.search_results_panel_action.triggered.connect(self.toggle_search_results_panel)
-        self.status_panel_action = QAction("Status Panel", self)
-        self.status_panel_action.setCheckable(True)
-        self.status_panel_action.triggered.connect(self.toggle_status_panel)
         self.editor_panel_action = QAction("Editor Panel", self)
         self.editor_panel_action.setCheckable(True)
         self.editor_panel_action.triggered.connect(self.toggle_editor_panel)
@@ -3507,6 +3581,8 @@ class UiSetupMixin:
         self.user_guide_action.triggered.connect(self.show_user_guide)
         self.first_time_tutorial_action = QAction("First Time Tutorial", self)
         self.first_time_tutorial_action.triggered.connect(self.show_first_time_tutorial)
+        self.open_demo_pack_action = QAction("Open Demo Pack (first template)", self)
+        self.open_demo_pack_action.triggered.connect(self.open_demo_pack_first_template)
         self.reload_app_action = QAction("Reload App", self)
         self.reload_app_action.triggered.connect(self.reload_app)
         self.check_updates_action = QAction("Check for &Updates...", self)
@@ -3736,10 +3812,9 @@ class UiSetupMixin:
             action.setIcon(fallback_icon)
         overflow_button = getattr(self, "main_toolbar_overflow_button", None)
         if overflow_button is not None:
-            overflow_icon = self._svg_icon("toolbar-overflow")
-            if overflow_icon.isNull():
-                overflow_icon = self._standard_style_icon("SP_ToolBarHorizontalExtensionButton")
-            overflow_button.setIcon(overflow_icon)
+            overflow_button.setIcon(QIcon())
+            overflow_button.setText(">>")
+            overflow_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
 
     def _update_main_toolbar_overflow(self) -> None:
         toolbar = getattr(self, "main_toolbar", None)
@@ -3747,6 +3822,17 @@ class UiSetupMixin:
         overflow_menu = getattr(self, "main_toolbar_overflow_menu", None)
         if toolbar is None or overflow_button is None or overflow_menu is None:
             return
+        # Disable custom overflow trigger: keep toolbar actions visible and hide button/menu.
+        overflow_button.setVisible(False)
+        overflow_menu.clear()
+        for action in toolbar.actions():
+            try:
+                widget = toolbar.widgetForAction(action)
+            except RuntimeError:
+                continue
+            if widget is not None:
+                widget.setVisible(True)
+        return
         if overflow_menu.isVisible():
             self._main_toolbar_overflow_update_pending = True
             return
@@ -3875,28 +3961,34 @@ class UiSetupMixin:
         self.file_menu.addAction(self.quick_open_action)
         self.file_menu.addAction(self.save_action)
         self.file_menu.addAction(self.save_as_action)
-        self.file_menu.addAction(self.rename_action)
-        self.file_menu.addAction(self.move_recycle_action)
         self.file_menu.addSeparator()
-        self.file_menu.addAction(self.close_tab_action)
-        self.file_menu.addAction(self.close_all_action)
-        close_multi_menu = self.file_menu.addMenu("Close Multiple Documents")
+        close_menu = self.file_menu.addMenu("Close")
+        close_menu.addAction(self.close_tab_action)
+        close_menu.addAction(self.close_all_action)
+        close_multi_menu = close_menu.addMenu("Close Multiple Documents")
         close_multi_menu.addAction(self.close_all_but_active_action)
         close_multi_menu.addAction(self.close_all_but_pinned_action)
         close_multi_menu.addAction(self.close_all_left_action)
         close_multi_menu.addAction(self.close_all_right_action)
         close_multi_menu.addAction(self.close_all_unchanged_action)
         self.file_menu.addSeparator()
-        self.file_menu.addAction(self.print_action)
-        self.file_menu.addAction(self.print_preview_action)
-        self.file_menu.addAction(self.page_layout_action)
-        self.file_menu.addAction(self.version_history_action)
-        self.file_menu.addAction(self.local_history_timeline_action)
-        self.file_menu.addAction(self.pin_tab_action)
-        self.file_menu.addAction(self.favorite_tab_action)
-        self.file_menu.addAction(self.edit_tags_action)
+        doc_menu = self.file_menu.addMenu("Document")
+        doc_menu.addAction(self.rename_action)
+        doc_menu.addAction(self.move_recycle_action)
+        doc_menu.addSeparator()
+        doc_menu.addAction(self.print_action)
+        doc_menu.addAction(self.print_preview_action)
+        doc_menu.addAction(self.page_layout_action)
+        doc_menu.addSeparator()
+        doc_menu.addAction(self.version_history_action)
+        doc_menu.addAction(self.local_history_timeline_action)
+        doc_menu.addSeparator()
+        doc_menu.addAction(self.pin_tab_action)
+        doc_menu.addAction(self.favorite_tab_action)
+        doc_menu.addAction(self.edit_tags_action)
         self.file_menu.addSeparator()
-        self.templates_menu = self.file_menu.addMenu("Templates")
+        file_more_menu = self.file_menu.addMenu("More")
+        self.templates_menu = file_more_menu.addMenu("Templates")
         self.templates_menu.addAction(self.new_from_meeting_template_action)
         self.templates_menu.addAction(self.new_from_daily_template_action)
         self.templates_menu.addAction(self.new_from_checklist_template_action)
@@ -3904,20 +3996,29 @@ class UiSetupMixin:
         self.templates_menu.addAction(self.insert_meeting_template_action)
         self.templates_menu.addAction(self.insert_daily_template_action)
         self.templates_menu.addAction(self.insert_checklist_template_action)
-        self.export_menu = self.file_menu.addMenu("Export")
+        if getattr(self, "demo_new_template_actions", []):
+            self.templates_menu.addSeparator()
+            demo_menu = self.templates_menu.addMenu("Demo Pack")
+            demo_new_menu = demo_menu.addMenu("New From Demo")
+            for action in self.demo_new_template_actions:
+                demo_new_menu.addAction(action)
+            demo_insert_menu = demo_menu.addMenu("Insert Demo")
+            for action in self.demo_insert_template_actions:
+                demo_insert_menu.addAction(action)
+        self.export_menu = file_more_menu.addMenu("Export")
         self.export_menu.addAction(self.export_pdf_action)
         self.export_menu.addAction(self.export_markdown_action)
         self.export_menu.addAction(self.export_html_action)
         self.export_menu.addAction(self.export_docx_action)
         self.export_menu.addAction(self.export_odt_action)
-        self.encoding_menu = self.file_menu.addMenu("Encoding")
+        self.encoding_menu = file_more_menu.addMenu("Encoding")
         self.encoding_menu.addAction(self.encoding_utf8_action)
         self.encoding_menu.addAction(self.encoding_utf16_action)
         self.encoding_menu.addAction(self.encoding_ansi_action)
-        self.eol_menu = self.file_menu.addMenu("EOL")
+        self.eol_menu = file_more_menu.addMenu("EOL")
         self.eol_menu.addAction(self.eol_lf_action)
         self.eol_menu.addAction(self.eol_crlf_action)
-        self.workspace_menu = self.file_menu.addMenu("Workspace")
+        self.workspace_menu = file_more_menu.addMenu("Workspace")
         self.workspace_menu.addAction(self.open_workspace_action)
         self.workspace_menu.addAction(self.workspace_files_action)
         self.workspace_menu.addAction(self.workspace_search_action)
@@ -3925,15 +4026,15 @@ class UiSetupMixin:
         self.workspace_menu.addAction(self.workspace_save_profile_action)
         self.workspace_menu.addAction(self.workspace_load_profile_action)
         self.workspace_menu.addAction(self.workspace_startup_picker_action)
-        self.session_menu = self.file_menu.addMenu("Session")
+        self.session_menu = file_more_menu.addMenu("Session")
         self.session_menu.addAction(self.save_session_action)
         self.session_menu.addAction(self.save_session_as_action)
         self.session_menu.addAction(self.load_session_action)
-        self.security_menu = self.file_menu.addMenu("Security")
+        self.security_menu = file_more_menu.addMenu("Security")
         self.security_menu.addAction(self.encrypt_note_action)
         self.security_menu.addAction(self.decrypt_note_action)
         self.security_menu.addAction(self.change_note_password_action)
-        self.ai_menu = self.file_menu.addMenu("AI")
+        self.ai_menu = file_more_menu.addMenu("AI")
         self.ai_menu.addAction(self.ask_ai_action)
         self.ai_menu.addAction(self.ai_chat_panel_action)
         self.ai_menu.addAction(self.explain_selection_ai_action)
@@ -3995,6 +4096,10 @@ class UiSetupMixin:
         insert_menu.addAction(self.insert_meeting_template_action)
         insert_menu.addAction(self.insert_daily_template_action)
         insert_menu.addAction(self.insert_checklist_template_action)
+        if getattr(self, "demo_insert_template_actions", []):
+            demo_insert_menu = insert_menu.addMenu("Insert Demo Template")
+            for action in self.demo_insert_template_actions:
+                demo_insert_menu.addAction(action)
         self.edit_menu.addAction(self.reminders_action)
         copy_menu = self.edit_menu.addMenu("Copy to Clipboard")
         copy_menu.addAction(self.copy_full_path_action)
@@ -4077,33 +4182,39 @@ class UiSetupMixin:
         # Search
         self.search_menu = menu_bar.addMenu("&Search")
         self.search_menu.addAction(self.find_action)
-        self.search_menu.addAction(self.find_in_files_action)
-        self.search_menu.addSeparator()
-        self.search_menu.addAction(self.find_next_action)
-        self.search_menu.addAction(self.find_prev_action)
-        self.search_menu.addAction(self.select_find_next_action)
-        self.search_menu.addAction(self.select_find_prev_action)
-        self.search_menu.addAction(self.find_volatile_next_action)
-        self.search_menu.addAction(self.find_volatile_prev_action)
         self.search_menu.addAction(self.replace_action)
-        self.search_menu.addAction(self.regex_replace_preview_action)
-        self.search_menu.addAction(self.regex_filter_preview_action)
-        self.search_menu.addAction(self.replace_in_files_action)
-        self.search_menu.addAction(self.search_bing_action)
-        self.search_menu.addAction(self.incremental_search_action)
-        self.search_menu.addSeparator()
-        self.search_menu.addAction(self.search_results_window_action)
-        self.search_menu.addAction(self.next_search_result_action)
-        self.search_menu.addAction(self.prev_search_result_action)
-        self.search_menu.addSeparator()
         self.search_menu.addAction(self.goto_line_action)
-        self.search_menu.addAction(self.goto_matching_brace_action)
         self.search_menu.addSeparator()
-        self.search_menu.addAction(self.jump_back_action)
-        self.search_menu.addAction(self.jump_forward_action)
-        self.search_menu.addAction(self.jump_history_window_action)
-        self.search_menu.addAction(self.select_in_between_braces_action)
-        self.search_menu.addAction(self.mark_action)
+        find_menu = self.search_menu.addMenu("Find")
+        find_menu.addAction(self.find_in_files_action)
+        find_menu.addSeparator()
+        find_menu.addAction(self.find_next_action)
+        find_menu.addAction(self.find_prev_action)
+        find_menu.addAction(self.select_find_next_action)
+        find_menu.addAction(self.select_find_prev_action)
+        find_menu.addSeparator()
+        find_menu.addAction(self.find_volatile_next_action)
+        find_menu.addAction(self.find_volatile_prev_action)
+        find_menu.addAction(self.incremental_search_action)
+        replace_menu = self.search_menu.addMenu("Replace")
+        replace_menu.addAction(self.regex_replace_preview_action)
+        replace_menu.addAction(self.regex_filter_preview_action)
+        replace_menu.addAction(self.replace_in_files_action)
+        results_menu = self.search_menu.addMenu("Results")
+        results_menu.addAction(self.search_results_window_action)
+        results_menu.addAction(self.next_search_result_action)
+        results_menu.addAction(self.prev_search_result_action)
+        navigate_menu = self.search_menu.addMenu("Navigate")
+        navigate_menu.addAction(self.goto_matching_brace_action)
+        navigate_menu.addSeparator()
+        navigate_menu.addAction(self.jump_back_action)
+        navigate_menu.addAction(self.jump_forward_action)
+        navigate_menu.addAction(self.jump_history_window_action)
+        navigate_menu.addSeparator()
+        navigate_menu.addAction(self.select_in_between_braces_action)
+        navigate_menu.addAction(self.mark_action)
+        self.search_menu.addSeparator()
+        self.search_menu.addAction(self.search_bing_action)
         self.search_menu.addSeparator()
         search_advanced_menu = self.search_menu.addMenu("Advanced")
         change_history_menu = search_advanced_menu.addMenu("Change History")
@@ -4236,12 +4347,16 @@ class UiSetupMixin:
 
         # View
         self.view_menu = menu_bar.addMenu("&View")
-        self.view_menu.addAction(self.always_on_top_action)
         self.view_menu.addAction(self.full_screen_action)
-        self.view_menu.addAction(self.post_it_action)
-        self.view_menu.addAction(self.distraction_free_action)
-        self.view_menu.addAction(self.print_view_action)
-        self.view_menu.addAction(self.page_layout_view_action)
+        self.view_menu.addAction(self.word_wrap_action)
+        self.view_menu.addAction(self.show_line_numbers_action)
+        self.view_menu.addSeparator()
+        window_modes_menu = self.view_menu.addMenu("Window Modes")
+        window_modes_menu.addAction(self.always_on_top_action)
+        window_modes_menu.addAction(self.post_it_action)
+        window_modes_menu.addAction(self.distraction_free_action)
+        window_modes_menu.addAction(self.print_view_action)
+        window_modes_menu.addAction(self.page_layout_view_action)
         self.view_menu.addSeparator()
         view_current_file_menu = self.view_menu.addMenu("View Current File in")
         view_current_file_menu.addAction(self.view_file_explorer_action)
@@ -4261,25 +4376,25 @@ class UiSetupMixin:
         zoom_menu.addAction(self.zoom_out_action)
         zoom_menu.addSeparator()
         zoom_menu.addAction(self.zoom_reset_action)
-        move_clone_menu = self.view_menu.addMenu("Move/Clone Current Document")
+        move_clone_menu = self.view_menu.addMenu("Split/Clone Document")
         move_clone_menu.addAction(self.clone_view_action)
         move_clone_menu.addAction(self.split_vertical_action)
         move_clone_menu.addAction(self.split_horizontal_action)
         move_clone_menu.addAction(self.split_close_action)
-        self.view_menu.addAction(self.word_wrap_action)
-        self.view_menu.addAction(self.show_line_numbers_action)
-        self.view_menu.addAction(self.focus_other_view_action)
-        self.view_menu.addAction(self.hide_lines_action)
-        self.view_menu.addAction(self.show_hidden_lines_action)
+        navigation_view_menu = self.view_menu.addMenu("Navigation")
+        navigation_view_menu.addAction(self.focus_other_view_action)
+        navigation_view_menu.addAction(self.hide_lines_action)
+        navigation_view_menu.addAction(self.show_hidden_lines_action)
         self.view_menu.addSeparator()
-        self.view_menu.addAction(self.fold_all_action)
-        self.view_menu.addAction(self.unfold_all_action)
-        self.view_menu.addAction(self.fold_current_level_action)
-        self.view_menu.addAction(self.unfold_current_level_action)
-        fold_level_menu = self.view_menu.addMenu("Fold Level")
+        folding_menu = self.view_menu.addMenu("Folding")
+        folding_menu.addAction(self.fold_all_action)
+        folding_menu.addAction(self.unfold_all_action)
+        folding_menu.addAction(self.fold_current_level_action)
+        folding_menu.addAction(self.unfold_current_level_action)
+        fold_level_menu = folding_menu.addMenu("Fold Level")
         for action in self.fold_level_actions:
             fold_level_menu.addAction(action)
-        unfold_level_menu = self.view_menu.addMenu("Unfold Level")
+        unfold_level_menu = folding_menu.addMenu("Unfold Level")
         for action in self.unfold_level_actions:
             unfold_level_menu.addAction(action)
         self.view_menu.addSeparator()
@@ -4295,7 +4410,6 @@ class UiSetupMixin:
         project_panels_menu.addAction(self.symbol_outline_action)
         project_panels_menu.addSeparator()
         project_panels_menu.addAction(self.explorer_panel_action)
-        project_panels_menu.addAction(self.workspace_panel_action)
         project_panels_menu.addAction(self.search_results_panel_action)
         project_panels_menu.addAction(self.editor_panel_action)
         view_advanced_menu.addAction(self.define_language_action)
@@ -4311,7 +4425,6 @@ class UiSetupMixin:
         view_advanced_menu.addAction(self.ai_chat_panel_action)
         view_advanced_menu.addSeparator()
         view_advanced_menu.addAction(self.status_bar_action)
-        view_advanced_menu.addAction(self.status_panel_action)
         view_advanced_menu.addSeparator()
         snap_menu = view_advanced_menu.addMenu("Snap Dock")
         snap_menu.addAction(self.snap_dock_left_action)
@@ -4427,6 +4540,7 @@ class UiSetupMixin:
         self.help_menu = menu_bar.addMenu("&Help")
         self.help_menu.addAction(self.user_guide_action)
         self.help_menu.addAction(self.first_time_tutorial_action)
+        self.help_menu.addAction(self.open_demo_pack_action)
         self.help_menu.addAction(self.reload_app_action)
         self.help_menu.addSeparator()
         self.help_menu.addAction(self.check_updates_action)
@@ -4544,7 +4658,12 @@ class UiSetupMixin:
 
         self.main_toolbar_overflow_menu = QMenu(main_toolbar)
         self.main_toolbar_overflow_button = QToolButton(main_toolbar)
-        self.main_toolbar_overflow_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
+        self.main_toolbar_overflow_button.setObjectName("mainToolbarOverflowButton")
+        self.main_toolbar_overflow_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+        self.main_toolbar_overflow_button.setText(">>")
+        self.main_toolbar_overflow_button.setAutoRaise(True)
+        self.main_toolbar_overflow_button.setMinimumWidth(30)
+        self.main_toolbar_overflow_button.setMaximumWidth(34)
         self.main_toolbar_overflow_button.setToolTip("More tools")
         self.main_toolbar_overflow_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self.main_toolbar_overflow_button.setMenu(self.main_toolbar_overflow_menu)
@@ -4610,6 +4729,7 @@ class UiSetupMixin:
         self.search_panel_action.blockSignals(False)
 
         self.search_input = QLineEdit(self.search_toolbar)
+        self.search_input.setObjectName("searchInput")
         self.search_input.setPlaceholderText("Find text...")
         self.search_input.textChanged.connect(self._on_search_text_changed)
         if hasattr(self, "log_event"):
@@ -4617,30 +4737,38 @@ class UiSetupMixin:
                 self.log_event("Info", f"[Startup] Toolbar ready: Search ({len(self.search_toolbar.actions())} actions)")
             except Exception:
                 pass
-        self.search_toolbar.addWidget(QLabel("Find:", self.search_toolbar))
+        self.search_find_label = QLabel("Find:", self.search_toolbar)
+        self.search_find_label.setObjectName("searchFindLabel")
+        self.search_toolbar.addWidget(self.search_find_label)
         self.search_toolbar.addWidget(self.search_input)
 
         self.search_highlight_checkbox = QCheckBox("Highlight all", self.search_toolbar)
+        self.search_highlight_checkbox.setObjectName("searchHighlightCheckbox")
         self.search_highlight_checkbox.setChecked(True)
         self.search_highlight_checkbox.toggled.connect(self._on_search_text_changed)
         self.search_toolbar.addWidget(self.search_highlight_checkbox)
 
         self.search_case_checkbox = QCheckBox("Match case", self.search_toolbar)
+        self.search_case_checkbox.setObjectName("searchCaseCheckbox")
         self.search_case_checkbox.setChecked(False)
         self.search_case_checkbox.toggled.connect(self._on_search_text_changed)
         self.search_toolbar.addWidget(self.search_case_checkbox)
 
         self.search_prev_btn = QPushButton("Previous", self.search_toolbar)
+        self.search_prev_btn.setObjectName("searchPrevBtn")
         self.search_prev_btn.clicked.connect(self.edit_find_previous)
         self.search_toolbar.addWidget(self.search_prev_btn)
 
         self.search_next_btn = QPushButton("Next", self.search_toolbar)
+        self.search_next_btn.setObjectName("searchNextBtn")
         self.search_next_btn.clicked.connect(self.edit_find_next)
         self.search_toolbar.addWidget(self.search_next_btn)
 
         self.search_close_btn = QPushButton("Close", self.search_toolbar)
+        self.search_close_btn.setObjectName("searchCloseBtn")
         self.search_close_btn.clicked.connect(self.hide_search_panel)
         self.search_toolbar.addWidget(self.search_close_btn)
+        self._apply_search_panel_theme()
 
         self._layout_top_toolbars()
 

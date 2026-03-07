@@ -52,6 +52,7 @@ class MarkdownPreviewPane(QWidget):
         self.set_markdown(text, enable_mathjax=False, dark_mode=False)
 
     def set_markdown(self, text: str, *, enable_mathjax: bool, dark_mode: bool) -> None:
+        self._text_preview.setLayoutDirection(self.layoutDirection())
         if enable_mathjax and self._web_preview is not None:
             self._text_preview.hide()
             self._web_preview.show()

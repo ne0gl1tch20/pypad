@@ -1,13 +1,16 @@
 ﻿# Pypad - App Summary
 
-Last updated: 2026-03-06
-Release target: `1.7.8-prerelease`
+Last updated: 2026-03-07
+Release target: `1.7.9-prerelease`
 
 ## Product Snapshot
 
 Pypad is a PySide6 desktop editor that combines note-taking, coding/markdown workflows, workspace tools, and AI-assisted editing. The app now ships with a token-based modern rounded UI theme system applied across the main chrome and most dialogs/panels.
 
 Current release focus:
+- HTML export fidelity now preserves markdown structure in exported HTML.
+- Demo Pack templates added and wired into File/Edit template menus.
+- First-time tutorial + Help menu now directly promote/open Demo Pack onboarding.
 - Hardened LSP go-to-definition pipeline (timeouts/retries/verbose logs and per-language server preference settings in UI)
 - Added confirmed factory-reset action in Settings
 - QScintilla-style PySide6 compatibility editor engine with advanced fallback behavior

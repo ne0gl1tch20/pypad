@@ -126,6 +126,10 @@ class ViewOpsMixin:
             return
         if tab is None:
             return
+        try:
+            pane.setLayoutDirection(tab.text_edit.widget.layoutDirection())
+        except Exception:
+            pass
         if not bool(getattr(tab, "markdown_mode_enabled", False)):
             # Keep preview dock open if already visible, but always reflect the
             # currently active tab content.
@@ -1624,6 +1628,12 @@ class ViewOpsMixin:
     def update_markdown_preview(self) -> None:
         if not self.markdown_mode_enabled:
             return
+        tab = self.active_tab()
+        if tab is not None:
+            try:
+                self.markdown_preview.setLayoutDirection(tab.text_edit.widget.layoutDirection())
+            except Exception:
+                pass
         source_markdown = self.text_edit.get_text()
         use_mathjax = bool(self.settings.get("markdown_math_preview_enabled", False))
         supports_mathjax = bool(

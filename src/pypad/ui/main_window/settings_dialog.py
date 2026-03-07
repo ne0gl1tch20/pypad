@@ -780,6 +780,39 @@ class SettingsDialog(QDialog):
         self.tab_max_width_spin = self._add_spin(tabs_layout, idx, "Tab max width", 120, 420)
         self.tab_double_click_combo = self._add_combo(tabs_layout, idx, "Double-click action", ["new_tab", "rename", "none"])
 
+        # Onboarding
+        onboarding = QWidget(self)
+        onboarding_layout = QVBoxLayout(onboarding)
+        onboarding_form = QFormLayout()
+        onboarding_layout.addLayout(onboarding_form)
+        idx = self._add_category("Onboarding", onboarding)
+        self._register_route_aliases(idx, "onboarding", "tips", "discoverability", "tour")
+        self.onboarding_enabled_checkbox = self._add_check(onboarding_form, idx, "Enable onboarding flows")
+        self.onboarding_contextual_tips_checkbox = self._add_check(onboarding_form, idx, "Show contextual tips")
+        self.onboarding_next_unlock_prompts_checkbox = self._add_check(
+            onboarding_form,
+            idx,
+            "Show next unlock prompts",
+        )
+        onboarding_actions = QHBoxLayout()
+        self.onboarding_restart_tour_btn = QPushButton("Restart Tutorial Now", onboarding)
+        self.onboarding_reset_tips_btn = QPushButton("Reset Tip History", onboarding)
+        self.onboarding_reset_progress_btn = QPushButton("Reset Onboarding Progress", onboarding)
+        onboarding_actions.addWidget(self.onboarding_restart_tour_btn)
+        onboarding_actions.addWidget(self.onboarding_reset_tips_btn)
+        onboarding_actions.addWidget(self.onboarding_reset_progress_btn)
+        onboarding_layout.addLayout(onboarding_actions)
+        self._register_search(idx, "Enable onboarding flows", self.onboarding_enabled_checkbox)
+        self._register_search(idx, "Show contextual tips", self.onboarding_contextual_tips_checkbox)
+        self._register_search(idx, "Show next unlock prompts", self.onboarding_next_unlock_prompts_checkbox)
+        self._register_search(idx, "Restart Tutorial Now", self.onboarding_restart_tour_btn)
+        self._register_search(idx, "Reset Tip History", self.onboarding_reset_tips_btn)
+        self._register_search(idx, "Reset Onboarding Progress", self.onboarding_reset_progress_btn)
+        self.onboarding_restart_tour_btn.clicked.connect(self._restart_onboarding_tour_now)
+        self.onboarding_reset_tips_btn.clicked.connect(self._reset_onboarding_tips_history)
+        self.onboarding_reset_progress_btn.clicked.connect(self._reset_onboarding_progress)
+        onboarding_layout.addStretch(1)
+
         # Customize
         customize = QWidget(self)
         customize_layout = QVBoxLayout(customize)
@@ -1558,6 +1591,9 @@ class SettingsDialog(QDialog):
         self.tab_min_width_spin.setValue(int(s.get("tab_min_width_px", 120)))
         self.tab_max_width_spin.setValue(int(s.get("tab_max_width_px", 240)))
         self.tab_double_click_combo.setCurrentText(str(s.get("tab_double_click_action", "new_tab")))
+        self.onboarding_enabled_checkbox.setChecked(bool(s.get("onboarding_enabled", True)))
+        self.onboarding_contextual_tips_checkbox.setChecked(bool(s.get("onboarding_contextual_tips_enabled", True)))
+        self.onboarding_next_unlock_prompts_checkbox.setChecked(bool(s.get("onboarding_next_unlock_prompts_enabled", True)))
         status_defaults = {
             "status_show_position": True,
             "status_show_zoom": True,
@@ -1710,6 +1746,9 @@ class SettingsDialog(QDialog):
         s["tab_min_width_px"] = int(self.tab_min_width_spin.value())
         s["tab_max_width_px"] = int(self.tab_max_width_spin.value())
         s["tab_double_click_action"] = self.tab_double_click_combo.currentText()
+        s["onboarding_enabled"] = self.onboarding_enabled_checkbox.isChecked()
+        s["onboarding_contextual_tips_enabled"] = self.onboarding_contextual_tips_checkbox.isChecked()
+        s["onboarding_next_unlock_prompts_enabled"] = self.onboarding_next_unlock_prompts_checkbox.isChecked()
         for key, checkbox in getattr(self, "_status_layout_controls", []):
             s[key] = bool(checkbox.isChecked())
 
@@ -1822,6 +1861,43 @@ class SettingsDialog(QDialog):
             return
         defaults = self._parent_window._build_default_settings()
         self._load_controls_from_settings(defaults)
+
+    def _reset_onboarding_tips_history(self) -> None:
+        state = self._settings.get("onboarding_state")
+        if not isinstance(state, dict):
+            state = {}
+            self._settings["onboarding_state"] = state
+        state["shown_tips"] = []
+        self._settings["welcome_tutorial_seen"] = False
+        QMessageBox.information(
+            self,
+            "Onboarding",
+            "Tip history has been reset. Tutorial will be shown again on next startup unless you restart it now.",
+        )
+
+    def _reset_onboarding_progress(self) -> None:
+        confirm = QMessageBox.question(
+            self,
+            "Reset Onboarding Progress",
+            "Reset onboarding progress, shown tips, and unlock prompts?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+        self._settings["onboarding_state"] = {}
+        self._settings["welcome_tutorial_seen"] = False
+        QMessageBox.information(self, "Onboarding", "Onboarding progress reset.")
+
+    def _restart_onboarding_tour_now(self) -> None:
+        if not self._apply_to_memory():
+            return
+        self._settings["welcome_tutorial_seen"] = False
+        self._parent_window.settings = dict(self._settings)
+        self._parent_window.save_settings_to_disk()
+        self._parent_window.show_first_time_tutorial()
+        self._settings = migrate_settings(dict(self._parent_window.settings))
+        self._load_controls_from_settings(self._settings)
 
     def get_settings(self) -> dict:
         return dict(self._settings)

@@ -5,7 +5,7 @@ from PySide6.QtWidgets import QApplication, QHBoxLayout, QLabel, QTabBar, QToolB
 class DetachableTabBar(QTabBar):
     detach_requested = Signal(int, QPoint)
     _tab_mime_type = "application/x-pypad-tab"
-    _badge_size = 12
+    _badge_size = 10
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -47,8 +47,8 @@ class DetachableTabBar(QTabBar):
         container.setProperty("pypad_tab_right_container", True)
         container.setFixedHeight(14)
         row = QHBoxLayout(container)
-        row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(2)
+        row.setContentsMargins(0, 1, 1, 1)
+        row.setSpacing(1)
         pin_label = QLabel(container)
         pin_label.setObjectName("pypadTabPinBadge")
         pin_label.setAlignment(Qt.AlignCenter)
@@ -62,7 +62,7 @@ class DetachableTabBar(QTabBar):
         close_btn.setObjectName("pypadTabCloseButton")
         row.addWidget(close_btn, 0, Qt.AlignVCenter)
         # Reserve enough width for pin + favorite + close so tab text doesn't overlap.
-        container.setFixedWidth((self._badge_size * 2) + 14 + 6)
+        container.setFixedWidth((self._badge_size * 2) + 12 + 5)
         self._set_pin_badge(pin_label, pinned)
         self._set_favorite_badge(favorite_label, favorite)
         close_btn.setVisible(not pinned)
@@ -80,7 +80,10 @@ class DetachableTabBar(QTabBar):
         button.setText("x")
         button.setToolButtonStyle(Qt.ToolButtonTextOnly)
         button.setStyleSheet("")
-        button.setFixedSize(14, 14)
+        font = button.font()
+        font.setPixelSize(9)
+        button.setFont(font)
+        button.setFixedSize(12, 12)
 
     def _tab_is_pinned(self, index: int) -> bool:
         tab = self._tab_obj(index)

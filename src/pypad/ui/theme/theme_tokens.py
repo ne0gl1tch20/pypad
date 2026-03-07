@@ -217,13 +217,13 @@ def build_tokens_from_settings(settings: dict[str, Any]) -> UIThemeTokens:
         spaces = (3, 5, 7, 10)
         toolbar_pad = (2, 4)
         input_height = 24
-        tab_h = 22
+        tab_h = 18
     else:
         radii = (6, 8, 10, 12)
         spaces = (4, 6, 8, 12)
         toolbar_pad = (3, 6)
         input_height = 26
-        tab_h = 24
+        tab_h = 20
 
     toolbar_hover_bg = accent
     text_on_accent = _contrast_fg(accent, threshold=0.52)
@@ -910,8 +910,8 @@ def build_main_window_qss(*, tokens: UIThemeTokens, tab_close_icon_url: str, clo
             border: 1px solid {tokens.border};
             border-top-left-radius: {tokens.radius_md}px;
             border-top-right-radius: {tokens.radius_md}px;
-            padding: 3px 8px;
-            min-height: 20px;
+            padding: 1px 6px;
+            min-height: 16px;
             text-align: left;
         }}
         QDockWidget::title:active,
@@ -924,9 +924,9 @@ def build_main_window_qss(*, tokens: UIThemeTokens, tab_close_icon_url: str, clo
             border: 1px solid transparent;
             border-radius: {tokens.radius_sm}px;
             padding: 0px;
-            margin: 1px;
-            width: 14px;
-            height: 14px;
+            margin: 0px;
+            width: 12px;
+            height: 12px;
         }}
         QDockWidget::close-button:hover,
         QDockWidget::float-button:hover {{
@@ -1037,17 +1037,17 @@ def build_main_window_qss(*, tokens: UIThemeTokens, tab_close_icon_url: str, clo
             border: 1px solid {tokens.border_soft};
             border-top-left-radius: {tokens.radius_md}px;
             border-top-right-radius: {tokens.radius_md}px;
-            padding: 6px 52px 6px 10px;
-            margin-right: 3px;
+            padding: 1px 32px 1px 6px;
+            margin-right: 1px;
             min-height: {tokens.tab_min_height}px;
         }}
         QTabBar::close-button {{
             subcontrol-position: right;
             subcontrol-origin: padding;
-            margin-right: 4px;
-            margin-left: 6px;
-            width: 14px;
-            height: 14px;
+            margin-right: 1px;
+            margin-left: 3px;
+            width: 10px;
+            height: 10px;
             image: url("{tab_close_icon_url}");
             background: {tab_close_bg};
             border: 1px solid {tab_close_border};

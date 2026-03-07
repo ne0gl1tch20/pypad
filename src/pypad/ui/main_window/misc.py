@@ -22,7 +22,7 @@ from urllib.parse import quote_plus
 from html import escape as html_escape
 from urllib.parse import quote as url_quote, unquote as url_unquote
 
-from PySide6.QtCore import QByteArray, QEvent, QFileInfo, QPoint, QRect, QSize, Qt, QTimer, Signal, Slot
+from PySide6.QtCore import QByteArray, QEvent, QFileInfo, QObject, QPoint, QRect, QSize, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import (
     QAction,
     QColor,
@@ -368,8 +368,10 @@ class MiscMixin(
         if not self._gamification_enabled():
             QMessageBox.information(self, "Gamification", "Gamification is disabled in settings.")
             return
+        self._onboarding_mark_step("opened_gamification_dashboard")
         dlg = GamificationDashboardDialog(self, self.gamification)
         dlg.exec()
+        self._maybe_show_contextual_tip("after_gamification_dashboard")
 
     def start_focus_sprint_mode(self) -> None:
         if not self._gamification_enabled():
@@ -2958,6 +2960,20 @@ class MiscMixin(
         tab.autosave_path = None
 
     def _offer_crash_recovery(self) -> None:
+        def _consume_placeholder_tab() -> None:
+            tab = self.active_tab()
+            if tab is None:
+                return
+            if tab.current_file:
+                return
+            if tab.text_edit.is_modified():
+                return
+            if tab.text_edit.get_text().strip():
+                return
+            idx = self.tab_widget.indexOf(tab)
+            if idx >= 0:
+                self.close_tab(idx)
+
         discard_days = int(self.settings.get("recovery_discard_after_days", 14))
         try:
             self.autosave_store.prune_older_than_days(discard_days)
@@ -2994,18 +3010,23 @@ class MiscMixin(
                 store.clear_crash_snapshot()
             return
         if mode == "auto_restore":
+            restored_any = False
             for entry in entries:
                 try:
                     text = Path(entry.autosave_path).read_text(encoding="utf-8")
                 except Exception:
                     text = ""
+                if not restored_any:
+                    _consume_placeholder_tab()
                 tab = self.add_new_tab(text=text, file_path=entry.original_path or None, make_current=True)
                 tab.autosave_id = entry.autosave_id
                 tab.autosave_path = entry.autosave_path
                 self._seed_version_history(tab, label="Recovered")
                 self._apply_file_metadata_to_tab(tab)
                 tab.text_edit.set_modified(True)
+                restored_any = True
             if not entries and snapshot_payload:
+                _consume_placeholder_tab()
                 self._restore_from_snapshot_payload(snapshot_payload)
             self.autosave_store.save()
             if store is not None:
@@ -3018,6 +3039,9 @@ class MiscMixin(
             dlg = AutoSaveRecoveryDialog(self, entries)
             if dlg.exec() != QDialog.Accepted:
                 return
+            if dlg.selected_action == "discard" and dlg.selected_ids:
+                _consume_placeholder_tab()
+            restored_any = False
             for autosave_id in dlg.selected_ids:
                 entry = self.autosave_store.entries.get(autosave_id)
                 if entry is None:
@@ -3035,12 +3059,15 @@ class MiscMixin(
                     text = Path(entry.autosave_path).read_text(encoding="utf-8")
                 except Exception:
                     text = ""
+                if not restored_any:
+                    _consume_placeholder_tab()
                 tab = self.add_new_tab(text=text, file_path=entry.original_path or None, make_current=True)
                 tab.autosave_id = entry.autosave_id
                 tab.autosave_path = entry.autosave_path
                 self._seed_version_history(tab, label="Recovered")
                 self._apply_file_metadata_to_tab(tab)
                 tab.text_edit.set_modified(True)
+                restored_any = True
         elif snapshot_payload:
             answer = QMessageBox.question(
                 self,
@@ -3050,6 +3077,7 @@ class MiscMixin(
                 QMessageBox.Yes,
             )
             if answer == QMessageBox.Yes:
+                _consume_placeholder_tab()
                 self._restore_from_snapshot_payload(snapshot_payload)
             else:
                 if store is not None:
@@ -3473,6 +3501,8 @@ class MiscMixin(
             self._apply_main_toolbar_icons()
             self._apply_markdown_icons()
             self._apply_format_icons()
+            if hasattr(self, "_apply_search_panel_theme"):
+                self._apply_search_panel_theme()
             if hasattr(self, "_apply_custom_dock_title_bars_theme"):
                 self._apply_custom_dock_title_bars_theme()
             if hasattr(self, "_apply_ai_feature_icons"):
@@ -3948,6 +3978,25 @@ class MiscMixin(
                     self.settings = next_settings
                     apply_settings_started_at = time.perf_counter()
                     self.apply_settings()
+                    # One-time post-save-close icon cache reset so recolored SVGs refresh
+                    # immediately in the current frame.
+                    try:
+                        self._last_applied_icon_signature = None
+                        if hasattr(self, "_apply_main_toolbar_icons"):
+                            self._apply_main_toolbar_icons()
+                        if hasattr(self, "_apply_markdown_icons"):
+                            self._apply_markdown_icons()
+                        if hasattr(self, "_apply_format_icons"):
+                            self._apply_format_icons()
+                        if hasattr(self, "_apply_ai_feature_icons"):
+                            self._apply_ai_feature_icons()
+                        ai_dock = getattr(self, "ai_chat_dock", None)
+                        if ai_dock is not None and hasattr(ai_dock, "_icon_cache"):
+                            ai_dock._icon_cache.clear()
+                            if hasattr(ai_dock, "_refresh_quick_action_icons"):
+                                ai_dock._refresh_quick_action_icons()
+                    except Exception:
+                        _LOGGER.exception("Post-settings one-time icon refresh failed")
                     if was_visible and not self.isVisible():
                         if was_minimized:
                             self.showMinimized()
@@ -4199,9 +4248,15 @@ class MiscMixin(
     def closeEvent(self, event) -> None:  # type: ignore[override]
         close_reason = str(getattr(self, "_pending_close_reason", "") or "unknown")
         close_stack = str(getattr(self, "_pending_close_stack", "") or "")
-        if not close_stack:
-            close_stack = "".join(traceback.format_stack(limit=12))
-        _LOGGER.info("[CloseTrace] closeEvent reason=%s\n%s", close_reason, close_stack)
+        close_trace_debug = bool(self.settings.get("debug_telemetry_enabled", False)) or str(
+            self.settings.get("logging_level", "INFO")
+        ).upper() == "DEBUG"
+        if close_trace_debug:
+            if not close_stack:
+                close_stack = "".join(traceback.format_stack(limit=12))
+            _LOGGER.info("[CloseTrace] closeEvent reason=%s\n%s", close_reason, close_stack)
+        else:
+            _LOGGER.info("[CloseTrace] closeEvent reason=%s", close_reason)
         self._pending_close_reason = ""
         self._pending_close_stack = ""
         tabs: list[EditorTab] = []
@@ -4217,7 +4272,9 @@ class MiscMixin(
                 return
         session_state = self._collect_session_state()
         self.settings["last_session_files"] = session_state["files"]
+        self.settings["last_session_unsaved_tabs"] = session_state.get("unsaved_tabs", [])
         self.settings["last_session_active_file"] = session_state["active_file"]
+        self.settings["last_session_active_unsaved_index"] = session_state.get("active_unsaved_index", -1)
         self.settings["last_session_workspace_root"] = session_state["workspace_root"]
         if hasattr(self, "save_current_layout"):
             try:
@@ -4245,9 +4302,22 @@ class MiscMixin(
     def _collect_session_state(self) -> dict[str, object]:
         files: list[str] = []
         seen: set[str] = set()
+        unsaved_tabs: list[dict[str, object]] = []
+        active_unsaved_index = -1
         for index in range(self.tab_widget.count()):
             tab = self.tab_widget.widget(index)
-            if not isinstance(tab, EditorTab) or not tab.current_file:
+            if not isinstance(tab, EditorTab):
+                continue
+            if not tab.current_file:
+                unsaved_tabs.append(
+                    {
+                        "text": tab.text_edit.get_text(),
+                        "markdown_mode": bool(getattr(tab, "markdown_mode_enabled", False)),
+                        "modified": bool(tab.text_edit.is_modified()),
+                    }
+                )
+                if tab is self.active_tab():
+                    active_unsaved_index = len(unsaved_tabs) - 1
                 continue
             if tab.current_file in seen:
                 continue
@@ -4257,9 +4327,11 @@ class MiscMixin(
         active_file = active_tab.current_file if active_tab is not None and active_tab.current_file else ""
         workspace_root = str(self.settings.get("workspace_root", "") or "")
         return {
-            "version": 1,
+            "version": 2,
             "files": files,
+            "unsaved_tabs": unsaved_tabs,
             "active_file": active_file,
+            "active_unsaved_index": active_unsaved_index,
             "workspace_root": workspace_root,
         }
 
@@ -4299,6 +4371,8 @@ class MiscMixin(
     def _open_session_payload(self, payload: dict[str, object]) -> bool:
         raw_files = payload.get("files", [])
         files = [str(path) for path in raw_files if isinstance(path, str) and path]
+        raw_unsaved_tabs = payload.get("unsaved_tabs", [])
+        unsaved_tabs = [row for row in raw_unsaved_tabs if isinstance(row, dict)]
         unique_files: list[str] = []
         seen: set[str] = set()
         for path in files:
@@ -4308,6 +4382,10 @@ class MiscMixin(
             unique_files.append(path)
 
         active_file = str(payload.get("active_file", "") or "")
+        try:
+            active_unsaved_index = int(payload.get("active_unsaved_index", -1) or -1)
+        except Exception:
+            active_unsaved_index = -1
         workspace_root = str(payload.get("workspace_root", "") or "")
 
         for index in range(self.tab_widget.count()):
@@ -4326,6 +4404,7 @@ class MiscMixin(
                 tab.deleteLater()
 
         opened: list[str] = []
+        opened_unsaved: list[EditorTab] = []
         for path in unique_files:
             if not Path(path).exists():
                 continue
@@ -4337,7 +4416,16 @@ class MiscMixin(
 
         resolved_active_file = active_file if active_file in opened else (opened[0] if opened else "")
 
-        if not opened:
+        for row in unsaved_tabs:
+            text = str(row.get("text", "") or "")
+            tab = self.add_new_tab(text=text, file_path=None, make_current=True)
+            tab.markdown_mode_enabled = bool(row.get("markdown_mode", False))
+            tab.text_edit.set_modified(bool(row.get("modified", bool(text))))
+            if hasattr(self, "_sync_markdown_preview_for_active_tab") and tab is self.active_tab():
+                self._sync_markdown_preview_for_active_tab()
+            opened_unsaved.append(tab)
+
+        if not opened and not opened_unsaved:
             tab = self.add_new_tab(make_current=True)
             if hasattr(self, "_ensure_tab_autosave_meta"):
                 self._ensure_tab_autosave_meta(tab)
@@ -4347,12 +4435,26 @@ class MiscMixin(
                 if isinstance(tab, EditorTab) and tab.current_file == resolved_active_file:
                     self.tab_widget.setCurrentIndex(index)
                     break
+        elif 0 <= active_unsaved_index < len(opened_unsaved):
+            target = opened_unsaved[active_unsaved_index]
+            target_idx = self.tab_widget.indexOf(target)
+            if target_idx >= 0:
+                self.tab_widget.setCurrentIndex(target_idx)
 
         if workspace_root and Path(workspace_root).exists():
             self.settings["workspace_root"] = workspace_root
 
         self.settings["last_session_files"] = opened
+        self.settings["last_session_unsaved_tabs"] = [
+            {
+                "text": str(row.get("text", "") or ""),
+                "markdown_mode": bool(row.get("markdown_mode", False)),
+                "modified": bool(row.get("modified", False)),
+            }
+            for row in unsaved_tabs
+        ]
         self.settings["last_session_active_file"] = resolved_active_file
+        self.settings["last_session_active_unsaved_index"] = active_unsaved_index
         self.settings["last_session_workspace_root"] = workspace_root
         self.update_window_title()
         self.update_status_bar()
@@ -4387,7 +4489,9 @@ class MiscMixin(
         if not self.settings.get("restore_last_session", True):
             return
         files = [p for p in self.settings.get("last_session_files", []) if isinstance(p, str) and p]
-        if not files:
+        raw_unsaved_tabs = self.settings.get("last_session_unsaved_tabs", [])
+        unsaved_tabs = [row for row in raw_unsaved_tabs if isinstance(row, dict)]
+        if not files and not unsaved_tabs:
             return
         active = self.active_tab()
         if (
@@ -4400,19 +4504,37 @@ class MiscMixin(
         if active is not None and not active.current_file and hasattr(self, "_ensure_tab_autosave_meta"):
             self._ensure_tab_autosave_meta(active)
         active_file = str(self.settings.get("last_session_active_file", "") or "")
+        try:
+            active_unsaved_index = int(self.settings.get("last_session_active_unsaved_index", -1) or -1)
+        except Exception:
+            active_unsaved_index = -1
         workspace_root = str(self.settings.get("last_session_workspace_root", "") or "")
+        opened_unsaved: list[EditorTab] = []
         for path in files:
             if Path(path).exists():
                 if self._open_file_path(path):
                     tab = self.active_tab()
                     if tab is not None and hasattr(self, "_ensure_tab_autosave_meta"):
                         self._ensure_tab_autosave_meta(tab)
+        for row in unsaved_tabs:
+            text = str(row.get("text", "") or "")
+            tab = self.add_new_tab(text=text, file_path=None, make_current=True)
+            tab.markdown_mode_enabled = bool(row.get("markdown_mode", False))
+            tab.text_edit.set_modified(bool(row.get("modified", bool(text))))
+            if hasattr(self, "_sync_markdown_preview_for_active_tab") and tab is self.active_tab():
+                self._sync_markdown_preview_for_active_tab()
+            opened_unsaved.append(tab)
         if active_file:
             for index in range(self.tab_widget.count()):
                 tab = self.tab_widget.widget(index)
                 if isinstance(tab, EditorTab) and tab.current_file == active_file:
                     self.tab_widget.setCurrentIndex(index)
                     break
+        elif 0 <= active_unsaved_index < len(opened_unsaved):
+            target = opened_unsaved[active_unsaved_index]
+            target_idx = self.tab_widget.indexOf(target)
+            if target_idx >= 0:
+                self.tab_widget.setCurrentIndex(target_idx)
         if workspace_root and Path(workspace_root).exists():
             self.settings["workspace_root"] = workspace_root
 
@@ -4771,11 +4893,16 @@ class MiscMixin(
         if getattr(self, "_layout_docks_ready", False):
             return
         self._layout_docks_ready = True
-        self._build_workspace_dock()
         self._build_explorer_dock()
         self._build_search_results_dock()
-        self._build_status_panel_dock()
         self._ensure_default_layout()
+        for dock_name in ("ai_chat_dock", "markdown_preview_dock"):
+            dock = getattr(self, dock_name, None)
+            if dock is not None:
+                try:
+                    dock.visibilityChanged.connect(lambda _v: self._sync_layout_panel_actions())
+                except Exception:
+                    pass
         self._sync_layout_panel_actions()
         self._install_layout_auto_save()
 
@@ -4925,19 +5052,17 @@ class MiscMixin(
             self.log_event("Info", "[Startup] Dock created: Explorer")
 
     def _refresh_workspace_dock(self) -> None:
-        if not hasattr(self, "workspace_dock"):
-            return
         root = str(self.settings.get("workspace_root", "") or "").strip()
-        if not root or not Path(root).exists():
-            self.workspace_path_label.setText("No workspace selected")
-            self.workspace_tree.setRootIndex(self.workspace_model.index(""))
-            self._refresh_explorer_dock()
-            return
-        self.workspace_path_label.setText(f"{root}{self._workspace_git_status_suffix(root)}")
-        self.workspace_model.setRootPath(root)
-        self.workspace_tree.setRootIndex(self.workspace_model.index(root))
-        for col in range(1, self.workspace_model.columnCount()):
-            self.workspace_tree.hideColumn(col)
+        if hasattr(self, "workspace_dock") and hasattr(self, "workspace_path_label") and hasattr(self, "workspace_tree"):
+            if not root or not Path(root).exists():
+                self.workspace_path_label.setText("No workspace selected")
+                self.workspace_tree.setRootIndex(self.workspace_model.index(""))
+            else:
+                self.workspace_path_label.setText(f"{root}{self._workspace_git_status_suffix(root)}")
+                self.workspace_model.setRootPath(root)
+                self.workspace_tree.setRootIndex(self.workspace_model.index(root))
+                for col in range(1, self.workspace_model.columnCount()):
+                    self.workspace_tree.hideColumn(col)
         self._refresh_explorer_dock()
 
     def _refresh_explorer_dock(self) -> None:
@@ -5478,31 +5603,72 @@ class MiscMixin(
         dock.setObjectName("searchResultsDock")
         dock.setAllowedAreas(Qt.AllDockWidgetAreas)
         dock.setFeatures(QDockWidget.DockWidgetMovable | QDockWidget.DockWidgetFloatable | QDockWidget.DockWidgetClosable)
+        if hasattr(self, "_install_custom_dock_title_bar"):
+            self._install_custom_dock_title_bar(dock, "Search Results", "search_results_dock_title_bar")
         container = QWidget(dock)
+        container.setObjectName("searchResultsContainer")
+        self.search_results_container = container
         layout = QVBoxLayout(container)
         layout.setContentsMargins(6, 6, 6, 6)
+        layout.setSpacing(6)
         self.search_results_label = QLabel("No search results", container)
+        self.search_results_label.setObjectName("searchResultsLabel")
         layout.addWidget(self.search_results_label)
         filter_row = QHBoxLayout()
+        filter_row.setContentsMargins(0, 0, 0, 0)
+        filter_row.setSpacing(6)
         self.search_results_filter_edit = QLineEdit(container)
+        self.search_results_filter_edit.setObjectName("searchResultsFilterEdit")
         self.search_results_filter_edit.setPlaceholderText("Filter results text/path...")
+        self.search_results_filter_edit.setClearButtonEnabled(True)
+        self.search_results_filter_edit.setMinimumWidth(110)
         self.search_results_filter_case_checkbox = QCheckBox("Case", container)
-        self.search_results_replace_btn = QPushButton("Replace in Displayed...", container)
+        self.search_results_filter_case_checkbox.setObjectName("searchResultsCaseCheckbox")
+        self.search_results_filter_case_checkbox.setText("Aa")
+        self.search_results_filter_case_checkbox.setToolTip("Case sensitive filter")
+        self.search_results_replace_btn = QPushButton("Replace...", container)
+        self.search_results_replace_btn.setObjectName("searchResultsReplaceBtn")
+        self.search_results_replace_btn.setToolTip("Replace in displayed search results")
+        self.search_results_replace_btn.setMinimumWidth(0)
+        self._search_results_replace_btn_full_text = "Replace..."
+        replace_icon = self._svg_icon("edit-find-replace")
+        if not replace_icon.isNull():
+            self.search_results_replace_btn.setIcon(replace_icon)
         filter_row.addWidget(self.search_results_filter_edit, 1)
         filter_row.addWidget(self.search_results_filter_case_checkbox)
         filter_row.addWidget(self.search_results_replace_btn)
         layout.addLayout(filter_row)
         self.search_results_list = QListWidget(container)
+        self.search_results_list.setObjectName("searchResultsList")
+        self.search_results_list.setAlternatingRowColors(False)
         self.search_results_list.itemDoubleClicked.connect(self._open_search_result_from_dock)
         layout.addWidget(self.search_results_list, 1)
         self.search_results_filter_edit.textChanged.connect(self._refresh_search_results_dock)
         self.search_results_filter_case_checkbox.toggled.connect(self._refresh_search_results_dock)
         self.search_results_replace_btn.clicked.connect(self.replace_in_search_results)
+        class _SearchResultsResizeFilter(QObject):
+            def __init__(self, owner):
+                super().__init__(owner)
+                self._owner = owner
+
+            def eventFilter(self, _watched, event):  # type: ignore[override]
+                if event is not None and event.type() == QEvent.Type.Resize:
+                    try:
+                        self._owner._update_search_results_compact_mode()
+                    except Exception:
+                        pass
+                return False
+
+        self._search_results_resize_filter = _SearchResultsResizeFilter(self)
+        container.installEventFilter(self._search_results_resize_filter)
         dock.setWidget(container)
         self.search_results_dock = dock
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, dock)
         dock.hide()
         dock.visibilityChanged.connect(lambda _visible: self._sync_layout_panel_actions())
+        dock.visibilityChanged.connect(lambda _visible: self._update_search_results_compact_mode())
+        dock.dockLocationChanged.connect(lambda _area: self._update_search_results_compact_mode())
+        dock.topLevelChanged.connect(lambda _floating: self._update_search_results_compact_mode())
         self._refresh_search_results_dock()
         if hasattr(self, "log_event"):
             self.log_event("Info", "[Startup] Dock created: Search Results")
@@ -5510,6 +5676,8 @@ class MiscMixin(
     def _refresh_search_results_dock(self) -> None:
         if not hasattr(self, "search_results_dock"):
             return
+        self._apply_search_results_theme()
+        self._update_search_results_compact_mode()
         items = list(getattr(self, "_search_results_items", []))
         filtered_indices = self._filtered_search_result_indices(items)
         query = str(getattr(self, "_search_results_query", "") or "")
@@ -5532,6 +5700,102 @@ class MiscMixin(
             lw_item = QListWidgetItem(row, self.search_results_list)
             lw_item.setToolTip(str(path))
             lw_item.setData(Qt.UserRole, idx)
+
+    def _apply_search_results_theme(self) -> None:
+        if not hasattr(self, "search_results_list"):
+            return
+        tokens = build_tokens_from_settings(self.settings)
+        target = getattr(self, "search_results_container", None) or self.search_results_list
+        target.setStyleSheet(
+            f"""
+            QWidget#searchResultsContainer {{
+                background: {tokens.surface_bg};
+            }}
+            QLabel#searchResultsLabel {{
+                color: {tokens.text};
+                font-weight: 600;
+            }}
+            QLineEdit#searchResultsFilterEdit {{
+                background: {tokens.input_bg};
+                color: {tokens.text};
+                border: 1px solid {tokens.border};
+                border-radius: {tokens.radius_sm}px;
+                padding: 4px 7px;
+                min-height: {max(24, int(tokens.input_height) - 2)}px;
+            }}
+            QLineEdit#searchResultsFilterEdit:focus {{
+                border: 1px solid {tokens.accent};
+            }}
+            QCheckBox#searchResultsCaseCheckbox {{
+                color: {tokens.text};
+            }}
+            QPushButton#searchResultsReplaceBtn {{
+                background: {tokens.button_bg};
+                color: {tokens.text};
+                border: 1px solid {tokens.border};
+                border-radius: {tokens.radius_sm}px;
+                padding: 4px 8px;
+                min-height: {max(24, int(tokens.input_height) - 2)}px;
+            }}
+            QPushButton#searchResultsReplaceBtn:hover {{
+                background: {tokens.toolbar_hover_bg};
+            }}
+            QPushButton#searchResultsReplaceBtn:pressed {{
+                background: {tokens.toolbar_checked_bg};
+            }}
+            QPushButton#searchResultsReplaceBtn[compactIconOnly="true"] {{
+                padding: 0px;
+            }}
+            QListWidget#searchResultsList {{
+                background: {tokens.input_bg};
+                color: {tokens.text};
+                border: 1px solid {tokens.border};
+                border-radius: {tokens.radius_sm}px;
+                padding: 2px;
+            }}
+            QListWidget#searchResultsList::item {{
+                padding: 4px 6px;
+                border-radius: {tokens.radius_sm}px;
+            }}
+            QListWidget#searchResultsList::item:selected {{
+                background: {tokens.accent};
+                color: {tokens.text_on_accent};
+            }}
+            """
+        )
+
+    def _update_search_results_compact_mode(self) -> None:
+        btn = getattr(self, "search_results_replace_btn", None)
+        edit = getattr(self, "search_results_filter_edit", None)
+        case_cb = getattr(self, "search_results_filter_case_checkbox", None)
+        dock = getattr(self, "search_results_dock", None)
+        if btn is None or edit is None or case_cb is None or dock is None:
+            return
+        icon_px = max(14, int(self.settings.get("icon_size_px", 18) or 18))
+        button_h = max(24, int(build_tokens_from_settings(self.settings).input_height) - 2)
+        btn.setIconSize(QSize(icon_px, icon_px))
+        # Compact when dock is narrow so controls do not clip/truncate badly.
+        compact = dock.width() < 330
+        if compact:
+            btn.setText("")
+            btn.setToolTip("Replace in displayed search results")
+            btn.setFixedSize(button_h, button_h)
+            btn.setProperty("compactIconOnly", True)
+            edit.setPlaceholderText("Filter...")
+            case_cb.setText("Aa")
+        else:
+            btn.setText(str(getattr(self, "_search_results_replace_btn_full_text", "Replace...")))
+            btn.setMinimumWidth(0)
+            btn.setMinimumHeight(button_h)
+            btn.setMaximumHeight(16777215)
+            btn.setMaximumWidth(16777215)
+            btn.setProperty("compactIconOnly", False)
+            edit.setPlaceholderText("Filter results text/path...")
+            case_cb.setText("Aa")
+        style = btn.style()
+        if style is not None:
+            style.unpolish(btn)
+            style.polish(btn)
 
     def _filtered_search_result_indices(self, items: list[dict[str, object]]) -> list[int]:
         text = ""
@@ -5724,10 +5988,6 @@ class MiscMixin(
             self.search_results_panel_action.blockSignals(True)
             self.search_results_panel_action.setChecked(self.search_results_dock.isVisible())
             self.search_results_panel_action.blockSignals(False)
-        if hasattr(self, "status_panel_action") and hasattr(self, "status_panel_dock"):
-            self.status_panel_action.blockSignals(True)
-            self.status_panel_action.setChecked(self.status_panel_dock.isVisible())
-            self.status_panel_action.blockSignals(False)
         if hasattr(self, "editor_panel_action") and hasattr(self, "editor_dock"):
             self.editor_panel_action.blockSignals(True)
             self.editor_panel_action.setChecked(self.editor_dock.isVisible())
@@ -5736,6 +5996,78 @@ class MiscMixin(
             self.lock_layout_action.blockSignals(True)
             self.lock_layout_action.setChecked(bool(self.settings.get("layout_locked", False)))
             self.lock_layout_action.blockSignals(False)
+        self._update_closed_windows_hint()
+
+    def _update_closed_windows_hint(self) -> None:
+        hint_text = "You dont have any windows :( Add me again by right clicking anywhere!"
+        self._ensure_closed_windows_hint_overlay()
+        self._apply_closed_windows_hint_theme()
+        docks_to_check = (
+            "editor_dock",
+            "ai_chat_dock",
+            "markdown_preview_dock",
+            "explorer_dock",
+            "search_results_dock",
+            "minimap_dock",
+            "outline_dock",
+        )
+        any_visible = False
+        for name in docks_to_check:
+            dock = getattr(self, name, None)
+            if dock is not None and bool(dock.isVisible()):
+                any_visible = True
+                break
+        label = getattr(self, "_closed_windows_hint_label", None)
+        if label is None:
+            return
+        label.setText(hint_text)
+        empty_hint = getattr(self, "empty_tabs_widget", None)
+        empty_hint_label = empty_hint.findChild(QLabel, "emptyTabsHint") if empty_hint is not None else None
+        if not any_visible:
+            label.show()
+            label.raise_()
+            if empty_hint_label is not None:
+                empty_hint_label.hide()
+        else:
+            label.hide()
+            if empty_hint_label is not None:
+                empty_hint_label.show()
+
+    def _ensure_closed_windows_hint_overlay(self) -> None:
+        label = getattr(self, "_closed_windows_hint_label", None)
+        if label is not None:
+            return
+        label = QLabel(self)
+        label.setObjectName("closedWindowsHintLabel")
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        label.setWordWrap(True)
+        label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        label.setGeometry(self.contentsRect())
+        label.hide()
+        self._closed_windows_hint_label = label
+
+    def _apply_closed_windows_hint_theme(self) -> None:
+        label = getattr(self, "_closed_windows_hint_label", None)
+        if label is None:
+            return
+        tokens = build_tokens_from_settings(self.settings)
+        label.setStyleSheet(
+            f"""
+            QLabel#closedWindowsHintLabel {{
+                color: {tokens.text_muted};
+                font-size: 18px;
+                font-weight: 600;
+                padding: 14px 20px;
+                background: transparent;
+            }}
+            """
+        )
+
+    def resizeEvent(self, event) -> None:  # type: ignore[override]
+        super().resizeEvent(event)
+        label = getattr(self, "_closed_windows_hint_label", None)
+        if label is not None:
+            label.setGeometry(self.contentsRect())
 
     def _install_layout_auto_save(self) -> None:
         if getattr(self, "_layout_auto_save_ready", False):
@@ -5753,7 +6085,6 @@ class MiscMixin(
             "workspace_dock",
             "explorer_dock",
             "search_results_dock",
-            "status_panel_dock",
             "minimap_dock",
             "outline_dock",
         ):
@@ -5841,9 +6172,8 @@ class MiscMixin(
         self.settings["editor_splitter_sizes"] = list(sizes)
         self._schedule_layout_auto_save()
     def toggle_workspace_panel(self, checked: bool) -> None:
-        if not hasattr(self, "workspace_dock"):
-            return
-        self.workspace_dock.setVisible(bool(checked))
+        # Workspace panel has been removed; keep compatibility by routing to Explorer.
+        self.toggle_explorer_panel(bool(checked))
 
     def toggle_explorer_panel(self, checked: bool) -> None:
         if not hasattr(self, "explorer_dock"):
@@ -5854,11 +6184,6 @@ class MiscMixin(
         if not hasattr(self, "search_results_dock"):
             return
         self.search_results_dock.setVisible(bool(checked))
-
-    def toggle_status_panel(self, checked: bool) -> None:
-        if not hasattr(self, "status_panel_dock"):
-            return
-        self.status_panel_dock.setVisible(bool(checked))
 
     def toggle_editor_panel(self, checked: bool) -> None:
         if not hasattr(self, "editor_dock"):
@@ -5881,7 +6206,6 @@ class MiscMixin(
             "workspace_dock",
             "explorer_dock",
             "search_results_dock",
-            "status_panel_dock",
             "minimap_dock",
             "outline_dock",
         ):
@@ -6246,10 +6570,14 @@ class MiscMixin(
         dlg.setWindowTitle("Search Results")
         dlg.resize(900, 540)
         apply_dialog_theme_from_window(self, dlg)
+        dlg.setObjectName("searchResultsModal")
         layout = QVBoxLayout(dlg)
         header = QLabel(f"Query: {query} ({len(items)} result(s))", dlg)
+        header.setObjectName("searchResultsModalHeader")
         layout.addWidget(header)
         list_widget = QListWidget(dlg)
+        list_widget.setObjectName("searchResultsModalList")
+        list_widget.setAlternatingRowColors(False)
         for idx, item in enumerate(items):
             path = Path(str(item.get("path", "") or ""))
             line_no = int(item.get("line_no", 1) or 1)
@@ -6261,11 +6589,57 @@ class MiscMixin(
         layout.addWidget(list_widget, 1)
         btns = QDialogButtonBox(QDialogButtonBox.Close, Qt.Horizontal, dlg)
         open_btn = QPushButton("Open", dlg)
+        open_btn.setObjectName("searchResultsModalOpenBtn")
+        open_icon = self._svg_icon("document-open")
+        if not open_icon.isNull():
+            open_btn.setIcon(open_icon)
         export_btn = QPushButton("Export...", dlg)
+        export_btn.setObjectName("searchResultsModalExportBtn")
         btns.addButton(open_btn, QDialogButtonBox.ActionRole)
         btns.addButton(export_btn, QDialogButtonBox.ActionRole)
         btns.rejected.connect(dlg.reject)
         layout.addWidget(btns)
+        tokens = build_tokens_from_settings(self.settings)
+        dlg.setStyleSheet(
+            dlg.styleSheet()
+            + f"""
+            QDialog#searchResultsModal QLabel#searchResultsModalHeader {{
+                color: {tokens.text};
+                font-weight: 600;
+            }}
+            QDialog#searchResultsModal QListWidget#searchResultsModalList {{
+                background: {tokens.input_bg};
+                color: {tokens.text};
+                border: 1px solid {tokens.border};
+                border-radius: {tokens.radius_sm}px;
+                padding: 2px;
+            }}
+            QDialog#searchResultsModal QListWidget#searchResultsModalList::item {{
+                padding: 4px 6px;
+                border-radius: {tokens.radius_sm}px;
+            }}
+            QDialog#searchResultsModal QListWidget#searchResultsModalList::item:selected {{
+                background: {tokens.accent};
+                color: {tokens.text_on_accent};
+            }}
+            QDialog#searchResultsModal QPushButton#searchResultsModalOpenBtn,
+            QDialog#searchResultsModal QPushButton#searchResultsModalExportBtn {{
+                background: {tokens.button_bg};
+                color: {tokens.text};
+                border: 1px solid {tokens.border};
+                border-radius: {tokens.radius_sm}px;
+                padding: 5px 8px;
+            }}
+            QDialog#searchResultsModal QPushButton#searchResultsModalOpenBtn:hover,
+            QDialog#searchResultsModal QPushButton#searchResultsModalExportBtn:hover {{
+                background: {tokens.toolbar_hover_bg};
+            }}
+            QDialog#searchResultsModal QPushButton#searchResultsModalOpenBtn:pressed,
+            QDialog#searchResultsModal QPushButton#searchResultsModalExportBtn:pressed {{
+                background: {tokens.toolbar_checked_bg};
+            }}
+            """
+        )
 
         def _open_selected() -> None:
             current = list_widget.currentItem()
@@ -6639,19 +7013,26 @@ class MiscMixin(
         apply_dialog_theme_from_window(self, dialog)
         layout = QVBoxLayout(dialog)
         layout.addWidget(QLabel("Installed Python libraries and declared license metadata", dialog))
-        output = QTextEdit(dialog)
+        splitter = QSplitter(Qt.Horizontal, dialog)
+        library_list = QListWidget(splitter)
+        library_list.setSelectionMode(QAbstractItemView.SingleSelection)
+        output = QTextEdit(splitter)
         output.setReadOnly(True)
-        output.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
-        layout.addWidget(output, 1)
+        output.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
+        splitter.addWidget(library_list)
+        splitter.addWidget(output)
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
+        splitter.setSizes([320, 560])
+        layout.addWidget(splitter, 1)
         buttons = QDialogButtonBox(QDialogButtonBox.Close, Qt.Horizontal, dialog)
         buttons.rejected.connect(dialog.reject)
         buttons.accepted.connect(dialog.accept)
-        copy_btn = QPushButton("Copy", dialog)
+        copy_btn = QPushButton("Copy Selected", dialog)
         buttons.addButton(copy_btn, QDialogButtonBox.ActionRole)
-        copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(output.toPlainText()))
         layout.addWidget(buttons)
 
-        rows: list[tuple[str, str, str]] = []
+        rows: list[dict[str, str]] = []
         errors: list[str] = []
         try:
             for dist in importlib_metadata.distributions():
@@ -6666,40 +7047,206 @@ class MiscMixin(
                         classifiers = [str(v) for v in meta.get_all("Classifier", []) or []]
                         license_classifiers = [c for c in classifiers if c.startswith("License :: ")]
                         license_text = "; ".join(license_classifiers) if license_classifiers else "(not declared)"
-                    rows.append((name or "(unknown)", version or "?", license_text))
+                    summary = str(meta.get("Summary") or "").strip() or "(no summary provided)"
+                    home_page = str(meta.get("Home-page") or "").strip() or "(not declared)"
+                    rows.append(
+                        {
+                            "name": name or "(unknown)",
+                            "version": version or "?",
+                            "license": license_text,
+                            "summary": summary,
+                            "home_page": home_page,
+                        }
+                    )
                 except Exception as exc:  # noqa: BLE001
                     errors.append(str(exc))
         except Exception as exc:  # noqa: BLE001
             QMessageBox.warning(self, "Open Source Licenses", f"Could not load package metadata:\n{exc}")
             return
 
-        rows.sort(key=lambda item: item[0].lower())
-        lines = [
-            "PyPad - Open Source Licenses (Python libraries)",
-            "",
-            "This list is generated from installed Python package metadata (Name / Version / License).",
-            "License fields depend on package metadata quality and may be empty or classifier-based.",
-            "",
-        ]
-        for name, version, license_text in rows:
-            lines.append(f"- {name} {version}")
-            lines.append(f"  License: {license_text}")
+        rows.sort(key=lambda item: item["name"].lower())
+        for row in rows:
+            item = QListWidgetItem(f'{row["name"]} {row["version"]}')
+            item.setData(Qt.UserRole, row)
+            library_list.addItem(item)
+
+        def _render_selected_preview() -> None:
+            current = library_list.currentItem()
+            if current is None:
+                output.setPlainText("Select a library to preview its license metadata.")
+                return
+            row = current.data(Qt.UserRole)
+            if not isinstance(row, dict):
+                output.setPlainText("No metadata available.")
+                return
+            output.setPlainText(
+                "\n".join(
+                    [
+                        f'Library: {row.get("name", "(unknown)")}',
+                        f'Version: {row.get("version", "?")}',
+                        f'License: {row.get("license", "(not declared)")}',
+                        f'Summary: {row.get("summary", "(no summary provided)")}',
+                        f'Home page: {row.get("home_page", "(not declared)")}',
+                    ]
+                )
+            )
+
+        copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(output.toPlainText()))
+        library_list.currentItemChanged.connect(lambda _curr, _prev: _render_selected_preview())
+        if library_list.count() > 0:
+            library_list.setCurrentRow(0)
+        else:
+            output.setPlainText("No installed library metadata found.")
         if errors:
-            lines.extend(["", f"Metadata parse warnings: {len(errors)}"])
-        output.setPlainText("\n".join(lines))
+            output.append(f"\n\nMetadata parse warnings: {len(errors)}")
         dialog.exec()
 
     def _maybe_show_welcome_tutorial(self) -> None:
+        if not bool(self.settings.get("onboarding_enabled", True)):
+            return
         if self.settings.get("welcome_tutorial_seen", False):
+            if bool(self.settings.get("onboarding_contextual_tips_enabled", True)):
+                QTimer.singleShot(900, lambda: self._maybe_show_contextual_tip("startup"))
+            if bool(self.settings.get("onboarding_next_unlock_prompts_enabled", True)):
+                QTimer.singleShot(1400, self._maybe_show_next_unlock_prompt)
             return
         self.show_first_time_tutorial()
 
+    def _onboarding_state(self) -> dict[str, Any]:
+        state = self.settings.get("onboarding_state")
+        if not isinstance(state, dict):
+            state = {}
+            self.settings["onboarding_state"] = state
+        state.setdefault("completed_steps", [])
+        state.setdefault("shown_tips", [])
+        state.setdefault("unlock_prompt_levels", [])
+        return state
+
+    def _onboarding_mark_step(self, step: str) -> None:
+        key = str(step or "").strip()
+        if not key:
+            return
+        state = self._onboarding_state()
+        completed = {str(x) for x in state.get("completed_steps", [])}
+        if key in completed:
+            return
+        completed.add(key)
+        state["completed_steps"] = sorted(completed)
+        self.save_settings_to_disk()
+
+    def _onboarding_has_step(self, step: str) -> bool:
+        key = str(step or "").strip()
+        if not key:
+            return False
+        state = self._onboarding_state()
+        completed = {str(x) for x in state.get("completed_steps", [])}
+        return key in completed
+
+    def _onboarding_mark_tip(self, tip_key: str) -> None:
+        key = str(tip_key or "").strip()
+        if not key:
+            return
+        state = self._onboarding_state()
+        shown = {str(x) for x in state.get("shown_tips", [])}
+        if key in shown:
+            return
+        shown.add(key)
+        state["shown_tips"] = sorted(shown)
+        self.save_settings_to_disk()
+
+    def _maybe_show_contextual_tip(self, reason: str = "general") -> None:
+        if not bool(self.settings.get("onboarding_enabled", True)):
+            return
+        if not bool(self.settings.get("onboarding_contextual_tips_enabled", True)):
+            return
+        state = self._onboarding_state()
+        shown = {str(x) for x in state.get("shown_tips", [])}
+        tips: list[tuple[str, str]] = []
+        if not self._onboarding_has_step("used_command_palette"):
+            tips.append(("tip_command_palette", "Tip: press Ctrl+Shift+P to open Command Palette."))
+        if not self._onboarding_has_step("used_quick_open"):
+            tips.append(("tip_quick_open", "Tip: press Ctrl+Alt+P for Quick Open and jump to files/symbols."))
+        if not self._onboarding_has_step("opened_gamification_dashboard"):
+            tips.append(("tip_gamification_dashboard", "Tip: open Play > Gamification Dashboard to track quests and unlocks."))
+        if reason == "after_tutorial":
+            tips.insert(0, ("tip_after_tutorial_demo", "Welcome tour done. Next: File > Templates > Demo Pack."))
+            tips.insert(1, ("tip_after_tutorial", "Then try Command Palette (Ctrl+Shift+P)."))
+        for tip_key, text in tips:
+            if tip_key in shown:
+                continue
+            self._onboarding_mark_tip(tip_key)
+            self.show_status_message(text, 5000)
+            return
+
+    def _maybe_show_next_unlock_prompt(self) -> None:
+        if not bool(self.settings.get("onboarding_enabled", True)):
+            return
+        if not bool(self.settings.get("onboarding_next_unlock_prompts_enabled", True)):
+            return
+        if not self._gamification_enabled() or not hasattr(self, "gamification"):
+            return
+        state = self._onboarding_state()
+        prompted_levels = {int(x) for x in state.get("unlock_prompt_levels", []) if str(x).isdigit()}
+        gstate = self.gamification.state()
+        level = int(gstate.get("level", 1) or 1)
+        if level in prompted_levels:
+            return
+        next_unlock: tuple[int, str] | None = None
+        for unlock_level, label in (
+            (2, "Theme pack: Sunrise Sprint"),
+            (4, "Tab badge: Neon Bracket"),
+            (6, "Sound pack: LoFi Keys"),
+        ):
+            if level < unlock_level:
+                next_unlock = (unlock_level, label)
+                break
+        if next_unlock is None:
+            return
+        target_level, reward_label = next_unlock
+        xp = int(gstate.get("xp", 0) or 0)
+        xp_to_target = max(0, (target_level - 1) * 120 - xp)
+        self.show_status_message(
+            f"Next unlock at LVL {target_level}: {reward_label} (about {xp_to_target} XP to go).",
+            5500,
+        )
+        prompted_levels.add(level)
+        state["unlock_prompt_levels"] = sorted(prompted_levels)
+        self.save_settings_to_disk()
+
     def show_first_time_tutorial(self) -> None:
         tutorial = InteractiveTutorialDialog(self)
-        tutorial.exec()
+        accepted = tutorial.exec() == QDialog.Accepted
+        if not accepted:
+            self.show_status_message("Tutorial skipped. Reopen via Help > First Time Tutorial.", 3500)
+            return
         self.settings["welcome_tutorial_seen"] = True
+        self._onboarding_mark_step("completed_tutorial")
         self.save_settings_to_disk()
-        self.show_status_message("First time tutorial completed.", 2500)
+        self.show_status_message("First time tutorial completed. Try File > Templates > Demo Pack.", 3200)
+        QTimer.singleShot(700, lambda: self._maybe_show_contextual_tip("after_tutorial"))
+        QTimer.singleShot(1400, self._maybe_show_next_unlock_prompt)
+
+    def open_demo_pack_first_template(self) -> None:
+        root_fn = getattr(self, "_demo_templates_root", None)
+        if not callable(root_fn):
+            QMessageBox.information(self, "Open Demo Pack", "Demo pack path resolver is unavailable.")
+            return
+        root = root_fn()
+        candidate = root / "01_welcome_quick_tour.md"
+        if not candidate.exists():
+            options = sorted(root.glob("*.md")) if root.exists() else []
+            if not options:
+                QMessageBox.information(self, "Open Demo Pack", "No demo templates were found.")
+                return
+            candidate = options[0]
+        try:
+            text = candidate.read_text(encoding="utf-8")
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(self, "Open Demo Pack", f"Could not open demo template:\n{exc}")
+            return
+        tab = self.add_new_tab(text=text, file_path=None, make_current=True)
+        tab.markdown_mode_enabled = True
+        self.show_status_message(f"Opened demo template: {candidate.name}", 3000)
 
     def show_user_guide(self) -> None:
         guide_text = """
@@ -6734,6 +7281,7 @@ Pypad User Guide
 
 6. Templates and Export
 - File > Templates inserts meeting, daily log, and checklist templates.
+- File > Templates > Demo Pack includes full walkthrough templates covering major features.
 - File > Export supports PDF, Markdown, HTML, DOCX, and ODT.
 
 7. Workspace

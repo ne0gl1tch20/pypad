@@ -53,6 +53,7 @@ from pypad.ui.workspace.project_workflow import (
     build_unified_diff_text,
     diff_stats_from_patch,
 )
+from pypad.ui.theme.theme_tokens import build_tokens_from_settings
 
 
 def _root() -> Path:
@@ -788,13 +789,36 @@ class MinimapDock(QDockWidget):
     def __init__(self, parent) -> None:
         super().__init__("Minimap", parent)
         self.text = QTextEdit(self)
+        self.text.setObjectName("minimapText")
         self.text.setReadOnly(True)
         f = self.text.font()
         f.setPointSize(max(6, f.pointSize() - 4))
+        f.setFamily("Consolas")
         self.text.setFont(f)
+        self.text.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
         self.setWidget(self.text)
+        self._apply_theme()
+
+    def _apply_theme(self) -> None:
+        parent = self.parentWidget()
+        settings = getattr(parent, "settings", {}) if parent is not None else {}
+        tokens = build_tokens_from_settings(settings if isinstance(settings, dict) else {})
+        self.text.setStyleSheet(
+            f"""
+            QTextEdit#minimapText {{
+                background: {tokens.input_bg};
+                color: {tokens.text_muted};
+                border: 1px solid {tokens.border};
+                border-radius: {tokens.radius_sm}px;
+                selection-background-color: {tokens.accent};
+                selection-color: {tokens.text_on_accent};
+                padding: 2px;
+            }}
+            """
+        )
 
     def refresh(self, src: str, *, show_line_numbers: bool = False) -> None:
+        self._apply_theme()
         lines = src.splitlines()[:1800]
         if show_line_numbers:
             rendered = [f"{idx + 1:5d}  {line}" for idx, line in enumerate(lines)]
@@ -1123,6 +1147,8 @@ class AdvancedFeaturesController:
         self.minimap_dock = MinimapDock(window)
         self.minimap_dock.setObjectName("minimapDock")
         self.minimap_dock.setAllowedAreas(Qt.AllDockWidgetAreas)
+        if hasattr(window, "_install_custom_dock_title_bar"):
+            window._install_custom_dock_title_bar(self.minimap_dock, "Minimap", "minimap_dock_title_bar")
         self.minimap_dock.hide()
         window.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.minimap_dock)
         try:
@@ -1132,6 +1158,8 @@ class AdvancedFeaturesController:
         self.outline_dock = OutlineDock(window, self._jump_line)
         self.outline_dock.setObjectName("outlineDock")
         self.outline_dock.setAllowedAreas(Qt.AllDockWidgetAreas)
+        if hasattr(window, "_install_custom_dock_title_bar"):
+            window._install_custom_dock_title_bar(self.outline_dock, "Symbol Outline", "outline_dock_title_bar")
         self.outline_dock.hide()
         window.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.outline_dock)
         try:

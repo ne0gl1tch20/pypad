@@ -1,18 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <updates>
   <item>
-    <title>PyPad 1.7.8-prerelease</title>
-    <version>1.7.8</version>
-    <pubDate>2026-03-06</pubDate>
+    <title>PyPad 1.7.9-prerelease</title>
+    <version>1.7.9</version>
+    <pubDate>2026-03-07</pubDate>
     <description>
-      - VSCode-like Explorer upgrades: custom chevrons, SVG icons, right-click + shortcuts, shell-menu action.
-      - Workspace opening now persists root and does not auto-open files/dialogs.
-      - In-tab media mode for image/audio/video with controls and Open Raw in Editor.
+      - HTML export now preserves markdown structure as real HTML elements (headings/lists/links/code).
+      - Added Demo Pack markdown templates under File > Templates > Demo Pack (new + insert actions).
+      - Added Help > Open Demo Pack (first template) one-click launcher.
+      - First-time tutorial now recommends trying the Demo Pack.
       - Detailed changelog: CHANGELOG.md
     </description>
     <sha256>0000000000000000000000000000000000000000000000000000000000000000</sha256>
     <enclosure
-      url="https://github.com/ne0gl1tch20/pypad/releases/download/1.7.8/PyPad-Setup-1.7.8-prerelease.exe"
+      url="https://github.com/ne0gl1tch20/pypad/releases/download/1.7.9/PyPad-Setup-1.7.9-prerelease.exe"
       type="application/octet-stream" />
   </item>
 </updates>

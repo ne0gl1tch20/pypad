@@ -162,6 +162,17 @@ def migrate_settings(settings: dict) -> dict:
         current["gamification_custom_events"] = custom_events if isinstance(custom_events, list) else []
         gamification_state = current.get("gamification_state", {})
         current["gamification_state"] = gamification_state if isinstance(gamification_state, dict) else {}
+        current["onboarding_enabled"] = coerce_bool(current.get("onboarding_enabled", True), True)
+        current["onboarding_contextual_tips_enabled"] = coerce_bool(
+            current.get("onboarding_contextual_tips_enabled", True),
+            True,
+        )
+        current["onboarding_next_unlock_prompts_enabled"] = coerce_bool(
+            current.get("onboarding_next_unlock_prompts_enabled", True),
+            True,
+        )
+        onboarding_state = current.get("onboarding_state", {})
+        current["onboarding_state"] = onboarding_state if isinstance(onboarding_state, dict) else {}
         current["backup_output_dir"] = str(current.get("backup_output_dir", "") or "").strip()
         current["update_feed_url"] = _sanitize_update_feed_url(current.get("update_feed_url"), defaults.get("update_feed_url", ""))
         normalize_ui_visibility_settings(current)
@@ -368,6 +379,17 @@ def migrate_settings(settings: dict) -> dict:
     current["gamification_custom_events"] = custom_events if isinstance(custom_events, list) else []
     gamification_state = current.get("gamification_state", {})
     current["gamification_state"] = gamification_state if isinstance(gamification_state, dict) else {}
+    current["onboarding_enabled"] = coerce_bool(current.get("onboarding_enabled", True), True)
+    current["onboarding_contextual_tips_enabled"] = coerce_bool(
+        current.get("onboarding_contextual_tips_enabled", True),
+        True,
+    )
+    current["onboarding_next_unlock_prompts_enabled"] = coerce_bool(
+        current.get("onboarding_next_unlock_prompts_enabled", True),
+        True,
+    )
+    onboarding_state = current.get("onboarding_state", {})
+    current["onboarding_state"] = onboarding_state if isinstance(onboarding_state, dict) else {}
     current["backup_output_dir"] = str(current.get("backup_output_dir", "") or "").strip()
     current["settings_schema_version"] = 2
 

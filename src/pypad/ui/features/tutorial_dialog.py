@@ -23,8 +23,9 @@ class InteractiveTutorialDialog(QDialog):
             ("Tabs", "Use tabs for multiple notes.\nPin or favorite important files.\nRight-click a tab for advanced actions."),
             ("Search", "Press Ctrl+F to show Find panel.\nUse Replace and Replace in Files for project-wide edits."),
             ("Markdown + Code", "Toggle Markdown toolbar when needed.\nUse syntax mode and formatting tools from toolbar and menus."),
+            ("Demo Pack", "Try the full app demo templates:\nFile > Templates > Demo Pack.\nUse New From Demo to explore complete feature walkthrough notes."),
             ("Recovery + Security", "Autosave protects unsaved notes.\nEnable lock screen protection with Password/PIN in Settings."),
-            ("Done", "You are all set.\nYou can reopen this from Help > First Time Tutorial anytime."),
+            ("Done", "You are all set.\nNext recommended step: open File > Templates > Demo Pack.\nYou can reopen this from Help > First Time Tutorial anytime."),
         ]
         self._index = 0
 

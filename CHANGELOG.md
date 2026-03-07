@@ -5,6 +5,91 @@ All notable changes to this project will be documented in this file.
 The format is based on Keep a Changelog, and this project uses Semantic Versioning.
 
 
+## [1.7.9-prerelease] - 2026-03-07
+
+### Upgrade Notes
+- Menus are cleaner: File/Search/View now prioritize common actions and group advanced options into submenus.
+- Tabs are more compact to free editor space, with improved close/pin icon alignment.
+- Crash recovery is smoother: restoring/discarding recovered items no longer leaves extra blank tabs.
+- Unsaved temporary tabs now persist across restarts.
+- Markdown preview and export are more reliable:
+  - preview direction sync is corrected
+  - HTML export preserves markdown structure.
+
+### Added
+- Demo Pack templates in `templates/demo_pack/` covering onboarding, markdown, export, AI workflow, security, collaboration, and stress testing scenarios.
+- New Help action: `Help > Open Demo Pack (first template)` for one-click onboarding into `01_welcome_quick_tour.md`
+- Onboarding and discoverability controls in Settings (`Settings > Onboarding`):
+  - enable/disable onboarding
+  - toggle contextual tips
+  - toggle "next unlock" prompts
+  - restart tutorial now
+  - reset tip history
+  - reset onboarding progress
+- App-level empty-workspace hint overlay shown when non-editor windows are closed:
+  - `I dont have any windows :( Add me again by right clicking anywhere!`
+  - theme-token compatible centered rendering outside the editor surface
+- Appearance settings now include `Follow system theme` for automatic light/dark mode selection from OS color scheme.
+- Scintilla compatibility strict parity pass:
+  - strict `SCN_MODIFIED` payload contract (modification type, reason flags, tokenized reason string, before/after ranges, mutation sequence id)
+  - richer auto-completion compatibility commands: `SCI_AUTOCSETFILLUPS`, `SCI_AUTOCGETFILLUPS`, `SCI_AUTOCSELECT`
+  - fold display text compatibility commands: `SCI_FOLDSETTEXT`, `SCI_FOLDGETTEXT`
+  - undo/redo transaction scaffolding with grouped action handling via `SCI_BEGINUNDOACTION` / `SCI_ENDUNDOACTION`
+  - lexer incremental window scaffolding (`LexerWindow`) and compat lexer protocol support (`lex_incremental`)
+  - render-layer composition pipeline for deterministic style/indicator/hotspot/overlay ordering
+  - main-window integration path for forwarding Scintilla notifications through `EditorWidget.scintillaNotification` and plugin event emission (`scintilla_notification`)
+- Session persistence now includes unsaved temporary tabs:
+  - unsaved content, markdown mode flag, modified state, and active unsaved tab index are now stored/restored.
+- Open Source Licenses dialog upgraded to list + preview layout:
+  - left pane library list (title/version)
+  - right pane per-library metadata preview (license/summary/home page)
+  - copy selected preview text action
+
+### Changed
+- HTML export now auto-detects markdown syntax and renders markdown as structured HTML elements during export.
+- File/Edit template menus now include dynamic Demo Pack entries (`New From Demo` and `Insert Demo`).
+- First-time tutorial and post-tutorial onboarding prompts now explicitly encourage trying the Demo Pack.
+- Workspace panel feature removed in favor of the Explorer panel flow; compatibility toggle paths now route to Explorer behavior.
+- Search Results dock and detached Search Results window styling now follow shared token-based PyPad window patterns.
+- Search Results controls are now responsive in narrow docks:
+  - replace action auto-switches to compact icon-only mode at very small widths
+  - compact button sizing/padding tuned to match toolbar icon button proportions
+- Minimap and Symbol Outline docks now use shared custom dock title bars and themed detach/close controls, aligned with other windows.
+- Minimap visuals now follow theme-token guidelines and inherit window styling behavior.
+- Explorer, Editor, and Markdown Preview now use custom dock title bar widgets (aligned with AI Chat) for consistent title rendering and controls.
+- Toolbar overflow customization adjusted to remove the extra blank right-edge action button.
+- `SCI_SETMODEVENTMASK` notification gating now enforces stricter `SCN_*` emission filtering in compat mode.
+- Edit-command and generic text-change paths now both emit normalized `SCN_MODIFIED` metadata in compat mode.
+- Search flag semantics expanded with `SCFIND_POSIX` handling for word-boundary matching behavior.
+- File, Search, and View menus are now compacted with clearer subgrouping:
+  - essential actions remain top-level
+  - dense/advanced actions moved into structured submenus.
+- Tab strip layout compactness improved for more editor vertical space:
+  - reduced tab padding/heights
+  - tighter tab accessory layout.
+
+### Docs
+- Updated release metadata/docs for `1.7.9-prerelease`:
+  - `assets/version.txt`
+  - `assets/version_info.txt`
+  - `update.xml`
+  - `APP_SUMMARY.md`
+  - `CONTEXT_SUMMARY.md`
+  - `CHANGELOG.md` (strict Scintilla parity and notification contract updates)
+
+### Fixed
+- Startup crash in Search Results theming caused by missing token attributes (`button_text`, `button_hover_bg`) now resolved using valid UI theme tokens.
+- Search Results appearance regression where styles were not fully unified with other themed windows.
+- Settings navigation now shows both PyPad and N++ pages immediately on open (`All` scope), instead of requiring an N++ scope switch first.
+- SVG icon recoloring now also rewrites style-based `fill`/`stroke` declarations, fixing icons that stayed dark after switching to dark mode.
+- Added a one-time icon cache/signature reset right after `Save & Close` settings apply, forcing immediate same-frame icon color refresh.
+- Close-event trace logging noise reduced; full stack trace output is now debug-only instead of always-on.
+- Empty-workspace hint visibility logic corrected so the message does not appear while the editor dock is visible.
+- Markdown preview layout drift fixed:
+  - preview direction now syncs to active editor tab direction (prevents RTL/LTR mismatch rendering).
+- Crash recovery no longer leaves stray blank startup tabs when restoring or discarding recovery entries.
+- Tab close/pin badge accessory sizing tuned to prevent icon/text cropping in compact tab mode.
+
 ## [1.7.8-prerelease] - 2026-03-06
 
 ### Added

@@ -1,7 +1,7 @@
 ﻿# Context Summary
 
 ## Docs Updated
-- Last docs sync: 2026-03-06
+- Last docs sync: 2026-03-07
 - Synced files:
   - `CONTEXT_SUMMARY.md`
   - `APP_SUMMARY.md`
@@ -12,14 +12,18 @@
   - `assets/version_info.txt`
 
 ## Current Release Metadata
-- Version: `1.7.8-prerelease`
-- Update feed entry: `update.xml` (2026-03-06)
-- Changelog entry added: `1.7.8-prerelease`
+- Version: `1.7.9-prerelease`
+- Update feed entry: `update.xml` (2026-03-07)
+- Changelog entry added: `1.7.9-prerelease`
 
 ## Current Focus (Completed)
+- HTML export now converts markdown syntax into structured HTML elements during export.
+- Demo Pack onboarding templates added under `templates/demo_pack/` and wired into File/Edit template menus.
+- Added one-click Help action to open first Demo Pack template.
+- First-time tutorial and post-tutorial prompts now encourage using Demo Pack.
 - LSP definition client hardening (timeouts/retries/logging + server preference settings)
 - Factory reset workflow added in Settings (confirmation + close-on-reset)
-- Release metadata/docs updated for `1.7.8-prerelease`
+- Release metadata/docs updated for `1.7.9-prerelease`
 - Quiz mode restored and expanded:
   - mixed-format parser (MCQ/TF/short-answer)
   - `{user}`/`[user]` answer anchors
@@ -137,7 +141,7 @@
   - Keep enabled for future regressions where settings content contrast/background appears inconsistent at dialog startup
 
 ## Next Easy Resume Points
-1. Build/release packaging validation for `1.7.8-prerelease` (installer output + update feed URL verification).
+1. Build/release packaging validation for `1.7.9-prerelease` (installer output + update feed URL verification).
 2. Optional visual baseline refresh after intentional UI/editor rendering changes using `scripts/run_ui_checks.ps1 -Visual -UpdateVisualBaseline`.
 3. If targeting deeper Scintilla parity, prioritize:
    - advanced lexer stateful styling/perf

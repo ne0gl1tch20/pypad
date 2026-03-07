@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from html import escape as html_escape
 from pathlib import Path
+import re
 from typing import Any
 import zipfile
 import xml.etree.ElementTree as ET
@@ -22,11 +23,30 @@ def _local_name(tag: Any) -> str:
 
 def render_text_to_html(text: str, *, markdown_mode: bool) -> str:
     doc = QTextDocument()
-    if markdown_mode:
+    if markdown_mode or _looks_like_markdown(text):
         doc.setMarkdown(text)
     else:
         doc.setPlainText(text)
     return doc.toHtml()
+
+
+def _looks_like_markdown(text: str) -> bool:
+    if not text.strip():
+        return False
+    patterns = (
+        r"(?m)^\s{0,3}#{1,6}\s+\S",                  # headings
+        r"(?m)^\s{0,3}[-*+]\s+\S",                   # unordered lists
+        r"(?m)^\s{0,3}\d+[.)]\s+\S",                 # ordered lists
+        r"(?m)^\s{0,3}>\s+\S",                       # blockquotes
+        r"(?m)^\s{0,3}([-*_]\s*){3,}$",              # horizontal rules
+        r"(?s)```.+?```",                            # fenced code
+        r"`[^`\n]+`",                                # inline code
+        r"\[[^\]\n]+\]\([^)]+\)",                    # links
+        r"!\[[^\]\n]*\]\([^)]+\)",                   # images
+        r"(?<!\*)\*\*[^*\n]+\*\*(?!\*)",             # bold
+        r"(?<!\*)\*[^*\n]+\*(?!\*)",                 # italic
+    )
+    return any(re.search(pattern, text) for pattern in patterns)
 
 
 def render_markdown_to_mathjax_html(text: str, *, dark_mode: bool = False) -> str:

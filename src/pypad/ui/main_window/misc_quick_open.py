@@ -401,6 +401,8 @@ class MiscQuickOpenMixin:
                 tab.text_edit.set_cursor_position(max(0, line - 1), max(0, (col or 1) - 1))
 
     def open_quick_open(self) -> None:
+        if hasattr(self, "_onboarding_mark_step"):
+            self._onboarding_mark_step("used_quick_open")
         current_label = ""
         idx = self.tab_widget.currentIndex()
         if idx >= 0:
@@ -425,8 +427,14 @@ class MiscQuickOpenMixin:
         if entry is None:
             return
         self._quick_open_apply_selection(entry, line=dialog.selected_line, col=dialog.selected_col)
+        if hasattr(self, "_maybe_show_contextual_tip"):
+            self._maybe_show_contextual_tip("after_quick_open")
+        if hasattr(self, "_maybe_show_next_unlock_prompt"):
+            self._maybe_show_next_unlock_prompt()
 
     def open_command_palette(self, initial_query: str = "") -> None:
+        if hasattr(self, "_onboarding_mark_step"):
+            self._onboarding_mark_step("used_command_palette")
         actions: list[PaletteItem] = []
         for entry in discover_window_actions(self):
             actions.append(
@@ -442,3 +450,5 @@ class MiscQuickOpenMixin:
         if dialog.exec() != QDialog.Accepted or dialog.selected_action is None:
             return
         dialog.selected_action.trigger()
+        if hasattr(self, "_maybe_show_contextual_tip"):
+            self._maybe_show_contextual_tip("after_command_palette")
