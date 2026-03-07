@@ -92,6 +92,7 @@ It also supports:
 - `Plugin Settings` to edit schema-driven plugin configuration values.
 - `Run Command` to execute a selected plugin's registered command with optional JSON args.
 - Runtime diagnostics panel per plugin (errors, hook counters, last run/event, metadata).
+- Online Plugins catalog (GitHub-backed) with one-click install from `online_plugins/catalog.json`.
 
 ## Update Metadata Endpoint
 
@@ -130,3 +131,9 @@ If `update_url` is set, Plugin Manager update checks expect a JSON object contai
 - `plugins/example_action_searcher/`
 
 For full method and hook references, see `docs/plugin_api.md`.
+
+## Online Plugins
+
+- Catalog URL setting: `plugin_online_catalog_url` (defaults to the PyPad GitHub `online_plugins/catalog.json`).
+- Catalog entries can point to plugin source folders in GitHub (raw `plugin.json` + `plugin.py`).
+- Example online plugin in this repo: `online_plugins/plugin_online_example/`.

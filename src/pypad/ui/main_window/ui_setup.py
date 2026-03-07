@@ -2404,6 +2404,7 @@ class UiSetupMixin:
         self.template_packs_action.setEnabled(True)
         self.task_workflow_action.setEnabled(True)
         self.plugin_manager_action.setEnabled(True)
+        self.online_plugins_action.setEnabled(True)
         self.open_plugins_folder_action.setEnabled(True)
         # Keep tool entrypoints accessible with an open tab; handlers already
         # validate content and show contextual "Nothing to ..." messages.
@@ -3597,6 +3598,8 @@ class UiSetupMixin:
         self.shortcut_mapper_action.triggered.connect(self.open_shortcut_mapper)
         self.plugin_manager_action = QAction("Plugin Manager...", self)
         self.plugin_manager_action.triggered.connect(self.open_plugin_manager)
+        self.online_plugins_action = QAction("Online Plugins...", self)
+        self.online_plugins_action.triggered.connect(self.open_online_plugins)
         self.open_plugins_folder_action = QAction("Open Plugins Folder", self)
         self.open_plugins_folder_action.triggered.connect(self.open_plugins_folder)
         self.mime_tools_action = QAction("MIME Tools...", self)
@@ -4513,6 +4516,7 @@ class UiSetupMixin:
         # Plugins
         self.plugins_menu = menu_bar.addMenu("&Plugins")
         self.plugins_menu.addAction(self.plugin_manager_action)
+        self.plugins_menu.addAction(self.online_plugins_action)
         self.plugins_menu.addAction(self.open_plugins_folder_action)
         self.plugins_menu.addSeparator()
         self.plugins_menu.addAction(self.mime_tools_action)

@@ -284,6 +284,13 @@ def migrate_settings(settings: dict) -> dict:
         15000,
     )
     current["plugin_allow_unsafe_ui_bridge"] = coerce_bool(current.get("plugin_allow_unsafe_ui_bridge", False), False)
+    current["plugin_online_catalog_url"] = str(
+        current.get(
+            "plugin_online_catalog_url",
+            "https://raw.githubusercontent.com/ne0gl1tch20/pypad/main/online_plugins/catalog.json",
+        )
+        or ""
+    )
     current["status_show_position"] = coerce_bool(current.get("status_show_position", True), True)
     current["status_show_zoom"] = coerce_bool(current.get("status_show_zoom", True), True)
     current["status_show_eol"] = coerce_bool(current.get("status_show_eol", True), True)

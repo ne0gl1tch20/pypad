@@ -61,6 +61,11 @@ The format is based on Keep a Changelog, and this project uses Semantic Versioni
     - plugin update checks (`Check Update`, `Check All Updates`)
     - command runner (`Run Command`) with JSON args
     - per-plugin runtime diagnostics panel (status, hook counters, errors, last run/event, metadata)
+  - New `Plugins > Online Plugins...` dialog:
+    - separate catalog browser (no longer embedded in Plugin Manager pane)
+    - themed SVG icon controls for refresh/install
+    - GitHub-backed catalog support via `plugin_online_catalog_url`
+    - one-click install flow for catalog plugins (policy/security checks still enforced)
   - Manifest/compatibility metadata support:
     - `version`, `plugin_api_version`
     - `min_app_version`, `max_app_version`
@@ -115,6 +120,7 @@ The format is based on Keep a Changelog, and this project uses Semantic Versioni
   - reduced tab padding/heights
   - tighter tab accessory layout.
 - Plugin discovery now accepts UTF-8 BOM manifests (`utf-8-sig`) for broader editor/tool compatibility.
+- Online plugin discovery/install moved to dedicated `Online Plugins` dialog, while Plugin Manager remains focused on local plugin runtime/admin tooling.
 
 ### Docs
 - Updated release metadata/docs for `1.7.9-prerelease`:
@@ -159,6 +165,7 @@ The format is based on Keep a Changelog, and this project uses Semantic Versioni
 - Added startup debug logs for window-mode restore path:
   - `[Startup] Restoring window mode: <mode>`
   - `[Startup] Restoring window mode: <mode> (fallback)`
+- Plugin storage path now uses `%APPDATA%\\pypad\\plugins` (instead of `%APPDATA%\\notepadclone\\plugins`) with automatic non-destructive migration of legacy plugin files/folders.
 - Close-event trace logging noise reduced; full stack trace output is now debug-only instead of always-on.
 - Empty-workspace hint visibility logic corrected so the message does not appear while the editor dock is visible.
 - Markdown preview layout drift fixed:

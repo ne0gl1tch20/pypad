@@ -9,6 +9,9 @@
       - Added Demo Pack markdown templates under File > Templates > Demo Pack (new + insert actions).
       - Added Help > Open Demo Pack (first template) one-click launcher.
       - First-time tutorial now recommends trying the Demo Pack.
+      - Big plugins update! The plugins system has been refactored and improved, and all plugins have been updated to be compatible with the latest PyPad version. This includes:
+        - New plugin API for better performance and stability.
+      - Various bug fixes and performance improvements across the app.
       - Detailed changelog: CHANGELOG.md
     </description>
     <sha256>0000000000000000000000000000000000000000000000000000000000000000</sha256>

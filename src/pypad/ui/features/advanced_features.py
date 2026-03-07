@@ -1269,6 +1269,130 @@ class PluginHost:
                 if staging_dir.exists():
                     shutil.rmtree(staging_dir, ignore_errors=True)
 
+    def _repo_online_plugins_dir(self) -> Path:
+        if getattr(sys, "frozen", False):
+            meipass = Path(str(getattr(sys, "_MEIPASS", "")))
+            if meipass:
+                candidate = meipass / "online_plugins"
+                if candidate.exists():
+                    return candidate
+        return _root() / "online_plugins"
+
+    def load_online_plugin_catalog(self) -> list[dict[str, str]]:
+        catalog_url = str(
+            self.window.settings.get(
+                "plugin_online_catalog_url",
+                "https://raw.githubusercontent.com/ne0gl1tch20/pypad/main/online_plugins/catalog.json",
+            )
+            or ""
+        ).strip()
+        payload: Any = None
+        errors: list[str] = []
+        local_catalog = self._repo_online_plugins_dir() / "catalog.json"
+        if local_catalog.exists():
+            try:
+                payload = json.loads(local_catalog.read_text(encoding="utf-8"))
+            except Exception as exc:
+                errors.append(f"Local catalog read failed: {exc}")
+        if payload is None and catalog_url:
+            try:
+                with urlopen(catalog_url, timeout=6.0) as resp:
+                    raw = resp.read().decode("utf-8", errors="replace")
+                payload = json.loads(raw)
+            except Exception as exc:
+                errors.append(f"Remote catalog fetch failed: {exc}")
+        if payload is None:
+            if errors:
+                self.window.show_status_message(errors[-1], 3500)
+            return []
+        rows = payload if isinstance(payload, list) else payload.get("plugins", [])
+        if not isinstance(rows, list):
+            return []
+        out: list[dict[str, str]] = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            plugin_id = self._normalize_plugin_id(str(row.get("id", "")).strip())
+            source = str(row.get("source", "") or "").strip()
+            source = source.strip("/\\")
+            if not plugin_id or not source:
+                continue
+            out.append(
+                {
+                    "id": plugin_id,
+                    "name": str(row.get("name", plugin_id) or plugin_id),
+                    "description": str(row.get("description", "") or ""),
+                    "version": str(row.get("version", "") or ""),
+                    "repo": str(row.get("repo", "") or "").strip(),
+                    "source": source,
+                    "homepage": str(row.get("homepage", "") or "").strip(),
+                }
+            )
+        return out
+
+    def install_online_plugin(self, entry: dict[str, str]) -> Path:
+        plugin_id = self._normalize_plugin_id(str(entry.get("id", "")).strip())
+        source = str(entry.get("source", "") or "").strip().strip("/\\")
+        repo = str(entry.get("repo", "") or "").strip()
+        if not self._valid_plugin_id(plugin_id):
+            raise RuntimeError("Invalid online plugin id.")
+        if not source:
+            raise RuntimeError("Online plugin source is missing.")
+        dest_dir = self.plugins_dir / plugin_id
+        if dest_dir.exists():
+            raise FileExistsError(f"Plugin already exists: {plugin_id}")
+        with tempfile.TemporaryDirectory(prefix="pypad_online_plugin_") as temp_dir:
+            staging = Path(temp_dir) / plugin_id
+            staging.mkdir(parents=True, exist_ok=True)
+            raw_base = repo.replace("https://github.com/", "https://raw.githubusercontent.com/").rstrip("/")
+            if raw_base.endswith(".git"):
+                raw_base = raw_base[:-4]
+            if raw_base:
+                raw_base = f"{raw_base}/main/{source}"
+            else:
+                raw_base = f"https://raw.githubusercontent.com/ne0gl1tch20/pypad/main/{source}"
+            for rel in ("plugin.json", "plugin.py"):
+                file_url = f"{raw_base}/{rel}"
+                with urlopen(file_url, timeout=8.0) as resp:
+                    payload = resp.read()
+                (staging / rel).write_bytes(payload)
+            try:
+                meta = json.loads((staging / "plugin.json").read_text(encoding="utf-8-sig"))
+            except Exception as exc:
+                raise RuntimeError(f"Invalid plugin.json from online source: {exc}") from exc
+            if not isinstance(meta, dict):
+                raise RuntimeError("Invalid online plugin manifest format.")
+            manifest_id = self._normalize_plugin_id(str(meta.get("id", plugin_id)))
+            if manifest_id != plugin_id:
+                raise RuntimeError(
+                    f"Plugin id mismatch: catalog '{plugin_id}' vs manifest '{manifest_id}'."
+                )
+            requested = {
+                str(p).lower().strip()
+                for p in meta.get("permissions", [])
+                if str(p).lower().strip() in {
+                    "file",
+                    "network",
+                    "ai",
+                    "ui",
+                    "menu",
+                    "toolbar",
+                    "panel",
+                    "background",
+                    "hooks",
+                }
+            }
+            issues = assess_plugin_security(
+                plugin_root=self.plugins_dir,
+                plugin_dir=staging,
+                plugin_id=plugin_id,
+                permissions=requested,
+            )
+            if issues:
+                raise RuntimeError("Plugin rejected by policy: " + "; ".join(issues[:3]))
+            shutil.copytree(staging, dest_dir)
+        return dest_dir
+
     def inspect_plugin_archive(self, archive_path: Path) -> dict[str, Any]:
         path = Path(archive_path)
         if not path.exists() or not path.is_file():
@@ -2596,6 +2720,108 @@ class PluginManagerDialog(QDialog):
         self._populate()
 
 
+class OnlinePluginsDialog(QDialog):
+    def __init__(self, parent, host: PluginHost) -> None:
+        super().__init__(parent)
+        self.host = host
+        self._entries: list[dict[str, str]] = []
+        self.setWindowTitle("Online Plugins")
+        self.resize(700, 420)
+        v = QVBoxLayout(self)
+        self.list_widget = QListWidget(self)
+        self.list_widget.setToolTip("Plugins available from the online catalog.")
+        v.addWidget(self.list_widget, 1)
+        self.details = QTextEdit(self)
+        self.details.setReadOnly(True)
+        self.details.setPlaceholderText("Select an online plugin to see details.")
+        v.addWidget(self.details, 1)
+        row = QHBoxLayout()
+        self.refresh_btn = QToolButton(self)
+        self.refresh_btn.setToolTip("Refresh catalog")
+        self.refresh_btn.setIconSize(QSize(18, 18))
+        self.refresh_btn.setFixedSize(30, 30)
+        self.install_btn = QToolButton(self)
+        self.install_btn.setToolTip("Install selected plugin")
+        self.install_btn.setIconSize(QSize(18, 18))
+        self.install_btn.setFixedSize(30, 30)
+        self.close_btn = QToolButton(self)
+        self.close_btn.setToolTip("Close")
+        self.close_btn.setIconSize(QSize(18, 18))
+        self.close_btn.setFixedSize(30, 30)
+        for btn, icon_name in (
+            (self.refresh_btn, "plugin-online"),
+            (self.install_btn, "plugin-install"),
+            (self.close_btn, "tab-close"),
+        ):
+            icon = None
+            if hasattr(self.host.window, "_svg_icon"):
+                try:
+                    icon = self.host.window._svg_icon(icon_name)
+                except Exception:
+                    icon = None
+            if icon is not None:
+                btn.setIcon(icon)
+        row.addWidget(self.refresh_btn)
+        row.addWidget(self.install_btn)
+        row.addStretch(1)
+        row.addWidget(self.close_btn)
+        v.addLayout(row)
+        self.list_widget.currentRowChanged.connect(self._refresh_details)
+        self.refresh_btn.clicked.connect(self._populate)
+        self.install_btn.clicked.connect(self._install_selected)
+        self.close_btn.clicked.connect(self.accept)
+        self._populate()
+
+    def _populate(self) -> None:
+        self.list_widget.clear()
+        self.details.clear()
+        self._entries = self.host.load_online_plugin_catalog()
+        installed_ids = {rec.plugin_id for rec in self.host.discover()}
+        for row in self._entries:
+            plugin_id = str(row.get("id", "") or "")
+            name = str(row.get("name", plugin_id) or plugin_id)
+            version = str(row.get("version", "") or "")
+            status = "installed" if plugin_id in installed_ids else "available"
+            text = f"{name} ({plugin_id}) | {status}"
+            if version:
+                text += f" | v{version}"
+            self.list_widget.addItem(QListWidgetItem(text))
+        self._refresh_details()
+
+    def _refresh_details(self) -> None:
+        idx = int(self.list_widget.currentRow())
+        if idx < 0 or idx >= len(self._entries):
+            self.details.setPlainText("Select an online plugin to see details.")
+            return
+        row = self._entries[idx]
+        lines = [
+            f"Name: {row.get('name', '')}",
+            f"ID: {row.get('id', '')}",
+            f"Version: {row.get('version', '') or '-'}",
+            f"Description: {row.get('description', '') or '-'}",
+            f"Repository: {row.get('repo', '') or '-'}",
+            f"Source: {row.get('source', '') or '-'}",
+            f"Homepage: {row.get('homepage', '') or '-'}",
+        ]
+        self.details.setPlainText("\n".join(lines))
+
+    def _install_selected(self) -> None:
+        idx = int(self.list_widget.currentRow())
+        if idx < 0 or idx >= len(self._entries):
+            QMessageBox.information(self, "Online Plugins", "Select an online plugin first.")
+            return
+        entry = self._entries[idx]
+        plugin_id = str(entry.get("id", "") or "")
+        try:
+            out = self.host.install_online_plugin(entry)
+        except Exception as exc:
+            QMessageBox.warning(self, "Online Plugins", f"Failed to install '{plugin_id}':\n{exc}")
+            return
+        self.host.window.show_status_message(f"Online plugin installed: {out.name}", 3200)
+        self.host.reload()
+        self._populate()
+
+
 class MinimapDock(QDockWidget):
     def __init__(self, parent) -> None:
         super().__init__("Minimap", parent)
@@ -3026,6 +3252,10 @@ class AdvancedFeaturesController:
 
     def open_plugin_manager(self) -> None:
         PluginManagerDialog(self.window, self.plugin_host).exec()
+        self.plugin_host.reload()
+
+    def open_online_plugins(self) -> None:
+        OnlinePluginsDialog(self.window, self.plugin_host).exec()
         self.plugin_host.reload()
 
     def go_to_definition(self) -> None:

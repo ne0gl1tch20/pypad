@@ -1,0 +1,12 @@
+﻿{
+  "id": "plugin_online_example",
+  "name": "Online Example Plugin",
+  "version": "1.0.0",
+  "plugin_api_version": "1.0",
+  "description": "Shows a message after being downloaded via Online Plugins.",
+  "min_app_version": "1.0.0",
+  "max_app_version": "",
+  "update_url": "",
+  "homepage": "https://github.com/ne0gl1tch20/pypad",
+  "permissions": ["menu"]
+}

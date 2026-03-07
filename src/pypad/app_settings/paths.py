@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 from pathlib import Path
 
 
@@ -8,6 +9,11 @@ def _app_roaming_dir() -> Path:
     appdata = os.environ.get("APPDATA")
     base_dir = Path(appdata) if appdata else (Path.home() / "AppData" / "Roaming")
     return base_dir / "notepadclone"
+
+def _app_roaming_pypad_dir() -> Path:
+    appdata = os.environ.get("APPDATA")
+    base_dir = Path(appdata) if appdata else (Path.home() / "AppData" / "Roaming")
+    return base_dir / "pypad"
 
 
 def get_settings_file_path() -> Path:
@@ -43,7 +49,23 @@ def get_translation_cache_path() -> Path:
 
 
 def get_plugins_dir_path() -> Path:
-    return _app_roaming_dir() / "plugins"
+    new_dir = _app_roaming_pypad_dir() / "plugins"
+    legacy_dir = _app_roaming_dir() / "plugins"
+    if not new_dir.exists() and legacy_dir.exists():
+        try:
+            new_dir.mkdir(parents=True, exist_ok=True)
+            for child in legacy_dir.iterdir():
+                target = new_dir / child.name
+                if target.exists():
+                    continue
+                if child.is_dir():
+                    shutil.copytree(child, target)
+                else:
+                    shutil.copy2(child, target)
+        except Exception:
+            # If migration fails, still prefer returning the new location.
+            pass
+    return new_dir
 
 
 def get_debug_logs_file_path() -> Path:

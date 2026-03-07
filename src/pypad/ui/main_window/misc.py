@@ -1269,6 +1269,9 @@ class MiscMixin(
     def open_plugin_manager(self) -> None:
         self.advanced_features.open_plugin_manager()
 
+    def open_online_plugins(self) -> None:
+        self.advanced_features.open_online_plugins()
+
     def open_plugins_folder(self) -> None:
         plugins_dir = Path(getattr(self.advanced_features.plugin_host, "plugins_dir", Path(__file__).resolve().parents[4] / "plugins"))
         plugins_dir.mkdir(parents=True, exist_ok=True)
