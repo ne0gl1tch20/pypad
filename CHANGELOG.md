@@ -7,6 +7,11 @@ The format is based on Keep a Changelog, and this project uses Semantic Versioni
 
 ## [1.7.9-prerelease] - 2026-03-07
 
+### Creator's Thoughts
+- I'd probably know this update will be long, but I know I'm planning for community plugins just yet but I'd still need to consider about approval system, moderation, rules, and anything else.
+- New updates, New Features, More Fun!
+- Probably, I'm gonna add more features specifically for casual and newcomers here, so they'd probably not gonna be overwhelmed at the next update.
+
 ### Upgrade Notes
 - Menus are cleaner: File/Search/View now prioritize common actions and group advanced options into submenus.
 - Tabs are more compact to free editor space, with improved close/pin icon alignment.
@@ -148,6 +153,12 @@ The format is based on Keep a Changelog, and this project uses Semantic Versioni
 - Settings navigation now shows both PyPad and N++ pages immediately on open (`All` scope), instead of requiring an N++ scope switch first.
 - SVG icon recoloring now also rewrites style-based `fill`/`stroke` declarations, fixing icons that stayed dark after switching to dark mode.
 - Added a one-time icon cache/signature reset right after `Save & Close` settings apply, forcing immediate same-frame icon color refresh.
+- Tab file SVG icons now refresh for all open tabs when theme/icon settings are applied, fixing stale white icons after switching to light mode.
+- Settings apply flow now preserves the current main-window mode (`normal`/`maximized`/`fullscreen`) instead of unintentionally restoring to normal.
+- Layout snapshots now persist explicit main-window mode and restore it on startup, including fallback from settings when no active layout payload exists.
+- Added startup debug logs for window-mode restore path:
+  - `[Startup] Restoring window mode: <mode>`
+  - `[Startup] Restoring window mode: <mode> (fallback)`
 - Close-event trace logging noise reduced; full stack trace output is now debug-only instead of always-on.
 - Empty-workspace hint visibility logic corrected so the message does not appear while the editor dock is visible.
 - Markdown preview layout drift fixed:
