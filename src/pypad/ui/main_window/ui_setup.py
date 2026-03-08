@@ -2066,11 +2066,8 @@ class UiSetupMixin:
                 continue
             use_built_in = (attr == "ai_menu" and ai_pack) or (attr == "macros_menu" and power_pack)
             target = built_in_title if use_built_in else normal_title
-            try:
-                if str(menu.title()) != target:
-                    menu.setTitle(target)
-            except RuntimeError:
-                continue
+            if str(menu.title()) != target:
+                menu.setTitle(target)
 
         if not hasattr(self, "_plugin_ux_original_action_texts"):
             self._plugin_ux_original_action_texts = {}
@@ -2142,18 +2139,15 @@ class UiSetupMixin:
                 action = getattr(self, attr, None)
                 if not isinstance(action, QAction):
                     continue
-                try:
-                    if attr not in self._plugin_ux_original_action_texts:
-                        self._plugin_ux_original_action_texts[attr] = str(action.text())
-                    base = str(self._plugin_ux_original_action_texts.get(attr, action.text()))
-                    target = f"{base} [Built-in]" if pack_enabled else base
-                    if str(action.text()) != target:
-                        action.setText(target)
-                    # When a plugin pack is active, hide duplicate built-in actions so
-                    # plugin-owned entries become the primary UX surface.
-                    action.setVisible(not pack_enabled)
-                except RuntimeError:
-                    continue
+                if attr not in self._plugin_ux_original_action_texts:
+                    self._plugin_ux_original_action_texts[attr] = str(action.text())
+                base = str(self._plugin_ux_original_action_texts.get(attr, action.text()))
+                target = f"{base} [Built-in]" if pack_enabled else base
+                if str(action.text()) != target:
+                    action.setText(target)
+                # When a plugin pack is active, hide duplicate built-in actions so
+                # plugin-owned entries become the primary UX surface.
+                action.setVisible(not pack_enabled)
 
     def update_action_states(self, *_args) -> None:
         if not hasattr(self, "save_action"):
