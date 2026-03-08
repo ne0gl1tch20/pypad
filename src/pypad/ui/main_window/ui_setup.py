@@ -828,25 +828,7 @@ class UiSetupMixin:
         return style.standardIcon(enum_value)
 
     def _svg_icon_colored(self, name: str, size: int = 18) -> QIcon:
-        icon_path = None
-        if name.startswith("ai-"):
-            is_ai_plugin_enabled = bool(
-                callable(getattr(self, "_ai_plugin_primary_enabled", None))
-                and self._ai_plugin_primary_enabled()
-            )
-            if is_ai_plugin_enabled:
-                plugin_icon_path = (
-                    Path(__file__).resolve().parents[4]
-                    / "online_plugins"
-                    / "pypad_ai_assistant"
-                    / "assets"
-                    / "icons"
-                    / f"{name}.svg"
-                )
-                if plugin_icon_path.exists():
-                    icon_path = plugin_icon_path
-        if icon_path is None:
-            icon_path = resolve_asset_path("icons", f"{name}.svg")
+        icon_path = resolve_asset_path("icons", f"{name}.svg")
         if icon_path is None:
             return QIcon()
         configured = getattr(self, "_icon_color", None)
@@ -2543,7 +2525,6 @@ class UiSetupMixin:
         self.template_packs_action.setEnabled(True)
         self.task_workflow_action.setEnabled(True)
         self.plugin_manager_action.setEnabled(True)
-        self.ai_assistant_plugin_action.setEnabled(True)
         self.online_plugins_action.setEnabled(True)
         self.open_plugins_folder_action.setEnabled(True)
         # Keep tool entrypoints accessible with an open tab; handlers already
@@ -2623,7 +2604,6 @@ class UiSetupMixin:
             self.md_math_preview_action,
         ):
             action.setEnabled(has_tab and not is_large_file)
-        self._apply_ai_feature_icons()
         self._apply_plugin_primary_ux()
 
     def create_actions(self: Any) -> None:
@@ -3740,8 +3720,6 @@ class UiSetupMixin:
         self.shortcut_mapper_action.triggered.connect(self.open_shortcut_mapper)
         self.plugin_manager_action = QAction("Plugin Manager...", self)
         self.plugin_manager_action.triggered.connect(self.open_plugin_manager)
-        self.ai_assistant_plugin_action = QAction("AI Assistant...", self)
-        self.ai_assistant_plugin_action.triggered.connect(self.open_ai_assistant_plugin_setup)
         self.online_plugins_action = QAction("Online Plugins...", self)
         self.online_plugins_action.triggered.connect(self.open_online_plugins)
         self.open_plugins_folder_action = QAction("Open Plugins Folder", self)
@@ -4660,7 +4638,6 @@ class UiSetupMixin:
         # Plugins
         self.plugins_menu = menu_bar.addMenu("&Plugins")
         self.plugins_menu.addAction(self.plugin_manager_action)
-        self.plugins_menu.addAction(self.ai_assistant_plugin_action)
         self.plugins_menu.addAction(self.online_plugins_action)
         self.plugins_menu.addAction(self.open_plugins_folder_action)
         self.plugins_menu.addSeparator()

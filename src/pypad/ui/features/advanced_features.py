@@ -2855,14 +2855,6 @@ class OnlinePluginsDialog(QDialog):
         self.uninstall_btn.setToolTip("Uninstall selected plugin")
         self.uninstall_btn.setIconSize(QSize(18, 18))
         self.uninstall_btn.setFixedSize(30, 30)
-        self.update_btn = QToolButton(self)
-        self.update_btn.setToolTip("Update selected plugin")
-        self.update_btn.setIconSize(QSize(18, 18))
-        self.update_btn.setFixedSize(30, 30)
-        self.update_all_btn = QToolButton(self)
-        self.update_all_btn.setToolTip("Update all plugins with available updates")
-        self.update_all_btn.setIconSize(QSize(18, 18))
-        self.update_all_btn.setFixedSize(30, 30)
         self.close_btn = QToolButton(self)
         self.close_btn.setToolTip("Close")
         self.close_btn.setIconSize(QSize(18, 18))
@@ -2871,8 +2863,6 @@ class OnlinePluginsDialog(QDialog):
             (self.refresh_btn, "plugin-online"),
             (self.install_btn, "plugin-install"),
             (self.uninstall_btn, "tab-close"),
-            (self.update_btn, "sync-vertical"),
-            (self.update_all_btn, "sync-horizontal"),
             (self.close_btn, "tab-close"),
         ):
             icon = None
@@ -2886,8 +2876,6 @@ class OnlinePluginsDialog(QDialog):
         row.addWidget(self.refresh_btn)
         row.addWidget(self.install_btn)
         row.addWidget(self.uninstall_btn)
-        row.addWidget(self.update_btn)
-        row.addWidget(self.update_all_btn)
         row.addStretch(1)
         row.addWidget(self.close_btn)
         v.addLayout(row)
@@ -2895,38 +2883,20 @@ class OnlinePluginsDialog(QDialog):
         self.refresh_btn.clicked.connect(self._populate)
         self.install_btn.clicked.connect(self._install_selected)
         self.uninstall_btn.clicked.connect(self._uninstall_selected)
-        self.update_btn.clicked.connect(self._update_selected)
-        self.update_all_btn.clicked.connect(self._update_all)
         self.close_btn.clicked.connect(self.accept)
         self._populate()
-
-    def _installed_by_id(self) -> dict[str, PluginRecord]:
-        return {rec.plugin_id: rec for rec in self.host.discover()}
-
-    @staticmethod
-    def _version_is_newer(candidate: str, current: str) -> bool:
-        try:
-            return _parse_version_tuple(str(candidate or "")) > _parse_version_tuple(str(current or ""))
-        except Exception:
-            return False
 
     def _populate(self) -> None:
         self.list_widget.clear()
         self.details.clear()
         self._entries = self.host.load_online_plugin_catalog()
-        installed = self._installed_by_id()
+        installed_ids = {rec.plugin_id for rec in self.host.discover()}
         for row in self._entries:
             plugin_id = str(row.get("id", "") or "")
             name = str(row.get("name", plugin_id) or plugin_id)
-            version = str(row.get("version", "") or "").strip()
+            version = str(row.get("version", "") or "")
             author = str(row.get("author", "") or "")
-            rec = installed.get(plugin_id)
-            installed_version = str(rec.metadata.get("version", "") or "").strip() if rec else ""
-            has_update = bool(rec and version and self._version_is_newer(version, installed_version))
-            if has_update:
-                status = f"update available ({installed_version or '?'} -> {version})"
-            else:
-                status = "installed" if rec else "available"
+            status = "installed" if plugin_id in installed_ids else "available"
             text = f"{name} ({plugin_id}) | {status}"
             if version:
                 text += f" | v{version}"
@@ -2934,30 +2904,17 @@ class OnlinePluginsDialog(QDialog):
                 text += f" | by {author}"
             self.list_widget.addItem(QListWidgetItem(text))
         self._refresh_details()
-        self._refresh_buttons()
 
     def _refresh_details(self) -> None:
         idx = int(self.list_widget.currentRow())
         if idx < 0 or idx >= len(self._entries):
             self.details.setPlainText("Select an online plugin to see details.")
-            self._refresh_buttons()
             return
         row = self._entries[idx]
-        plugin_id = str(row.get("id", "") or "").strip()
-        installed = self._installed_by_id().get(plugin_id)
-        catalog_version = str(row.get("version", "") or "").strip()
-        installed_version = str(installed.metadata.get("version", "") or "").strip() if installed else ""
-        update_state = (
-            "Update available"
-            if installed and catalog_version and self._version_is_newer(catalog_version, installed_version)
-            else ("Installed / up to date" if installed else "Not installed")
-        )
         lines = [
             f"Name: {row.get('name', '')}",
             f"ID: {row.get('id', '')}",
             f"Version: {row.get('version', '') or '-'}",
-            f"Installed Version: {installed_version or '-'}",
-            f"Update Status: {update_state}",
             f"Author: {row.get('author', '') or '-'}",
             f"Description: {row.get('description', '') or '-'}",
             f"Repository: {row.get('repo', '') or '-'}",
@@ -2965,43 +2922,6 @@ class OnlinePluginsDialog(QDialog):
             f"Homepage: {row.get('homepage', '') or '-'}",
         ]
         self.details.setPlainText("\n".join(lines))
-        self._refresh_buttons()
-
-    def _refresh_buttons(self) -> None:
-        updates = self._updatable_entries()
-        self.update_all_btn.setEnabled(bool(updates))
-        idx = int(self.list_widget.currentRow())
-        has_selection = 0 <= idx < len(self._entries)
-        if not has_selection:
-            self.install_btn.setEnabled(False)
-            self.uninstall_btn.setEnabled(False)
-            self.update_btn.setEnabled(False)
-            return
-        entry = self._entries[idx]
-        plugin_id = str(entry.get("id", "") or "").strip()
-        catalog_version = str(entry.get("version", "") or "").strip()
-        installed = self._installed_by_id().get(plugin_id)
-        installed_version = str(installed.metadata.get("version", "") or "").strip() if installed else ""
-        has_update = bool(installed and catalog_version and self._version_is_newer(catalog_version, installed_version))
-        self.install_btn.setEnabled(not bool(installed))
-        self.uninstall_btn.setEnabled(bool(installed))
-        self.update_btn.setEnabled(has_update)
-
-    def _updatable_entries(self) -> list[tuple[dict[str, str], PluginRecord, str, str]]:
-        installed = self._installed_by_id()
-        out: list[tuple[dict[str, str], PluginRecord, str, str]] = []
-        for entry in self._entries:
-            plugin_id = str(entry.get("id", "") or "").strip()
-            if not plugin_id:
-                continue
-            rec = installed.get(plugin_id)
-            if rec is None:
-                continue
-            catalog_version = str(entry.get("version", "") or "").strip()
-            installed_version = str(rec.metadata.get("version", "") or "").strip()
-            if catalog_version and self._version_is_newer(catalog_version, installed_version):
-                out.append((entry, rec, installed_version, catalog_version))
-        return out
 
     def _install_selected(self) -> None:
         idx = int(self.list_widget.currentRow())
@@ -3045,86 +2965,6 @@ class OnlinePluginsDialog(QDialog):
         self.host.window.show_status_message(f"Plugin uninstalled: {plugin_id}", 3200)
         self.host.reload()
         self._populate()
-
-    def _update_selected(self) -> None:
-        idx = int(self.list_widget.currentRow())
-        if idx < 0 or idx >= len(self._entries):
-            QMessageBox.information(self, "Online Plugins", "Select an online plugin first.")
-            return
-        entry = self._entries[idx]
-        plugin_id = str(entry.get("id", "") or "").strip()
-        catalog_version = str(entry.get("version", "") or "").strip()
-        installed = self._installed_by_id().get(plugin_id)
-        if installed is None:
-            QMessageBox.information(self, "Update Plugin", f"'{plugin_id}' is not installed.")
-            return
-        installed_version = str(installed.metadata.get("version", "") or "").strip()
-        if not (catalog_version and self._version_is_newer(catalog_version, installed_version)):
-            QMessageBox.information(
-                self,
-                "Update Plugin",
-                f"No update available for '{plugin_id}'.\nInstalled: {installed_version or '-'}\nCatalog: {catalog_version or '-'}",
-            )
-            return
-        answer = QMessageBox.question(
-            self,
-            "Update Plugin",
-            f"Update '{plugin_id}' from {installed_version or '?'} to {catalog_version}?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.Yes,
-        )
-        if answer != QMessageBox.StandardButton.Yes:
-            return
-        try:
-            self.host.uninstall_plugin(plugin_id)
-            out = self.host.install_online_plugin(entry)
-        except Exception as exc:
-            QMessageBox.warning(self, "Update Plugin", f"Failed to update '{plugin_id}':\n{exc}")
-            return
-        self.host.window.show_status_message(f"Plugin updated: {out.name} ({installed_version} -> {catalog_version})", 3500)
-        self.host.reload()
-        self._populate()
-
-    def _update_all(self) -> None:
-        updates = self._updatable_entries()
-        if not updates:
-            QMessageBox.information(self, "Update All Plugins", "No online plugin updates are available.")
-            return
-        answer = QMessageBox.question(
-            self,
-            "Update All Plugins",
-            f"Apply {len(updates)} available online plugin update(s)?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.Yes,
-        )
-        if answer != QMessageBox.StandardButton.Yes:
-            return
-        updated: list[str] = []
-        failed: list[str] = []
-        for entry, rec, installed_version, catalog_version in updates:
-            plugin_id = rec.plugin_id
-            try:
-                self.host.uninstall_plugin(plugin_id)
-                self.host.install_online_plugin(entry)
-                updated.append(f"{plugin_id} ({installed_version or '?'} -> {catalog_version})")
-            except Exception as exc:
-                failed.append(f"{plugin_id}: {exc}")
-        self.host.reload()
-        self._populate()
-        summary = [f"Updated: {len(updated)}", f"Failed: {len(failed)}"]
-        if updated:
-            summary.append("")
-            summary.append("Updated plugins:")
-            summary.extend(updated[:10])
-            if len(updated) > 10:
-                summary.append(f"...and {len(updated) - 10} more")
-        if failed:
-            summary.append("")
-            summary.append("Failures:")
-            summary.extend(failed[:10])
-            if len(failed) > 10:
-                summary.append(f"...and {len(failed) - 10} more")
-        QMessageBox.information(self, "Update All Plugins", "\n".join(summary))
 
 
 class MinimapDock(QDockWidget):
