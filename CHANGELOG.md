@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on Keep a Changelog, and this project uses Semantic Versioning.
 
 
+## [1.7.10-prerelease] - 2026-03-08
+
+### Added
+- New regression suite `tests/test_productivity_hardening.py` covering:
+  - release metadata consistency (`assets/version.txt` + `update.xml`)
+  - stable vs prerelease version comparison behavior
+  - Quick Open scoring priority checks
+  - autosave index persistence round-trip
+
+### Changed
+- Startup instrumentation in `src/run.py` now logs splash image/font prep timing for better startup profiling.
+- Quick Open scoring in `src/pypad/ui/editor/quick_open_dialog.py` now prioritizes basename/path-segment matches more accurately.
+- Workspace find/replace in `src/pypad/ui/workspace/workspace_controller.py` now uses safer text decode fallback order (`utf-8`, `utf-8-sig`, `cp1252`, `latin-1`) to reduce skipped files.
+- AI apply behavior in `src/pypad/ui/ai/ai_chat_dock.py` now forces preview for large payloads even when legacy direct-apply mode is enabled.
+- Plugin reliability settings now include `plugin_max_failures_before_disable` in defaults/migration coercion.
+- Updater version ordering in `src/pypad/services/updater_helpers.py` now treats stable releases as newer than prereleases with the same numeric base.
+
+### Fixed
+- Autosave index writes in `src/pypad/ui/system/autosave.py` are now atomic to avoid partial/corrupt writes.
+- Corrupt autosave index files are now quarantined instead of repeatedly breaking load.
+- Shortcut mapper apply flow now blocks unresolved duplicate bindings when conflict policy is `block`.
+
 ## [1.7.9-prerelease] - 2026-03-07
 
 ### Creator's Thoughts

@@ -3248,9 +3248,14 @@ class AIChatDock(QDockWidget):
             len(str(tab.text_edit.get_text() or "")),
             len(proposed_text or ""),
         )
-        if mode == "legacy_direct_apply":
+        if mode == "legacy_direct_apply" and len(proposed_text or "") <= 20000:
             _LOGGER.debug("AI chat preview/apply using legacy_direct_apply title=%s", title)
             return self._set_text_to_active_tab(proposed_text)
+        if mode == "legacy_direct_apply":
+            _LOGGER.debug(
+                "AI chat preview/apply forcing preview despite legacy mode title=%s reason=large_payload",
+                title,
+            )
         original = tab.text_edit.get_text()
         dlg = AIEditPreviewDialog(self, original, proposed_text, title=f"{title} Preview")
         if dlg.exec() != QDialog.Accepted:

@@ -175,6 +175,13 @@ def migrate_settings(settings: dict) -> dict:
         current["onboarding_state"] = onboarding_state if isinstance(onboarding_state, dict) else {}
         current["backup_output_dir"] = str(current.get("backup_output_dir", "") or "").strip()
         current["update_feed_url"] = _sanitize_update_feed_url(current.get("update_feed_url"), defaults.get("update_feed_url", ""))
+        current["fast_startup_mode"] = coerce_bool(current.get("fast_startup_mode", True), True)
+        current["plugin_max_failures_before_disable"] = _coerce_int_clamped(
+            current.get("plugin_max_failures_before_disable", 3),
+            3,
+            1,
+            20,
+        )
         normalize_ui_visibility_settings(current)
         ScintillaProfile.from_settings(current).apply_to_settings(current)
         return coerce_notepadpp_prefs(current)
@@ -282,6 +289,13 @@ def migrate_settings(settings: dict) -> dict:
         1200,
         0,
         15000,
+    )
+    current["fast_startup_mode"] = coerce_bool(current.get("fast_startup_mode", True), True)
+    current["plugin_max_failures_before_disable"] = _coerce_int_clamped(
+        current.get("plugin_max_failures_before_disable", 3),
+        3,
+        1,
+        20,
     )
     current["plugin_allow_unsafe_ui_bridge"] = coerce_bool(current.get("plugin_allow_unsafe_ui_bridge", False), False)
     current["plugin_online_catalog_url"] = str(

@@ -1,7 +1,7 @@
 ﻿# Pypad - App Summary
 
-Last updated: 2026-03-07
-Release target: `1.7.9-prerelease`
+Last updated: 2026-03-08
+Release target: `1.7.10-prerelease`
 
 ## Product Snapshot
 
@@ -110,3 +110,4 @@ Implemented in `src/pypad/ui/editor/scintilla_compat.py`:
 - Windows version info: `assets/version_info.txt`
 - Update feed: `update.xml`
 - Human changelog: `CHANGELOG.md`
+

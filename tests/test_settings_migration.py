@@ -37,6 +37,7 @@ class SettingsMigrationTests(unittest.TestCase):
         source = {"settings_schema_version": 1, "my_custom_flag": "x"}
         migrated = migrate_settings(source)
         self.assertEqual(migrated["my_custom_flag"], "x")
+        self.assertTrue(migrated["fast_startup_mode"])
 
     def test_scintilla_profile_values_are_sanitized(self) -> None:
         source = {

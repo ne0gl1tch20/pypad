@@ -141,22 +141,28 @@ def score_quick_open_match(query: str, candidate: str) -> int:
     c = str(candidate or "").lower()
     if not q:
         return 0
+    c_norm = c.replace("\\", "/")
+    q_norm = q.replace("\\", "/")
+    base = os.path.basename(c_norm)
     if q == c:
         return 120
-    if c.startswith(q):
+    if q_norm == base:
+        return 112
+    if c_norm.startswith(q_norm):
         return 95
-    base = os.path.basename(c)
-    if base.startswith(q):
+    if base.startswith(q_norm):
         return 88
-    if q in c:
+    if f"/{q_norm}" in c_norm:
+        return 84
+    if q_norm in c_norm:
         return 70
-    tokens = [t for t in q.replace("\\", "/").split() if t]
-    if tokens and all(t in c for t in tokens):
+    tokens = [t for t in q_norm.split() if t]
+    if tokens and all(t in c_norm for t in tokens):
         return 45
     # simple ordered fuzzy subsequence
     idx = 0
-    for ch in q:
-        idx = c.find(ch, idx)
+    for ch in q_norm:
+        idx = c_norm.find(ch, idx)
         if idx < 0:
             return -1
         idx += 1

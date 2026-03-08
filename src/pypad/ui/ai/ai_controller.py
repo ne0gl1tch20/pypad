@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
 )
 
 from pypad.ui.ai.ai_edit_preview_dialog import AIEditPreviewDialog, AIRewritePromptDialog
-from pypad.ai_app_knowledge import DEFAULT_AI_APP_KNOWLEDGE
+from pypad.ai_app_knowledge import resolve_ai_app_knowledge
 from pypad.logging_utils import get_logger
 from pypad.ui.theme.asset_paths import resolve_asset_path
 
@@ -340,24 +340,13 @@ class AIController:
         )
 
     def _build_app_knowledge_block(self) -> str:
-        knowledge = str(DEFAULT_AI_APP_KNOWLEDGE or "").strip()
+        knowledge = resolve_ai_app_knowledge(self.window.settings.get("ai_app_knowledge_override", ""))
         if not knowledge:
             return ""
         return (
             "[PYPAD_KNOWLEDGE]\n"
             f"{knowledge}\n"
             "[/PYPAD_KNOWLEDGE]"
-        )
-
-    def _build_user_knowledge_block(self) -> str:
-        # Keep built-in app knowledge intact; this field is user-appended guidance.
-        user_knowledge = str(self.window.settings.get("ai_app_knowledge_override", "") or "").strip()
-        if not user_knowledge:
-            return ""
-        return (
-            "[PYPAD_USER_KNOWLEDGE]\n"
-            f"{user_knowledge}\n"
-            "[/PYPAD_USER_KNOWLEDGE]"
         )
 
     def _build_advanced_personality_block(self) -> str:
@@ -468,7 +457,6 @@ class AIController:
         blocks = [
             self._app_metadata_block,
             self._build_app_knowledge_block(),
-            self._build_user_knowledge_block(),
             self._build_advanced_personality_block(),
             self._build_runtime_context_block(),
             candidate,

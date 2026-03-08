@@ -94,7 +94,7 @@ def _parse_plaintext_feed(text: str) -> UpdateInfo | None:
 def is_newer_version(remote: str, current: str) -> bool:
     if not remote.strip():
         return False
-    return _version_tuple(remote) > _version_tuple(current)
+    return _version_key(remote) > _version_key(current)
 
 
 def _local(tag: str) -> str:
@@ -144,6 +144,16 @@ def _extract_download_url(node: ET.Element) -> str | None:
 def _version_tuple(version: str) -> tuple[int, ...]:
     parts = [int(piece) for piece in re.findall(r"\d+", version)]
     return tuple(parts) if parts else (0,)
+
+
+def _version_key(version: str) -> tuple[tuple[int, ...], int, str]:
+    value = str(version or "").strip().lower()
+    prerelease_match = re.search(r"(?:-|\.)(?:alpha|beta|rc|pre|preview)", value)
+    numeric_source = value[: prerelease_match.start()] if prerelease_match else value
+    nums = _version_tuple(numeric_source)
+    # Stable > prerelease for same numeric tuple.
+    prerelease_weight = 0 if re.search(r"(?:-|\.)(?:alpha|beta|rc|pre|preview)", value) else 1
+    return nums, prerelease_weight, value
 
 
 def metadata_signature_payload(info: UpdateInfo) -> bytes:

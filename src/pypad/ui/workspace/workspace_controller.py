@@ -28,6 +28,20 @@ class WorkspaceController:
         self._index_scanning = False
         self._last_index_notice_at = 0.0
 
+    @staticmethod
+    def _read_text_with_fallback(path: str, preferred_encoding: str = "utf-8") -> str | None:
+        encodings = [str(preferred_encoding or "utf-8"), "utf-8", "utf-8-sig", "cp1252", "latin-1"]
+        seen: set[str] = set()
+        for enc in encodings:
+            if enc in seen:
+                continue
+            seen.add(enc)
+            try:
+                return Path(path).read_text(encoding=enc, errors="replace")
+            except Exception:
+                continue
+        return None
+
     def insert_media_files(self) -> None:
         tab = self.window.active_tab()
         if tab is None:
@@ -241,9 +255,8 @@ class WorkspaceController:
             encoding = "utf-8"
             if isinstance(enc_map, dict):
                 encoding = str(enc_map.get(path, "utf-8") or "utf-8")
-            try:
-                text = Path(path).read_text(encoding=encoding, errors="replace")
-            except Exception:
+            text = self._read_text_with_fallback(path, encoding)
+            if text is None:
                 continue
             for line_no, line_text in enumerate(text.splitlines(), start=1):
                 if pattern.search(line_text):
@@ -442,9 +455,8 @@ class WorkspaceController:
             encoding = "utf-8"
             if isinstance(enc_map, dict):
                 encoding = str(enc_map.get(path, "utf-8") or "utf-8")
-            try:
-                content = Path(path).read_text(encoding=encoding, errors="replace")
-            except Exception:
+            content = self._read_text_with_fallback(path, encoding)
+            if content is None:
                 errors += 1
                 continue
             if use_regex:

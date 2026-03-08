@@ -21,7 +21,6 @@ def _bootstrap_import_paths() -> None:
 
     PyInstaller onedir layout (as installed by Inno):
       run.exe
-      assets/
       _internal/
     """
     candidates: list[Path] = []
@@ -221,6 +220,7 @@ if __name__ == "__main__":
     # Closing the main window should terminate the app process.
     app.setQuitOnLastWindowClosed(True)
 
+    splash_started_at = perf_counter()
     # Load splash image
     splash_asset = resolve_asset_path("splash.png")
     splash_path = str(splash_asset) if splash_asset is not None else ""
@@ -234,6 +234,7 @@ if __name__ == "__main__":
         Qt.AspectRatioMode.KeepAspectRatio,
         Qt.TransformationMode.SmoothTransformation,
     )
+    LOGGER.debug("Splash image prepared in %dms", int((perf_counter() - splash_started_at) * 1000))
 
     # Load version text
     version_asset = resolve_asset_path("version.txt")
@@ -247,6 +248,7 @@ if __name__ == "__main__":
     _startup_log(f"Pypad, Version: {version}")
     _startup_log("Waiting for main_window to start...")
 
+    font_started_at = perf_counter()
     # Load custom font
     font_asset = resolve_asset_path("splash.ttf")
     font_path = str(font_asset) if font_asset is not None else ""
@@ -267,6 +269,7 @@ if __name__ == "__main__":
                 f"Warning: No font families found in {font_path}, using default font."
             )
             font = QFont("Arial", 14)  # fallback
+    LOGGER.debug("Splash font resolved in %dms", int((perf_counter() - font_started_at) * 1000))
 
     # Draw version text on splash
     painter = QPainter(pixmap)
@@ -322,7 +325,7 @@ if __name__ == "__main__":
         window.destroyed.connect(lambda: _log_quit("main window destroyed"))
         window.destroyed.connect(app.quit)
 
-        try:
+        def _show_and_activate_main_window() -> None:
             _startup_log("[Startup] Showing main window...")
             if window.isMinimized():
                 window.showNormal()
@@ -353,8 +356,6 @@ if __name__ == "__main__":
                     _startup_log(f"Warning: failed to raise/activate main window: {exc}")
             QTimer.singleShot(0, _activate_main_window)
             QTimer.singleShot(0, window.enforce_privacy_lock)
-        except Exception as exc:
-            _startup_log(f"Warning: failed to show main window: {exc}")
 
         def _check_window_visibility() -> None:
             try:
@@ -369,7 +370,31 @@ if __name__ == "__main__":
             except Exception as exc:
                 _startup_log(f"Warning: failed to read window state: {exc}")
 
-        QTimer.singleShot(1500, _check_window_visibility)
+        def _show_when_startup_ready() -> None:
+            max_wait_ms = 15000
+            poll_ms = 50
+            waited = {"ms": 0}
+
+            def _poll() -> None:
+                try:
+                    ready = bool(getattr(window, "_startup_sequence_done", True))
+                except Exception:
+                    ready = True
+                if ready or waited["ms"] >= max_wait_ms:
+                    if not ready:
+                        _startup_log("Warning: startup ready flag timeout; showing window anyway.")
+                    try:
+                        _show_and_activate_main_window()
+                    except Exception as exc:
+                        _startup_log(f"Warning: failed to show main window: {exc}")
+                    QTimer.singleShot(1500, _check_window_visibility)
+                    return
+                waited["ms"] += poll_ms
+                QTimer.singleShot(poll_ms, _poll)
+
+            _poll()
+
+        _show_when_startup_ready()
 
     class _QuitEventFilter(QObject):
         def eventFilter(self, obj, event):  # type: ignore[override]

@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import uuid
 import difflib
+import tempfile
+import os
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -53,6 +55,7 @@ class AutoSaveStore:
         except Exception:
             self.entries = {}
             _LOGGER.exception("AutoSaveStore.load failed to parse index=%s", self.index_path)
+            self._quarantine_bad_index()
             return
         entries = {}
         for item in data:
@@ -83,8 +86,35 @@ class AutoSaveStore:
             }
             for e in self.entries.values()
         ]
-        self.index_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        self._atomic_write_text(self.index_path, json.dumps(data, indent=2))
         _LOGGER.debug("AutoSaveStore.save wrote index=%s entries=%d", self.index_path, len(data))
+
+    def _atomic_write_text(self, path: Path, text: str) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp_name = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=str(path.parent))
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                handle.write(text)
+                handle.flush()
+            Path(tmp_name).replace(path)
+        finally:
+            try:
+                tmp = Path(tmp_name)
+                if tmp.exists():
+                    tmp.unlink()
+            except Exception:
+                pass
+
+    def _quarantine_bad_index(self) -> None:
+        if not self.index_path.exists():
+            return
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        broken = self.index_path.with_name(f"{self.index_path.stem}.broken.{stamp}.json")
+        try:
+            self.index_path.replace(broken)
+            _LOGGER.warning("AutoSaveStore quarantined corrupt index to %s", broken)
+        except Exception:
+            _LOGGER.exception("AutoSaveStore failed to quarantine corrupt index: %s", self.index_path)
 
     def new_id(self) -> str:
         return str(uuid.uuid4())

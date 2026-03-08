@@ -299,6 +299,22 @@ class ShortcutMapperDialog(QDialog):
             QMessageBox.critical(self, "Export Failed", f"Could not export shortcut map:\n{exc}")
 
     def apply_live(self) -> None:
+        if self.conflict_combo.currentText() == "block":
+            mapping = self._effective_map()
+            reverse: dict[str, str] = {}
+            for action_id, seqs in mapping.items():
+                for seq in seqs:
+                    owner = reverse.get(seq)
+                    if owner is not None and owner != action_id:
+                        owner_label = self._action_by_id.get(owner).label if owner in self._action_by_id else owner
+                        target_label = self._action_by_id.get(action_id).label if action_id in self._action_by_id else action_id
+                        QMessageBox.warning(
+                            self,
+                            "Conflict Blocked",
+                            f"Cannot apply while duplicate shortcut exists:\n{seq}\n{owner_label} <-> {target_label}",
+                        )
+                        return
+                    reverse[seq] = action_id
         self._settings["shortcut_profile"] = self.preset_combo.currentText()
         self._settings["shortcut_conflict_policy"] = self.conflict_combo.currentText()
         self._settings["shortcut_map"] = dict(self._working_map)

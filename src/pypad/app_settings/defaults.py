@@ -137,6 +137,8 @@ def build_default_settings(*, default_style: str, font_family: str, font_size: i
         "plugin_startup_safe_mode": False,
         "defer_plugin_load_on_startup": True,
         "plugin_startup_defer_ms": 1200,
+        "fast_startup_mode": True,
+        "plugin_max_failures_before_disable": 3,
         "plugin_allow_unsafe_ui_bridge": False,
         "plugin_online_catalog_url": "https://raw.githubusercontent.com/ne0gl1tch20/pypad/main/online_plugins/catalog.json",
         "keyboard_only_mode": False,

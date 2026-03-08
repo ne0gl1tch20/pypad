@@ -3588,6 +3588,9 @@ class UiSetupMixin:
         self.reload_app_action.triggered.connect(self.reload_app)
         self.check_updates_action = QAction("Check for &Updates...", self)
         self.check_updates_action.triggered.connect(lambda _checked=False: self.check_for_updates(manual=True))
+        self.update_available_menu_action = QAction("Update Available - Check for &Updates...", self)
+        self.update_available_menu_action.setVisible(False)
+        self.update_available_menu_action.triggered.connect(lambda _checked=False: self.check_for_updates(manual=True))
         self.show_debug_logs_action = QAction("Show Debug Logs", self)
         self.show_debug_logs_action.triggered.connect(self.show_debug_logs)
         self.show_debug_info_action = QAction("Show Debug Info", self)
@@ -4554,6 +4557,7 @@ class UiSetupMixin:
         self.help_menu.addAction(self.open_source_licenses_action)
         self.help_menu.addSeparator()
         self.help_menu.addAction(self.about_action)
+        menu_bar.addAction(self.update_available_menu_action)
 
         if hasattr(self, "log_event"):
             try:

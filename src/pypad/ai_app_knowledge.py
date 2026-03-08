@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-import re
+import ast
+from functools import lru_cache
 from pathlib import Path
 
 
@@ -206,94 +207,60 @@ def _strip_qt_mnemonic(label: str) -> str:
     return str(label or "").replace("&&", "&").replace("&", "").strip()
 
 
-def _extract_python_string_literal(source: str, start_idx: int) -> tuple[str, int] | None:
-    if start_idx < 0 or start_idx >= len(source):
-        return None
-    quote = source[start_idx]
-    if quote not in {"'", '"'}:
-        return None
-    i = start_idx + 1
-    out: list[str] = []
-    escaped = False
-    while i < len(source):
-        ch = source[i]
-        if escaped:
-            out.append(ch)
-            escaped = False
-            i += 1
-            continue
-        if ch == "\\":
-            escaped = True
-            i += 1
-            continue
-        if ch == quote:
-            return ("".join(out), i + 1)
-        out.append(ch)
-        i += 1
+def _extract_text_from_ast_expr(node: ast.AST) -> str | None:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.Call):
+        if isinstance(node.func, ast.Name) and node.func.id == "tr" and node.args:
+            return _extract_text_from_ast_expr(node.args[0])
+        if isinstance(node.func, ast.Attribute) and node.func.attr == "tr" and node.args:
+            return _extract_text_from_ast_expr(node.args[0])
     return None
 
 
+def _extract_text_from_call_args(call_node: ast.Call) -> str:
+    for arg in call_node.args:
+        text = _extract_text_from_ast_expr(arg)
+        if text:
+            label = _strip_qt_mnemonic(text)
+            if label:
+                return label
+    return ""
+
+
+@lru_cache(maxsize=1)
 def _generate_ui_setup_appendix() -> str:
     try:
         ui_setup_path = Path(__file__).resolve().parent / "ui" / "main_window" / "ui_setup.py"
         source = ui_setup_path.read_text(encoding="utf-8", errors="replace")
+        tree = ast.parse(source)
     except Exception as exc:
         return f"\nGenerated appendix unavailable (ui_setup parse failed: {exc})."
 
     action_entries: list[tuple[str, str]] = []
     menu_entries: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        if not isinstance(node.value, ast.Call):
+            continue
 
-    action_re = re.compile(r"self\.(\w+)\s*=\s*QAction\s*\(", re.MULTILINE)
-    menu_re = re.compile(r"(?:self\.)?(\w+_menu)\s*=\s*.+?\.addMenu\s*\(", re.MULTILINE)
+        call_node = node.value
+        for target in node.targets:
+            if not isinstance(target, ast.Attribute):
+                continue
+            if not isinstance(target.value, ast.Name) or target.value.id != "self":
+                continue
 
-    for match in action_re.finditer(source):
-        action_id = match.group(1)
-        open_paren_idx = source.find("(", match.start())
-        if open_paren_idx < 0:
-            continue
-        first_quote_idx = -1
-        i = open_paren_idx + 1
-        while i < len(source):
-            ch = source[i]
-            if ch in {"'", '"'}:
-                first_quote_idx = i
-                break
-            if ch == ")":
-                break
-            i += 1
-        if first_quote_idx < 0:
-            continue
-        parsed = _extract_python_string_literal(source, first_quote_idx)
-        if not parsed:
-            continue
-        raw_label, _end = parsed
-        label = _strip_qt_mnemonic(raw_label)
-        action_entries.append((action_id, label))
+            target_name = target.attr
+            is_qaction = isinstance(call_node.func, ast.Name) and call_node.func.id == "QAction"
+            is_menu_add = isinstance(call_node.func, ast.Attribute) and call_node.func.attr == "addMenu"
+            label = _extract_text_from_call_args(call_node)
 
-    for match in menu_re.finditer(source):
-        menu_id = match.group(1)
-        open_paren_idx = source.find("(", match.end() - 1)
-        if open_paren_idx < 0:
-            continue
-        quote_idx = -1
-        i = open_paren_idx + 1
-        while i < len(source):
-            ch = source[i]
-            if ch in {"'", '"'}:
-                quote_idx = i
-                break
-            if ch == ")":
-                break
-            i += 1
-        if quote_idx < 0:
-            continue
-        parsed = _extract_python_string_literal(source, quote_idx)
-        if not parsed:
-            continue
-        raw_label, _ = parsed
-        _menu_label = _strip_qt_mnemonic(raw_label)
-        if _menu_label:
-            menu_entries.append(_menu_label)
+            if is_qaction and label:
+                action_entries.append((target_name, label))
+            if target_name.endswith("_menu") and is_menu_add and label:
+                menu_entries.append(label)
 
     if not action_entries and not menu_entries:
         return "\nGenerated appendix unavailable (no actions/menus parsed)."
@@ -318,7 +285,7 @@ def _generate_ui_setup_appendix() -> str:
     lines: list[str] = []
     lines.append("")
     lines.append("Generated appendix (parsed from the UI action/menu setup definitions):")
-    lines.append("- This appendix is generated at import time to improve action/menu name accuracy.")
+    lines.append("- This appendix is generated lazily and cached to improve action/menu name accuracy.")
     lines.append(f"- Parsed actions: {len(dedup_actions)}")
     lines.append(f"- Parsed menus: {len(dedup_menus)}")
     lines.append("")
@@ -332,11 +299,16 @@ def _generate_ui_setup_appendix() -> str:
     return "\n".join(lines)
 
 
-DEFAULT_AI_APP_KNOWLEDGE = _BASE_AI_APP_KNOWLEDGE + _generate_ui_setup_appendix()
+def get_default_ai_app_knowledge() -> str:
+    return _BASE_AI_APP_KNOWLEDGE + _generate_ui_setup_appendix()
+
+
+DEFAULT_AI_APP_KNOWLEDGE = _BASE_AI_APP_KNOWLEDGE
 
 
 def resolve_ai_app_knowledge(override_text: object) -> str:
     custom = str(override_text or "").strip()
-    if custom:
-        return custom
-    return DEFAULT_AI_APP_KNOWLEDGE
+    base = get_default_ai_app_knowledge().strip()
+    if not custom:
+        return base
+    return f"{base}\n\n[PYPAD_USER_KNOWLEDGE_OVERRIDE]\n{custom}\n[/PYPAD_USER_KNOWLEDGE_OVERRIDE]"

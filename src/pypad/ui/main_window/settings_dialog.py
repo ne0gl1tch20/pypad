@@ -1118,6 +1118,11 @@ class SettingsDialog(QDialog):
             idx,
             "Plugin startup safe mode (skip loading plugins at startup)",
         )
+        self.fast_startup_mode_checkbox = self._add_check(
+            advanced_layout,
+            idx,
+            "Fast startup mode (defer non-critical startup tasks)",
+        )
         self.defer_plugin_load_checkbox = self._add_check(
             advanced_layout,
             idx,
@@ -1690,6 +1695,7 @@ class SettingsDialog(QDialog):
         self.save_debug_logs_checkbox.setChecked(bool(s.get("save_debug_logs_to_appdata", False)))
         self.logging_level_combo.setCurrentText(str(s.get("logging_level", "INFO")).upper())
         self.plugin_startup_safe_mode_checkbox.setChecked(bool(s.get("plugin_startup_safe_mode", False)))
+        self.fast_startup_mode_checkbox.setChecked(bool(s.get("fast_startup_mode", True)))
         self.defer_plugin_load_checkbox.setChecked(bool(s.get("defer_plugin_load_on_startup", True)))
         self.plugin_startup_defer_ms_spin.setValue(int(s.get("plugin_startup_defer_ms", 1200)))
         self.layout_auto_save_checkbox.setChecked(bool(s.get("layout_auto_save_enabled", True)))
@@ -1818,6 +1824,7 @@ class SettingsDialog(QDialog):
         s["save_debug_logs_to_appdata"] = self.save_debug_logs_checkbox.isChecked()
         s["logging_level"] = self.logging_level_combo.currentText().strip().upper() or "INFO"
         s["plugin_startup_safe_mode"] = self.plugin_startup_safe_mode_checkbox.isChecked()
+        s["fast_startup_mode"] = self.fast_startup_mode_checkbox.isChecked()
         s["defer_plugin_load_on_startup"] = self.defer_plugin_load_checkbox.isChecked()
         s["plugin_startup_defer_ms"] = int(self.plugin_startup_defer_ms_spin.value())
         s["layout_auto_save_enabled"] = self.layout_auto_save_checkbox.isChecked()

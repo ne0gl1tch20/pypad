@@ -1,9 +1,9 @@
-<?xml version="1.0" encoding="UTF-8"?>
+﻿<?xml version="1.0" encoding="UTF-8"?>
 <updates>
   <item>
-    <title>PyPad 1.7.9-prerelease</title>
-    <version>1.7.9</version>
-    <pubDate>2026-03-07</pubDate>
+    <title>PyPad 1.7.10-prerelease</title>
+    <version>1.7.10</version>
+    <pubDate>2026-03-08</pubDate>
     <description>
       - HTML export now preserves markdown structure as real HTML elements (headings/lists/links/code).
       - Added Demo Pack markdown templates under File > Templates > Demo Pack (new + insert actions).
@@ -16,7 +16,8 @@
     </description>
     <sha256>0000000000000000000000000000000000000000000000000000000000000000</sha256>
     <enclosure
-      url="https://github.com/ne0gl1tch20/pypad/releases/download/1.7.9/PyPad-Setup-1.7.9-prerelease.exe"
+      url="https://github.com/ne0gl1tch20/pypad/releases/download/1.7.10/PyPad-Setup-1.7.10-prerelease.exe"
       type="application/octet-stream" />
   </item>
 </updates>
+

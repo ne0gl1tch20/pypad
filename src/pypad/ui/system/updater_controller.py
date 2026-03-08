@@ -137,6 +137,8 @@ class _UpdateDownloadWorker(QObject):
 
 
 class UpdaterController(QObject):
+    update_availability_changed = Signal(bool, str)
+
     def __init__(self, window) -> None:
         super().__init__(window)
         self.window = window
@@ -244,6 +246,7 @@ class UpdaterController(QObject):
         self._log_update(f"Update check finished (id={check_id}) in {elapsed:.2f}s")
         self.window.show_status_message("Update check complete.", 3000)
         if info is None:
+            self.update_availability_changed.emit(False, "")
             self._log_update("Feed parsed but no update metadata was found.")
             if self._manual_check:
                 self._show_error_with_details(
@@ -253,6 +256,7 @@ class UpdaterController(QObject):
                 )
             return
         if not isinstance(info, UpdateInfo):
+            self.update_availability_changed.emit(False, "")
             self._log_update(f"Feed parsed into unexpected type: {type(info).__name__}")
             if self._manual_check:
                 self._show_error_with_details(
@@ -269,6 +273,7 @@ class UpdaterController(QObject):
             f"pub_date={info.pub_date or 'n/a'}"
         )
         if not is_newer_version(info.version, APP_VERSION):
+            self.update_availability_changed.emit(False, "")
             self._log_update(f"No update: current={APP_VERSION} remote={info.version or 'unknown'}")
             if self._manual_check:
                 themed_message_box_exec(
@@ -287,6 +292,7 @@ class UpdaterController(QObject):
 
         metadata_error = self._validate_update_metadata(info)
         if metadata_error:
+            self.update_availability_changed.emit(False, "")
             self._log_update(f"Update metadata validation failed: {metadata_error}")
             if self._manual_check:
                 self._show_error_with_details(
@@ -297,6 +303,7 @@ class UpdaterController(QObject):
             return
 
         self._log_update(f"Update available: current={APP_VERSION} remote={info.version or 'unknown'}")
+        self.update_availability_changed.emit(True, str(info.version or "").strip())
         details = [f"Current: {APP_VERSION}", f"Latest: {info.version or 'unknown'}"]
         if info.pub_date:
             details.append(f"Published: {info.pub_date}")

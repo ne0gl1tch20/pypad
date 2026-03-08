@@ -121,6 +121,7 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
 
     def __init__(self) -> None:
         super().__init__()
+        self._startup_sequence_done = False
         startup_t0 = time.perf_counter()
         startup_stages: list[tuple[str, int]] = []
 
@@ -253,6 +254,7 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
         self.ai_chat_dock.visibilityChanged.connect(self.update_action_states)
         self.ai_chat_dock.hide()
         self.updater_controller = UpdaterController(self)
+        self.updater_controller.update_availability_changed.connect(self._on_update_availability_changed)
         self.log_event("Info", "[Startup] Updater controller initialized")
         self.reminders_store = ReminderStore(self._get_reminders_file_path())
         self.reminders_store.load()
@@ -348,12 +350,15 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
         self.log_event("Info", "[Startup] Toolbars created")
         if bool(self.settings.get("simple_mode", False)):
             self.toggle_simple_mode(True, persist=False)
-        self._offer_crash_recovery()
         _mark_startup_stage("ui_ready")
         self.log_event("Info", "[Startup] UI ready")
 
-        # Finish startup before showing the window.
+        # Finish startup on the next event-loop tick so the main window can appear sooner.
         def _finish_startup_sequence() -> None:
+            try:
+                self._offer_crash_recovery()
+            except Exception as exc:  # noqa: BLE001
+                self.log_event("Error", f"[Startup] crash recovery offer failed: {exc!r}")
             try:
                 self.apply_settings()
                 self.log_event("Info", "[Startup] Settings applied")
@@ -390,10 +395,31 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
                 # Optional: prewarm can improve first-open latency, but can be heavy
                 # on some systems. Keep it opt-in.
                 QTimer.singleShot(800, self._prewarm_settings_dialog_cache)
+            self._startup_sequence_done = True
 
-        _finish_startup_sequence()
+        if bool(self.settings.get("fast_startup_mode", True)):
+            self.log_event("Info", "[Startup] Fast startup mode enabled: scheduling deferred startup sequence")
+            QTimer.singleShot(0, _finish_startup_sequence)
+        else:
+            self.log_event("Info", "[Startup] Fast startup mode disabled: running synchronous startup sequence")
+            _finish_startup_sequence()
 
         # Lock screen enforcement is triggered from main() after the window is shown.
+
+    @Slot(bool, str)
+    def _on_update_availability_changed(self, available: bool, version: str) -> None:
+        action = getattr(self, "update_available_menu_action", None)
+        if action is None:
+            return
+        if available:
+            pretty = str(version or "").strip()
+            if pretty:
+                action.setText(f"Update Available ({pretty}) - Check for &Updates...")
+            else:
+                action.setText("Update Available - Check for &Updates...")
+            action.setVisible(True)
+            return
+        action.setVisible(False)
 
     def focusInEvent(self, event: QEvent) -> None:  # type: ignore[override]
         super().focusInEvent(event)
