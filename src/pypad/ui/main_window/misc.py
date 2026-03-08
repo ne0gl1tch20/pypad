@@ -1022,10 +1022,13 @@ class MiscMixin(
 
     def ask_ai(self) -> None:
         if hasattr(self, "ensure_ai_runtime"):
-            self.ensure_ai_runtime()
+            ok = bool(self.ensure_ai_runtime())
+            if not ok:
+                self.open_ai_assistant_plugin_setup()
+                return
         controller = getattr(self, "ai_controller", None)
         if controller is None:
-            QMessageBox.information(self, "Ask AI", "AI runtime is not available.")
+            self.open_ai_assistant_plugin_setup()
             return
         controller.ask_ai()
 
@@ -1274,6 +1277,44 @@ class MiscMixin(
 
     def open_plugin_manager(self) -> None:
         self.advanced_features.open_plugin_manager()
+
+    def open_ai_assistant_plugin_setup(self) -> None:
+        if bool(getattr(self, "_ai_setup_dialog_open", False)):
+            return
+        self._ai_setup_dialog_open = True
+        enabled = {
+            str(pid).strip().lower()
+            for pid in self.settings.get("enabled_plugins", [])
+            if str(pid).strip()
+        }
+        try:
+            if "pypad_ai_assistant" in enabled:
+                # Try one direct bootstrap path without re-entering chat toggle/setup.
+                if hasattr(self, "ensure_ai_runtime") and bool(self.ensure_ai_runtime()):
+                    dock = getattr(self, "ai_chat_dock", None)
+                    if dock is not None:
+                        dock.setVisible(True)
+                        dock.raise_()
+                        if hasattr(dock, "focus_prompt"):
+                            dock.focus_prompt()
+                    return
+                QMessageBox.information(
+                    self,
+                    "AI Assistant",
+                    "PyPad AI Assistant is enabled, but AI runtime failed to initialize.\n"
+                    "Open Plugin Manager and reload the plugin.",
+                )
+                self.open_plugin_manager()
+                return
+            QMessageBox.information(
+                self,
+                "AI Assistant",
+                "AI runtime is provided by plugin.\n"
+                "Install/enable 'PyPad AI Assistant' from Online Plugins, then reopen AI.",
+            )
+            self.open_online_plugins()
+        finally:
+            self._ai_setup_dialog_open = False
 
     def open_online_plugins(self) -> None:
         self.advanced_features.open_online_plugins()
@@ -2605,10 +2646,24 @@ class MiscMixin(
         self.show_status_message("Applied Focus preset.", 2500)
 
     def toggle_ai_chat_panel(self, checked: bool | None = None) -> None:
+        if bool(getattr(self, "_ai_setup_redirect_in_progress", False)):
+            return
         if hasattr(self, "ensure_ai_runtime"):
-            self.ensure_ai_runtime()
+            ok = bool(self.ensure_ai_runtime())
+            if not ok:
+                self._ai_setup_redirect_in_progress = True
+                try:
+                    self.open_ai_assistant_plugin_setup()
+                finally:
+                    self._ai_setup_redirect_in_progress = False
+                return
         dock = getattr(self, "ai_chat_dock", None)
         if dock is None:
+            self._ai_setup_redirect_in_progress = True
+            try:
+                self.open_ai_assistant_plugin_setup()
+            finally:
+                self._ai_setup_redirect_in_progress = False
             return
         desired = not dock.isVisible() if checked is None else bool(checked)
         dock.setVisible(desired)

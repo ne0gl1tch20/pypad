@@ -26,6 +26,8 @@ def _candidate_asset_roots() -> list[Path]:
 
     # Development layout: <repo>/src/run.py and <repo>/assets/.
     ui_dir = Path(__file__).resolve().parent
+    repo_root = ui_dir.parents[3]
+    roots.append(repo_root / "online_plugins" / "pypad_ai_assistant" / "assets")
     roots.append(ui_dir.parents[3] / "assets")
 
     # Backward compatibility with old icon location in source tree.
