@@ -63,7 +63,6 @@ from pypad.ui.workspace.project_workflow import (
 from pypad.ui.theme.theme_tokens import build_tokens_from_settings
 
 PLUGIN_API_VERSION = "1.0"
-PYPAD_PRIVILEGED_TAG = "pypad_internal_access"
 
 
 def _root() -> Path:
@@ -146,7 +145,6 @@ class PluginRecord:
     last_error: str = ""
     runtime_events: list[dict[str, Any]] = field(default_factory=list)
     failure_count: int = 0
-    tags: set[str] = field(default_factory=set)
 
 
 def compute_plugin_digest(plugin_dir: Path) -> str:
@@ -212,10 +210,6 @@ class PluginAPI:
 
     def _allow_unsafe_ui_bridge(self) -> None:
         enabled = bool(self.window.settings.get("plugin_allow_unsafe_ui_bridge", False))
-        # Privileged internal plugins can use the unsafe bridge regardless of
-        # global setting, but only when explicitly tagged in manifest.
-        if PYPAD_PRIVILEGED_TAG in set(getattr(self.record, "tags", set()) or set()):
-            return
         if not enabled:
             raise RuntimeError(
                 "Unsafe UI bridge is disabled. Use controller API methods instead "
@@ -560,12 +554,7 @@ class PluginAPI:
 
     def ask_ai(self, prompt: str) -> None:
         self._allow("ai")
-        if hasattr(self.window, "ensure_ai_runtime"):
-            self.window.ensure_ai_runtime(owner_plugin=self.record.plugin_id)
-        controller = getattr(self.window, "ai_controller", None)
-        if controller is None:
-            raise RuntimeError("AI runtime unavailable.")
-        controller._start_generation(prompt, "Plugin AI", action_name=f"plugin:{self.record.plugin_id}")
+        self.window.ai_controller._start_generation(prompt, "Plugin AI", action_name=f"plugin:{self.record.plugin_id}")
 
     def network_allowed(self) -> bool:
         self._allow("network")
@@ -1593,7 +1582,6 @@ class PluginHost:
             "health_score": int(self.plugin_health_score(rec)),
             "permissions": sorted(rec.permissions),
             "requested_permissions": sorted(rec.requested_permissions),
-            "tags": sorted(rec.tags),
             "dependencies": sorted(rec.dependencies),
             "provided_services": sorted(rec.provided_services),
             "required_services": sorted(rec.required_services),
@@ -1726,7 +1714,6 @@ class PluginHost:
             depends_on_raw = meta.get("depends_on", [])
             provides_raw = meta.get("provides_services", [])
             requires_raw = meta.get("requires_services", [])
-            tags_raw = meta.get("tags", [])
             compatibility_issues: list[str] = []
             if not _is_version_compatible(self.app_version, min_app_version, max_app_version):
                 compatibility_issues.append(
@@ -1758,11 +1745,6 @@ class PluginHost:
             required_services = {
                 str(x).strip()
                 for x in (requires_raw if isinstance(requires_raw, list) else [])
-                if str(x).strip()
-            }
-            tags = {
-                str(x).strip().lower()
-                for x in (tags_raw if isinstance(tags_raw, list) else [])
                 if str(x).strip()
             }
             issues = assess_plugin_security(
@@ -1798,7 +1780,6 @@ class PluginHost:
                     provided_services=provided_services,
                     required_services=required_services,
                     failure_count=int(failure_counts.get(pid, 0) or 0),
-                    tags=tags,
                 )
             )
         ids = {r.plugin_id for r in out}
@@ -1978,11 +1959,6 @@ class PluginHost:
                         f"Plugin load failed ({rec.plugin_id}) [{rec.failure_count}/{self._max_failures_before_disable()}]",
                         3500,
                     )
-        if hasattr(self.window, "update_action_states"):
-            try:
-                self.window.update_action_states()
-            except Exception:
-                pass
 
     def set_enabled(self, plugin_id: str, enabled: bool) -> None:
         ids = self._enabled()
@@ -3398,14 +3374,10 @@ class AdvancedFeaturesController:
     def open_plugin_manager(self) -> None:
         PluginManagerDialog(self.window, self.plugin_host).exec()
         self.plugin_host.reload()
-        if hasattr(self.window, "update_action_states"):
-            self.window.update_action_states()
 
     def open_online_plugins(self) -> None:
         OnlinePluginsDialog(self.window, self.plugin_host).exec()
         self.plugin_host.reload()
-        if hasattr(self.window, "update_action_states"):
-            self.window.update_action_states()
 
     def go_to_definition(self) -> None:
         tab = self.window.active_tab()
