@@ -2831,6 +2831,14 @@ class OnlinePluginsDialog(QDialog):
         self.uninstall_btn.setToolTip("Uninstall selected plugin")
         self.uninstall_btn.setIconSize(QSize(18, 18))
         self.uninstall_btn.setFixedSize(30, 30)
+        self.check_update_btn = QToolButton(self)
+        self.check_update_btn.setToolTip("Check update for selected plugin")
+        self.check_update_btn.setIconSize(QSize(18, 18))
+        self.check_update_btn.setFixedSize(30, 30)
+        self.check_all_updates_btn = QToolButton(self)
+        self.check_all_updates_btn.setToolTip("Check updates for all installed online plugins")
+        self.check_all_updates_btn.setIconSize(QSize(18, 18))
+        self.check_all_updates_btn.setFixedSize(30, 30)
         self.close_btn = QToolButton(self)
         self.close_btn.setToolTip("Close")
         self.close_btn.setIconSize(QSize(18, 18))
@@ -2839,6 +2847,8 @@ class OnlinePluginsDialog(QDialog):
             (self.refresh_btn, "plugin-online"),
             (self.install_btn, "plugin-install"),
             (self.uninstall_btn, "tab-close"),
+            (self.check_update_btn, "sync-vertical"),
+            (self.check_all_updates_btn, "sync-horizontal"),
             (self.close_btn, "tab-close"),
         ):
             icon = None
@@ -2852,6 +2862,8 @@ class OnlinePluginsDialog(QDialog):
         row.addWidget(self.refresh_btn)
         row.addWidget(self.install_btn)
         row.addWidget(self.uninstall_btn)
+        row.addWidget(self.check_update_btn)
+        row.addWidget(self.check_all_updates_btn)
         row.addStretch(1)
         row.addWidget(self.close_btn)
         v.addLayout(row)
@@ -2859,20 +2871,37 @@ class OnlinePluginsDialog(QDialog):
         self.refresh_btn.clicked.connect(self._populate)
         self.install_btn.clicked.connect(self._install_selected)
         self.uninstall_btn.clicked.connect(self._uninstall_selected)
+        self.check_update_btn.clicked.connect(self._check_selected_update)
+        self.check_all_updates_btn.clicked.connect(self._check_all_updates)
         self.close_btn.clicked.connect(self.accept)
         self._populate()
+
+    def _installed_by_id(self) -> dict[str, PluginRecord]:
+        return {rec.plugin_id: rec for rec in self.host.discover()}
+
+    @staticmethod
+    def _is_newer_version(candidate: str, current: str) -> bool:
+        try:
+            return _parse_version_tuple(str(candidate or "")) > _parse_version_tuple(str(current or ""))
+        except Exception:
+            return False
 
     def _populate(self) -> None:
         self.list_widget.clear()
         self.details.clear()
         self._entries = self.host.load_online_plugin_catalog()
-        installed_ids = {rec.plugin_id for rec in self.host.discover()}
+        installed = self._installed_by_id()
         for row in self._entries:
             plugin_id = str(row.get("id", "") or "")
             name = str(row.get("name", plugin_id) or plugin_id)
             version = str(row.get("version", "") or "")
             author = str(row.get("author", "") or "")
-            status = "installed" if plugin_id in installed_ids else "available"
+            rec = installed.get(plugin_id)
+            installed_version = str(rec.metadata.get("version", "") or "") if rec else ""
+            if rec and version and self._is_newer_version(version, installed_version):
+                status = f"update available ({installed_version or '?'} -> {version})"
+            else:
+                status = "installed" if rec else "available"
             text = f"{name} ({plugin_id}) | {status}"
             if version:
                 text += f" | v{version}"
@@ -2887,10 +2916,21 @@ class OnlinePluginsDialog(QDialog):
             self.details.setPlainText("Select an online plugin to see details.")
             return
         row = self._entries[idx]
+        plugin_id = str(row.get("id", "") or "").strip()
+        installed = self._installed_by_id().get(plugin_id)
+        installed_version = str(installed.metadata.get("version", "") or "") if installed else ""
+        catalog_version = str(row.get("version", "") or "")
+        update_status = (
+            "Update available"
+            if installed and catalog_version and self._is_newer_version(catalog_version, installed_version)
+            else ("Installed / up to date" if installed else "Not installed")
+        )
         lines = [
             f"Name: {row.get('name', '')}",
             f"ID: {row.get('id', '')}",
             f"Version: {row.get('version', '') or '-'}",
+            f"Installed Version: {installed_version or '-'}",
+            f"Update Status: {update_status}",
             f"Author: {row.get('author', '') or '-'}",
             f"Description: {row.get('description', '') or '-'}",
             f"Repository: {row.get('repo', '') or '-'}",
@@ -2941,6 +2981,56 @@ class OnlinePluginsDialog(QDialog):
         self.host.window.show_status_message(f"Plugin uninstalled: {plugin_id}", 3200)
         self.host.reload()
         self._populate()
+
+    def _check_selected_update(self) -> None:
+        idx = int(self.list_widget.currentRow())
+        if idx < 0 or idx >= len(self._entries):
+            QMessageBox.information(self, "Check Update", "Select an online plugin first.")
+            return
+        row = self._entries[idx]
+        plugin_id = str(row.get("id", "") or "").strip()
+        catalog_version = str(row.get("version", "") or "").strip()
+        installed = self._installed_by_id().get(plugin_id)
+        if installed is None:
+            QMessageBox.information(self, "Check Update", f"'{plugin_id}' is not installed.")
+            return
+        installed_version = str(installed.metadata.get("version", "") or "").strip()
+        if catalog_version and self._is_newer_version(catalog_version, installed_version):
+            QMessageBox.information(
+                self,
+                "Check Update",
+                f"Update available for '{plugin_id}'.\nInstalled: {installed_version or '-'}\nLatest: {catalog_version}",
+            )
+            return
+        QMessageBox.information(
+            self,
+            "Check Update",
+            f"No update available for '{plugin_id}'.\nInstalled: {installed_version or '-'}\nLatest: {catalog_version or installed_version or '-'}",
+        )
+
+    def _check_all_updates(self) -> None:
+        installed = self._installed_by_id()
+        updates: list[str] = []
+        checked = 0
+        for row in self._entries:
+            plugin_id = str(row.get("id", "") or "").strip()
+            if not plugin_id or plugin_id not in installed:
+                continue
+            checked += 1
+            installed_version = str(installed[plugin_id].metadata.get("version", "") or "").strip()
+            catalog_version = str(row.get("version", "") or "").strip()
+            if catalog_version and self._is_newer_version(catalog_version, installed_version):
+                updates.append(f"{plugin_id}: {installed_version or '?'} -> {catalog_version}")
+        if not checked:
+            QMessageBox.information(self, "Check All Updates", "No installed online plugins to check.")
+            return
+        if not updates:
+            QMessageBox.information(self, "Check All Updates", f"No updates available. Checked: {checked}")
+            return
+        lines = [f"Updates available: {len(updates)}", f"Checked: {checked}", "", *updates[:20]]
+        if len(updates) > 20:
+            lines.append(f"...and {len(updates) - 20} more")
+        QMessageBox.information(self, "Check All Updates", "\n".join(lines))
 
 
 class MinimapDock(QDockWidget):
