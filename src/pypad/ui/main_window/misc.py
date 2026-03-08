@@ -1021,7 +1021,13 @@ class MiscMixin(
         self.show_status_message(f'Updated shortcut for "{name}".', 3000)
 
     def ask_ai(self) -> None:
-        self.ai_controller.ask_ai()
+        if hasattr(self, "ensure_ai_runtime"):
+            self.ensure_ai_runtime()
+        controller = getattr(self, "ai_controller", None)
+        if controller is None:
+            QMessageBox.information(self, "Ask AI", "AI runtime is not available.")
+            return
+        controller.ask_ai()
 
     def _open_ai_chat_panel(self) -> bool:
         if hasattr(self, "toggle_ai_chat_panel"):
@@ -2599,13 +2605,16 @@ class MiscMixin(
         self.show_status_message("Applied Focus preset.", 2500)
 
     def toggle_ai_chat_panel(self, checked: bool | None = None) -> None:
-        if not hasattr(self, "ai_chat_dock"):
+        if hasattr(self, "ensure_ai_runtime"):
+            self.ensure_ai_runtime()
+        dock = getattr(self, "ai_chat_dock", None)
+        if dock is None:
             return
-        desired = not self.ai_chat_dock.isVisible() if checked is None else bool(checked)
-        self.ai_chat_dock.setVisible(desired)
+        desired = not dock.isVisible() if checked is None else bool(checked)
+        dock.setVisible(desired)
         if desired:
-            self.ai_chat_dock.raise_()
-            self.ai_chat_dock.focus_prompt()
+            dock.raise_()
+            dock.focus_prompt()
         if hasattr(self, "ai_chat_panel_action"):
             self.ai_chat_panel_action.blockSignals(True)
             self.ai_chat_panel_action.setChecked(desired)

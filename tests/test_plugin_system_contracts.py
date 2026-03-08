@@ -181,6 +181,12 @@ class PluginAPIContractsTests(unittest.TestCase):
         self.assertIsNotNone(self.api.app_window())
         self.assertIsNotNone(self.api.active_tab())
 
+    def test_unsafe_ui_bridge_allowed_for_privileged_tag(self) -> None:
+        self.window.settings["plugin_allow_unsafe_ui_bridge"] = False
+        self.record.tags = {"pypad_internal_access"}
+        self.assertIsNotNone(self.api.app_window())
+        self.assertIsNotNone(self.api.active_tab())
+
     def test_plugin_state_roundtrip(self) -> None:
         self.api.plugin_state_set("k", {"n": 1})
         value = self.api.plugin_state_get("k", {})

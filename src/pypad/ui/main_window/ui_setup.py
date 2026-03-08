@@ -2034,6 +2034,121 @@ class UiSetupMixin:
             return []
         return sorted(str(name) for name in templates.keys() if str(name).startswith("Demo: "))
 
+    def _plugin_primary_enabled_ids(self) -> set[str]:
+        ids = {
+            str(pid).strip().lower()
+            for pid in self.settings.get("enabled_plugins", [])
+            if str(pid).strip()
+        }
+        host = getattr(getattr(self, "advanced_features", None), "plugin_host", None)
+        if host is not None:
+            for rec in getattr(host, "records", []):
+                try:
+                    if bool(getattr(rec, "enabled", False)) and getattr(rec, "instance", None) is not None:
+                        ids.add(str(getattr(rec, "plugin_id", "")).strip().lower())
+                except Exception:
+                    continue
+        return ids
+
+    def _apply_plugin_primary_ux(self) -> None:
+        enabled = self._plugin_primary_enabled_ids()
+        ai_pack = "pypad_ai_assistant" in enabled
+        power_pack = "pypad_power_user" in enabled
+        npp_pack = "pypad_npp_feature_pack" in enabled
+
+        title_overrides = {
+            "ai_menu": ("AI", "AI (Built-in)"),
+            "macros_menu": ("&Macro", "&Macro (Built-in)"),
+        }
+        for attr, (normal_title, built_in_title) in title_overrides.items():
+            menu = getattr(self, attr, None)
+            if menu is None:
+                continue
+            use_built_in = (attr == "ai_menu" and ai_pack) or (attr == "macros_menu" and power_pack)
+            target = built_in_title if use_built_in else normal_title
+            if str(menu.title()) != target:
+                menu.setTitle(target)
+
+        if not hasattr(self, "_plugin_ux_original_action_texts"):
+            self._plugin_ux_original_action_texts = {}
+
+        by_pack: dict[str, tuple[bool, list[str]]] = {
+            "pypad_ai_assistant": (
+                ai_pack,
+                [
+                    "ask_ai_action",
+                    "ai_chat_panel_action",
+                    "explain_selection_ai_action",
+                    "ai_inline_edit_action",
+                    "ai_rewrite_shorten_action",
+                    "ai_rewrite_formal_action",
+                    "ai_rewrite_grammar_action",
+                    "ai_rewrite_summarize_action",
+                    "homework_solve_ai_action",
+                    "homework_solve_solutions_ai_action",
+                    "homework_answer_ai_action",
+                    "ai_ask_context_action",
+                    "ai_workspace_citations_action",
+                    "ai_review_file_citations_action",
+                    "ai_review_workspace_citations_action",
+                    "ai_attach_current_file_chat_action",
+                    "ai_attach_selection_chat_action",
+                    "ai_attach_workspace_search_chat_action",
+                    "ai_run_template_action",
+                    "ai_save_template_action",
+                    "ai_usage_summary_action",
+                    "ai_action_history_action",
+                    "ai_file_citations_action",
+                    "ai_commit_changelog_action",
+                    "ai_batch_refactor_action",
+                    "ai_collab_merge_action",
+                ],
+            ),
+            "pypad_power_user": (
+                power_pack,
+                [
+                    "command_palette_action",
+                    "open_workspace_action",
+                    "workspace_files_action",
+                    "workspace_search_action",
+                    "workspace_save_profile_action",
+                    "workspace_load_profile_action",
+                    "start_macro_recording_action",
+                    "stop_macro_recording_action",
+                    "play_macro_action",
+                    "save_current_macro_action",
+                    "run_macro_multiple_times_action",
+                    "modify_macro_shortcut_delete_action",
+                    "column_mode_action",
+                    "multi_caret_action",
+                    "quiz_action",
+                ],
+            ),
+            "pypad_npp_feature_pack": (
+                npp_pack,
+                [
+                    "mime_tools_action",
+                    "converter_tools_action",
+                    "npp_export_tools_action",
+                ],
+            ),
+        }
+
+        for _pack_id, (pack_enabled, action_attrs) in by_pack.items():
+            for attr in action_attrs:
+                action = getattr(self, attr, None)
+                if not isinstance(action, QAction):
+                    continue
+                if attr not in self._plugin_ux_original_action_texts:
+                    self._plugin_ux_original_action_texts[attr] = str(action.text())
+                base = str(self._plugin_ux_original_action_texts.get(attr, action.text()))
+                target = f"{base} [Built-in]" if pack_enabled else base
+                if str(action.text()) != target:
+                    action.setText(target)
+                # When a plugin pack is active, hide duplicate built-in actions so
+                # plugin-owned entries become the primary UX surface.
+                action.setVisible(not pack_enabled)
+
     def update_action_states(self, *_args) -> None:
         if not hasattr(self, "save_action"):
             return
@@ -2483,6 +2598,7 @@ class UiSetupMixin:
             self.md_math_preview_action,
         ):
             action.setEnabled(has_tab and not is_large_file)
+        self._apply_plugin_primary_ux()
 
     def create_actions(self: Any) -> None:
         # File actions

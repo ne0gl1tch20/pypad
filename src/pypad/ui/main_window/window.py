@@ -119,6 +119,37 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
             name = f"Demo: {self._demo_display_name(path)}"
             self.templates[name] = text
 
+    def _ai_plugin_primary_enabled(self) -> bool:
+        try:
+            enabled = {
+                str(pid).strip().lower()
+                for pid in self.settings.get("enabled_plugins", [])
+                if str(pid).strip()
+            }
+        except Exception:
+            enabled = set()
+        return "pypad_ai_assistant" in enabled
+
+    def ensure_ai_runtime(self, *, owner_plugin: str | None = None) -> bool:
+        if getattr(self, "ai_controller", None) is not None and getattr(self, "ai_chat_dock", None) is not None:
+            return True
+        try:
+            self.ai_controller = AIController(self)
+            self.log_event("Info", "[Startup] AI controller initialized (lazy/plugin bootstrap)")
+            self.ai_chat_dock = AIChatDock(self, self.ai_controller)
+            self.ai_chat_dock.setObjectName("aiChatDock")
+            self.ai_chat_dock.setMinimumWidth(180)
+            self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.ai_chat_dock)
+            self.ai_chat_dock.visibilityChanged.connect(self.update_action_states)
+            self.ai_chat_dock.hide()
+            if owner_plugin:
+                self.settings["ai_runtime_owner"] = str(owner_plugin).strip()
+                self.save_settings_to_disk()
+            return True
+        except Exception as exc:
+            self.log_event("Error", f"AI runtime bootstrap failed: {exc!r}")
+            return False
+
     def __init__(self) -> None:
         super().__init__()
         startup_t0 = time.perf_counter()
@@ -244,14 +275,8 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
         self.log_event("Info", "[Startup] Workspace controller initialized")
         self.security_controller = SecurityController(self)
         self.log_event("Info", "[Startup] Security controller initialized")
-        self.ai_controller = AIController(self)
-        self.log_event("Info", "[Startup] AI controller initialized")
-        self.ai_chat_dock = AIChatDock(self, self.ai_controller)
-        self.ai_chat_dock.setObjectName("aiChatDock")
-        self.ai_chat_dock.setMinimumWidth(180)
-        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.ai_chat_dock)
-        self.ai_chat_dock.visibilityChanged.connect(self.update_action_states)
-        self.ai_chat_dock.hide()
+        if not self._ai_plugin_primary_enabled():
+            self.ensure_ai_runtime()
         self.updater_controller = UpdaterController(self)
         self.log_event("Info", "[Startup] Updater controller initialized")
         self.reminders_store = ReminderStore(self._get_reminders_file_path())

@@ -1,5 +1,35 @@
-﻿{
+{
   "plugins": [
+    {
+      "id": "pypad_ai_assistant",
+      "name": "PyPad AI Assistant",
+      "author": "ne0gl1tch20",
+      "description": "Online AI action pack that maps to built-in PyPad AI workflows.",
+      "version": "1.0.0",
+      "repo": "https://github.com/ne0gl1tch20/pypad",
+      "source": "online_plugins/pypad_ai_assistant",
+      "homepage": "https://github.com/ne0gl1tch20/pypad"
+    },
+    {
+      "id": "pypad_power_user",
+      "name": "PyPad Power User",
+      "author": "ne0gl1tch20",
+      "description": "Online power-user action pack for workspace, command palette, macro, and advanced edit workflows.",
+      "version": "1.0.0",
+      "repo": "https://github.com/ne0gl1tch20/pypad",
+      "source": "online_plugins/pypad_power_user",
+      "homepage": "https://github.com/ne0gl1tch20/pypad"
+    },
+    {
+      "id": "pypad_npp_feature_pack",
+      "name": "PyPad NPP Feature Pack",
+      "author": "ne0gl1tch20",
+      "description": "Online pack for NPP-adjacent utility actions such as MIME, Converter, and NPP Export.",
+      "version": "1.0.0",
+      "repo": "https://github.com/ne0gl1tch20/pypad",
+      "source": "online_plugins/pypad_npp_feature_pack",
+      "homepage": "https://github.com/ne0gl1tch20/pypad"
+    },
     {
       "id": "plugin_online_example",
       "name": "Online Example Plugin",
