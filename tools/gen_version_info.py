@@ -10,7 +10,7 @@ OUT_PATH = ROOT / "assets" / "version_info.txt"
 
 
 def _parse_version(raw: str) -> tuple[int, int, int, int, str]:
-    text = raw.strip()
+    text = raw.lstrip("\ufeff").strip()
     match = re.match(r"^\s*(\d+)\.(\d+)\.(\d+)", text)
     if not match:
         raise ValueError(f"Invalid version format in {VERSION_TXT}: {text!r}")
@@ -20,7 +20,7 @@ def _parse_version(raw: str) -> tuple[int, int, int, int, str]:
 
 
 def main() -> None:
-    raw = VERSION_TXT.read_text(encoding="utf-8")
+    raw = VERSION_TXT.read_text(encoding="utf-8-sig")
     major, minor, patch, build, filever = _parse_version(raw)
     content = f"""VSVersionInfo(
   ffi=FixedFileInfo(
