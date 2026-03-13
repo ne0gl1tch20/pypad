@@ -222,6 +222,8 @@ class SettingsDialog(QDialog):
         self.focus_hide_tabs_checkbox.setChecked(self._settings.get("focus_hide_tabs", False))
         self.focus_escape_exit_checkbox = QCheckBox("Allow Esc to disable focus mode", productivity_group)
         self.focus_escape_exit_checkbox.setChecked(self._settings.get("focus_allow_escape_exit", True))
+        self.session_review_checkbox = QCheckBox("Enable automatic session review", productivity_group)
+        self.session_review_checkbox.setChecked(self._settings.get("session_review_enabled", False))
 
         productivity_form.addRow(self.version_history_checkbox)
         productivity_form.addRow("Version snapshot interval (sec):", self.version_history_interval_spin)
@@ -238,6 +240,7 @@ class SettingsDialog(QDialog):
         productivity_form.addRow(self.focus_hide_status_checkbox)
         productivity_form.addRow(self.focus_hide_tabs_checkbox)
         productivity_form.addRow(self.focus_escape_exit_checkbox)
+        productivity_form.addRow(self.session_review_checkbox)
         vbox.addWidget(productivity_group)
 
         # Privacy & Security
@@ -398,6 +401,7 @@ class SettingsDialog(QDialog):
         s["focus_hide_status"] = self.focus_hide_status_checkbox.isChecked()
         s["focus_hide_tabs"] = self.focus_hide_tabs_checkbox.isChecked()
         s["focus_allow_escape_exit"] = self.focus_escape_exit_checkbox.isChecked()
+        s["session_review_enabled"] = self.session_review_checkbox.isChecked()
         s["privacy_lock"] = self.privacy_lock_checkbox.isChecked()
         s["lock_password"] = self.lock_password_edit.text()
         s["lock_pin"] = self.lock_pin_edit.text()
@@ -503,6 +507,7 @@ class SettingsDialog(QDialog):
         self.focus_hide_status_checkbox.setChecked(self._settings.get("focus_hide_status", False))
         self.focus_hide_tabs_checkbox.setChecked(self._settings.get("focus_hide_tabs", False))
         self.focus_escape_exit_checkbox.setChecked(self._settings.get("focus_allow_escape_exit", True))
+        self.session_review_checkbox.setChecked(self._settings.get("session_review_enabled", False))
         self.privacy_lock_checkbox.setChecked(self._settings.get("privacy_lock", False))
         self.lock_password_edit.setText(self._settings.get("lock_password", ""))
         self.lock_pin_edit.setText(self._settings.get("lock_pin", ""))

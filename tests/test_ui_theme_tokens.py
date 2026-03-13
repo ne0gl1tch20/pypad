@@ -13,6 +13,7 @@ try:
         build_ai_edit_preview_dialog_qss,
         build_autosave_dialog_qss,
         build_debug_logs_dialog_qss,
+        build_gamification_widget_qss,
         build_main_window_qss,
         build_settings_dialog_qss,
         build_tokens_from_settings,
@@ -26,6 +27,7 @@ except ModuleNotFoundError:
         build_ai_edit_preview_dialog_qss,
         build_autosave_dialog_qss,
         build_debug_logs_dialog_qss,
+        build_gamification_widget_qss,
         build_main_window_qss,
         build_settings_dialog_qss,
         build_tokens_from_settings,
@@ -85,6 +87,7 @@ class ThemeTokensTests(unittest.TestCase):
         workspace_qss = build_workspace_dialog_qss(t)
         ai_preview_qss = build_ai_edit_preview_dialog_qss(t)
         debug_logs_qss = build_debug_logs_dialog_qss(t)
+        gamification_qss = build_gamification_widget_qss(t)
 
         self.assertIn("#settingsNavList::item:selected", settings_qss)
         self.assertIn("border-radius", settings_qss)
@@ -96,6 +99,13 @@ class ThemeTokensTests(unittest.TestCase):
         self.assertIn("QListWidget::item:selected", workspace_qss)
         self.assertIn("QSplitter::handle", ai_preview_qss)
         self.assertIn("QTextEdit", debug_logs_qss)
+        self.assertIn("#pypadGamificationWidget", gamification_qss)
+        self.assertIn("#pypadGamificationToast", gamification_qss)
+        self.assertIn("#pypadProductivityHub", gamification_qss)
+        self.assertIn("#pypadProductivityHubList", gamification_qss)
+        self.assertIn("#pypadProductivityHubCompanion", gamification_qss)
+        self.assertIn("#pypadMomentumBanner", gamification_qss)
+        self.assertIn("#pypadMomentumBannerButton", gamification_qss)
 
     def test_settings_qss_enforces_page_stack_text_colors(self) -> None:
         t = build_tokens_from_settings({"dark_mode": True, "accent_color": "#2266dd"})

@@ -17,7 +17,7 @@ from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote_plus
 
-from PySide6.QtCore import QEvent, QPoint, Qt, QTimer, Signal, Slot, QObject
+from PySide6.QtCore import QEvent, QPoint, QSize, Qt, QTimer, Signal, Slot, QObject
 from PySide6.QtGui import (
     QAction,
     QActionGroup,
@@ -42,6 +42,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFileDialog,
     QFontDialog,
+    QFrame,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -79,6 +80,7 @@ from pypad.ui.system.autosave import AutoSaveRecoveryDialog, AutoSaveStore
 from pypad.ui.system.reminders import ReminderStore, RemindersDialog
 from pypad.ui.security.security_controller import SecurityController
 from pypad.ui.editor.syntax_highlighter import CodeSyntaxHighlighter
+from pypad.ui.editor.spellcheck import spellcheck_available
 from pypad.ui.system.updater_controller import UpdaterController
 from pypad.ui.system.version_history import LocalHistoryTimelineDialog, VersionHistoryDialog
 from pypad.ui.workspace.workspace_controller import WorkspaceController
@@ -106,10 +108,11 @@ class _StandardDockTitleBar(QWidget):
         self.setObjectName("pypadDockTitleBar")
         self._dock = dock
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 4, 4, 4)
-        layout.setSpacing(4)
+        layout.setContentsMargins(8, 4, 6, 4)
+        layout.setSpacing(6)
         self.label = QLabel(title, self)
         self.label.setObjectName("pypadDockTitleLabel")
+        self.label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
         self.float_btn = QToolButton(self)
         self.close_btn = QToolButton(self)
         for btn in (self.float_btn, self.close_btn):
@@ -120,15 +123,62 @@ class _StandardDockTitleBar(QWidget):
         self.close_btn.setToolTip("Close")
         self.float_btn.clicked.connect(self._toggle_floating)
         self.close_btn.clicked.connect(getattr(self._dock, "close"))
-        layout.addWidget(self.label)
-        layout.addStretch(1)
-        layout.addWidget(self.float_btn)
-        layout.addWidget(self.close_btn)
+        layout.addWidget(self.label, 1)
+        layout.addStretch(0)
+        layout.addWidget(self.float_btn, 0, Qt.AlignmentFlag.AlignVCenter)
+        layout.addWidget(self.close_btn, 0, Qt.AlignmentFlag.AlignVCenter)
         self.setMinimumHeight(28)
 
     def _toggle_floating(self) -> None:
         if hasattr(self._dock, "setFloating") and hasattr(self._dock, "isFloating"):
             self._dock.setFloating(not self._dock.isFloating())
+
+
+class _EmptyTabsRecentFileRow(QFrame):
+    clicked = Signal(str)
+
+    def __init__(self, owner: "UISetupMixin", path: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._path = str(path or "").strip()
+        self.setObjectName("emptyTabsRecentRow")
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setToolTip(self._path)
+        self.setMinimumHeight(62)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(14, 10, 14, 10)
+        layout.setSpacing(12)
+        icon_label = QLabel(self)
+        icon_label.setObjectName("emptyTabsRecentIcon")
+        icon = owner._svg_icon("document-open")
+        if not icon.isNull():
+            icon_label.setPixmap(icon.pixmap(18, 18))
+        layout.addWidget(icon_label, 0, Qt.AlignmentFlag.AlignTop)
+        text_col = QVBoxLayout()
+        text_col.setContentsMargins(0, 0, 0, 0)
+        text_col.setSpacing(2)
+        name = Path(self._path).name or self._path
+        self.title_label = QLabel(name, self)
+        self.title_label.setObjectName("emptyTabsRecentTitle")
+        self.path_label = QLabel(self._path, self)
+        self.path_label.setObjectName("emptyTabsRecentPath")
+        self.path_label.setWordWrap(False)
+        self.path_label.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        text_col.addWidget(self.title_label)
+        text_col.addWidget(self.path_label)
+        layout.addLayout(text_col, 1)
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit(self._path)
+        super().mousePressEvent(event)
+
+    def keyPressEvent(self, event) -> None:
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
+            self.clicked.emit(self._path)
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
 class UiSetupMixin:
     if TYPE_CHECKING:
@@ -172,10 +222,14 @@ class UiSetupMixin:
                 border-top-left-radius: {tokens.radius_md}px;
                 border-top-right-radius: {tokens.radius_md}px;
             }}
-            QLabel#pypadDockTitleLabel {{ color: {tokens.text}; font-weight: 600; }}
+            QLabel#pypadDockTitleLabel {{
+                color: {tokens.text};
+                font-weight: 600;
+                padding-left: 2px;
+            }}
             QWidget#pypadDockTitleBar QToolButton {{
-                background: transparent;
-                border: 1px solid transparent;
+                background: {tokens.dock_button_bg};
+                border: 1px solid {tokens.border_soft};
                 border-radius: {tokens.radius_sm}px;
                 padding: 0px;
             }}
@@ -296,22 +350,301 @@ class UiSetupMixin:
 
     # ---------- UI setup ----------
     def _build_empty_tabs_widget(self) -> QWidget:
-        holder = QWidget(self)
+        scroll = QScrollArea(self)
+        scroll.setObjectName("emptyTabsScroll")
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        holder = QWidget(scroll)
+        holder.setObjectName("emptyTabsRoot")
+        scroll.setWidget(holder)
         layout = QVBoxLayout(holder)
         layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(16)
         layout.addStretch(1)
-        label = QLabel("You don't have any tabs :( Just click File > New!", holder)
+        hero = QWidget(holder)
+        hero.setObjectName("emptyTabsHero")
+        hero_layout = QVBoxLayout(hero)
+        hero_layout.setContentsMargins(28, 24, 28, 24)
+        hero_layout.setSpacing(10)
+        title = QLabel("Start Something", hero)
+        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title.setObjectName("emptyTabsTitle")
+        hero_layout.addWidget(title)
+        label = QLabel("Open a recent file, jump into a workspace, or start from a template.", hero)
         label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         label.setWordWrap(True)
         label.setProperty("i18n_skip", True)
         label.setObjectName("emptyTabsHint")
-        layout.addWidget(label)
+        hero_layout.addWidget(label)
+        primary_row = QHBoxLayout()
+        primary_row.setSpacing(10)
+        self.empty_new_btn = QPushButton("New File", hero)
+        self.empty_open_btn = QPushButton("Open File", hero)
+        self.empty_workspace_btn = QPushButton("Open Workspace", hero)
+        self.empty_demo_btn = QPushButton("Open Demo Pack", hero)
+        self.empty_palette_btn = QPushButton("Command Palette", hero)
+        for btn in (
+            self.empty_new_btn,
+            self.empty_open_btn,
+            self.empty_workspace_btn,
+            self.empty_demo_btn,
+            self.empty_palette_btn,
+        ):
+            primary_row.addWidget(btn)
+        hero_layout.addLayout(primary_row)
+        layout.addWidget(hero)
+        self.empty_recent_label = QLabel("Recent Files", holder)
+        self.empty_recent_label.setObjectName("emptyTabsSectionLabel")
+        layout.addWidget(self.empty_recent_label)
+        self.empty_recent_container = QWidget(holder)
+        self.empty_recent_container.setObjectName("emptyTabsRecentContainer")
+        self.empty_recent_layout = QVBoxLayout(self.empty_recent_container)
+        self.empty_recent_layout.setContentsMargins(0, 0, 0, 0)
+        self.empty_recent_layout.setSpacing(10)
+        layout.addWidget(self.empty_recent_container)
+        self.empty_template_label = QLabel("Quick Templates", holder)
+        self.empty_template_label.setObjectName("emptyTabsSectionLabel")
+        layout.addWidget(self.empty_template_label)
+        template_row = QHBoxLayout()
+        template_row.setSpacing(10)
+        self.empty_template_meeting_btn = QPushButton("Meeting Notes", holder)
+        self.empty_template_daily_btn = QPushButton("Daily Log", holder)
+        self.empty_template_checklist_btn = QPushButton("Checklist", holder)
+        for btn in (
+            self.empty_template_meeting_btn,
+            self.empty_template_daily_btn,
+            self.empty_template_checklist_btn,
+        ):
+            template_row.addWidget(btn)
+        layout.addLayout(template_row)
         layout.addStretch(1)
-        return holder
+        self._configure_empty_tabs_button(self.empty_new_btn, "document-new", accent=True)
+        self._configure_empty_tabs_button(self.empty_open_btn, "document-open", accent=True)
+        self._configure_empty_tabs_button(self.empty_workspace_btn, "document-list", accent=True)
+        self._configure_empty_tabs_button(self.empty_demo_btn, "document-map", accent=True)
+        self._configure_empty_tabs_button(self.empty_palette_btn, "ai-sparkles", accent=True)
+        self._configure_empty_tabs_button(self.empty_template_meeting_btn, "document-list")
+        self._configure_empty_tabs_button(self.empty_template_daily_btn, "tail-follow")
+        self._configure_empty_tabs_button(self.empty_template_checklist_btn, "md-task")
+        self._apply_empty_tabs_widget_style()
+        self.empty_new_btn.clicked.connect(lambda: self.new_action.trigger())
+        self.empty_open_btn.clicked.connect(lambda: self.open_action.trigger())
+        self.empty_workspace_btn.clicked.connect(lambda: self.open_workspace_action.trigger())
+        self.empty_demo_btn.clicked.connect(lambda: self.open_demo_pack_action.trigger())
+        self.empty_palette_btn.clicked.connect(lambda: self.command_palette_action.trigger())
+        self.empty_template_meeting_btn.clicked.connect(lambda: self.new_from_meeting_template_action.trigger())
+        self.empty_template_daily_btn.clicked.connect(lambda: self.new_from_daily_template_action.trigger())
+        self.empty_template_checklist_btn.clicked.connect(lambda: self.new_from_checklist_template_action.trigger())
+        return scroll
+
+    def _configure_empty_tabs_button(self, button: QPushButton, icon_name: str, *, accent: bool = False) -> None:
+        settings = getattr(self, "settings", {})
+        tokens = build_tokens_from_settings(settings if isinstance(settings, dict) else {})
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.setMinimumHeight(42)
+        button.setProperty("empty_tabs_icon_name", icon_name)
+        button.setProperty("empty_tabs_accent", accent)
+        icon_color = tokens.text
+        button.setIcon(self._svg_icon_colored(icon_name, size=18, color=icon_color))
+        button.setIconSize(QSize(18, 18))
+        button.setObjectName("emptyTabsPrimaryButton" if accent else "emptyTabsSecondaryButton")
+
+    def _refresh_empty_tabs_button_icons(self) -> None:
+        settings = getattr(self, "settings", {})
+        tokens = build_tokens_from_settings(settings if isinstance(settings, dict) else {})
+        for button_name in (
+            "empty_new_btn",
+            "empty_open_btn",
+            "empty_workspace_btn",
+            "empty_demo_btn",
+            "empty_palette_btn",
+            "empty_template_meeting_btn",
+            "empty_template_daily_btn",
+            "empty_template_checklist_btn",
+        ):
+            button = getattr(self, button_name, None)
+            if button is None:
+                continue
+            icon_name = str(button.property("empty_tabs_icon_name") or "").strip()
+            if not icon_name:
+                continue
+            icon_color = tokens.text
+            button.setIcon(self._svg_icon_colored(icon_name, size=18, color=icon_color))
+
+    def _apply_empty_tabs_widget_style(self) -> None:
+        holder = getattr(self, "empty_tabs_widget", None)
+        if holder is None:
+            return
+        tokens = build_tokens_from_settings(self.settings)
+        hero_start = tokens.panel_bg
+        hero_end = tokens.surface_bg
+        section_bg = tokens.surface_bg
+        elevated_bg = tokens.button_bg
+        accent_bg = tokens.toolbar_checked_bg
+        accent_hover_bg = tokens.toolbar_checked_hover_bg
+        holder.setStyleSheet(
+            f"""
+            QScrollArea#emptyTabsScroll {{
+                background: {tokens.window_bg};
+                border: none;
+            }}
+            QScrollArea#emptyTabsScroll QWidget#qt_scrollarea_viewport {{
+                background: {tokens.window_bg};
+                border: none;
+            }}
+            QScrollArea#emptyTabsScroll > QWidget {{
+                background: {tokens.window_bg};
+                border: none;
+            }}
+            QScrollArea#emptyTabsScroll QScrollBar:vertical {{
+                background: {tokens.scrollbar_track};
+                width: 12px;
+                margin: 4px 4px 4px 0;
+                border-radius: {tokens.radius_md}px;
+            }}
+            QScrollArea#emptyTabsScroll QScrollBar::handle:vertical {{
+                background: {tokens.scrollbar_handle};
+                min-height: 28px;
+                border-radius: {tokens.radius_md}px;
+            }}
+            QScrollArea#emptyTabsScroll QScrollBar::handle:vertical:hover {{
+                background: {tokens.scrollbar_hover};
+            }}
+            QScrollArea#emptyTabsScroll QScrollBar::sub-line:vertical,
+            QScrollArea#emptyTabsScroll QScrollBar::add-line:vertical,
+            QScrollArea#emptyTabsScroll QScrollBar::sub-page:vertical,
+            QScrollArea#emptyTabsScroll QScrollBar::add-page:vertical {{
+                background: transparent;
+                height: 0px;
+            }}
+            QWidget#emptyTabsRoot {{
+                background: {tokens.window_bg};
+            }}
+            QWidget#emptyTabsHero {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                    stop:0 {hero_start},
+                    stop:1 {hero_end});
+                border: 1px solid {tokens.border};
+                border-radius: {tokens.radius_xl + 6}px;
+            }}
+            QLabel#emptyTabsTitle {{
+                color: {tokens.text};
+                font-size: 20px;
+                font-weight: 700;
+                padding-top: 2px;
+            }}
+            QLabel#emptyTabsHint {{
+                color: {tokens.text_muted};
+                font-size: 13px;
+                padding-bottom: 6px;
+            }}
+            QLabel#emptyTabsSectionLabel {{
+                color: {tokens.text};
+                font-size: 12px;
+                font-weight: 700;
+                letter-spacing: 0.6px;
+                text-transform: uppercase;
+                padding-left: 4px;
+            }}
+            QWidget#emptyTabsRecentContainer {{
+                background: transparent;
+            }}
+            QPushButton#emptyTabsPrimaryButton,
+            QPushButton#emptyTabsSecondaryButton {{
+                border-radius: {tokens.radius_lg + 2}px;
+                border: 1px solid {tokens.border};
+                color: {tokens.text};
+                padding: 10px 14px;
+                text-align: left;
+            }}
+            QPushButton#emptyTabsPrimaryButton {{
+                background: {accent_bg};
+                font-weight: 600;
+            }}
+            QPushButton#emptyTabsPrimaryButton:hover {{
+                background: {accent_hover_bg};
+                border-color: {tokens.border_strong};
+            }}
+            QPushButton#emptyTabsPrimaryButton:pressed {{
+                background: {tokens.dock_button_pressed_bg};
+            }}
+            QPushButton#emptyTabsSecondaryButton {{
+                background: {elevated_bg};
+                font-weight: 600;
+            }}
+            QPushButton#emptyTabsSecondaryButton:hover {{
+                background: {tokens.dock_button_hover_bg};
+                border-color: {tokens.border_strong};
+            }}
+            QPushButton#emptyTabsSecondaryButton:pressed {{
+                background: {tokens.dock_button_pressed_bg};
+            }}
+            QFrame#emptyTabsRecentRow {{
+                background: {section_bg};
+                border: 1px solid {tokens.border};
+                border-radius: {tokens.radius_lg + 2}px;
+            }}
+            QFrame#emptyTabsRecentRow:hover,
+            QFrame#emptyTabsRecentRow:focus {{
+                background: {tokens.panel_bg};
+                border-color: {tokens.border_strong};
+            }}
+            QLabel#emptyTabsRecentTitle {{
+                color: {tokens.text};
+                font-size: 12px;
+                font-weight: 700;
+            }}
+            QLabel#emptyTabsRecentPath {{
+                color: {tokens.text_muted};
+                font-size: 11px;
+            }}
+            QLabel#emptyTabsRecentIcon {{
+                color: {tokens.icon_fg};
+            }}
+            QLabel#emptyTabsEmptyRecentHint {{
+                color: {tokens.text_muted};
+                background: {section_bg};
+                border: 1px dashed {tokens.border};
+                border-radius: {tokens.radius_lg + 2}px;
+                padding: 12px 14px;
+            }}
+            """
+        )
+
+    def _refresh_empty_tabs_widget(self) -> None:
+        container = getattr(self, "empty_recent_container", None)
+        layout = getattr(self, "empty_recent_layout", None)
+        if container is None or layout is None:
+            return
+        self._apply_empty_tabs_widget_style()
+        self._refresh_empty_tabs_button_icons()
+        settings = getattr(self, "settings", {}) if isinstance(getattr(self, "settings", {}), dict) else {}
+        while layout.count():
+            item = layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        recent_files = [p for p in settings.get("recent_files", []) if isinstance(p, str) and p][:5]
+        if not recent_files:
+            hint = QLabel("No recent files yet. Try the Demo Pack or open a workspace folder.", container)
+            hint.setWordWrap(True)
+            hint.setObjectName("emptyTabsEmptyRecentHint")
+            layout.addWidget(hint)
+        for path in recent_files:
+            row = _EmptyTabsRecentFileRow(self, path, container)
+            row.clicked.connect(self._open_file_path)
+            layout.addWidget(row)
+        workspace_root = str(settings.get("workspace_root", "") or "").strip()
+        workspace_btn = getattr(self, "empty_workspace_btn", None)
+        if workspace_btn is not None:
+            workspace_btn.setText("Open Workspace" if not workspace_root else f"Workspace: {Path(workspace_root).name}")
 
     def _sync_tab_empty_state(self) -> None:
         if not hasattr(self, "central_stack") or not hasattr(self, "empty_tabs_widget"):
             return
+        self._refresh_empty_tabs_widget()
         if self.tab_widget.count() == 0:
             self.central_stack.setCurrentWidget(self.empty_tabs_widget)
         else:
@@ -827,18 +1160,26 @@ class UiSetupMixin:
             return QIcon()
         return style.standardIcon(enum_value)
 
-    def _svg_icon_colored(self, name: str, size: int = 18) -> QIcon:
+    def _svg_icon_colored(self, name: str, size: int = 18, color: str | QColor | None = None) -> QIcon:
         icon_path = resolve_asset_path("icons", f"{name}.svg")
         if icon_path is None:
             return QIcon()
-        configured = getattr(self, "_icon_color", None)
-        if isinstance(configured, QColor) and configured.isValid():
-            color = QColor(configured)
+        if isinstance(color, QColor) and color.isValid():
+            resolved_color = QColor(color)
+        elif isinstance(color, str) and color.strip():
+            resolved_color = QColor(color.strip())
         else:
+            configured = getattr(self, "_icon_color", None)
+            if isinstance(configured, QColor) and configured.isValid():
+                resolved_color = QColor(configured)
+            else:
+                dark_mode = resolve_dark_mode_from_settings(getattr(self, "settings", {}))
+                resolved_color = QColor("#ffffff" if dark_mode else "#000000")
+        if not resolved_color.isValid():
             dark_mode = resolve_dark_mode_from_settings(getattr(self, "settings", {}))
-            color = QColor("#ffffff" if dark_mode else "#000000")
+            resolved_color = QColor("#ffffff" if dark_mode else "#000000")
         svg_text = icon_path.read_text(encoding="utf-8")
-        svg_text = self._force_svg_monochrome(svg_text, color.name())
+        svg_text = self._force_svg_monochrome(svg_text, resolved_color.name())
         renderer = QSvgRenderer(svg_text.encode("utf-8"))
         pixmap = QPixmap(size, size)
         pixmap.fill(Qt.GlobalColor.transparent)
@@ -905,6 +1246,8 @@ class UiSetupMixin:
             self.update_status_bar()
 
     def _connect_tab_signals(self, tab: EditorTab) -> None:
+        if hasattr(self, "_sync_gamification_tab_snapshot"):
+            self._sync_gamification_tab_snapshot(tab)
         tab.text_edit.modificationChanged.connect(self._on_modification_changed)
         tab.text_edit.cursorPositionChanged.connect(self.update_status_bar)
         tab.text_edit.cursorPositionChanged.connect(self._on_cursor_position_changed_for_jump_history)
@@ -1481,6 +1824,19 @@ class UiSetupMixin:
     def on_tab_changed(self, _index: int) -> None:
         tab = self.active_tab()
         if tab is None:
+            if hasattr(self, "md_toggle_preview_action"):
+                self.md_toggle_preview_action.blockSignals(True)
+                self.md_toggle_preview_action.setChecked(False)
+                self.md_toggle_preview_action.blockSignals(False)
+            if hasattr(self, "markdown_preview"):
+                try:
+                    self.markdown_preview.clear()
+                except Exception:
+                    pass
+            if hasattr(self, "update_status_bar"):
+                self.update_status_bar()
+            if hasattr(self, "update_window_title"):
+                self.update_window_title()
             return
         self._sync_tab_modified_state_with_current_file(tab)
         self.log_event("Info", f'Active tab: "{self._tab_display_name(tab)}"')
@@ -1545,6 +1901,8 @@ class UiSetupMixin:
             self._sync_symbol_actions(tab)
         if hasattr(self, "_notify_large_file_mode"):
             self._notify_large_file_mode(tab)
+        if hasattr(self, "_sync_gamification_tab_snapshot"):
+            self._sync_gamification_tab_snapshot(tab)
         if hasattr(self, "_refresh_window_menu_entries"):
             self._refresh_window_menu_entries()
         self.update_status_bar()
@@ -1562,10 +1920,24 @@ class UiSetupMixin:
         if not self.maybe_save_tab(widget):
             self.log_event("Info", f'Tab close cancelled: "{self._tab_display_name(widget)}"')
             return
+        should_track_closed = bool(
+            widget.current_file
+            or widget.text_edit.is_modified()
+            or widget.text_edit.get_text().strip()
+            or widget.favorite
+            or widget.pinned
+        )
+        if should_track_closed and hasattr(self, "_push_closed_tab_snapshot"):
+            self._push_closed_tab_snapshot(widget)
         self._emit_plugin_event("close", tab=widget)
         self._clear_tab_autosave(widget)
         self.tab_widget.removeTab(index)
         widget.deleteLater()
+        if self.tab_widget.count() == 0 and hasattr(self, "markdown_preview"):
+            try:
+                self.markdown_preview.clear()
+            except Exception:
+                pass
         if hasattr(self, "_refresh_file_watcher"):
             self._refresh_file_watcher()
         self._sync_tab_empty_state()
@@ -1977,6 +2349,7 @@ class UiSetupMixin:
                             f'Action triggered: "{action_name}"',
                         )
                     )
+                action.triggered.connect(lambda _checked=False: self._evaluate_easter_eggs("shortcut_used"))
             except RuntimeError:
                 continue
 
@@ -2090,6 +2463,8 @@ class UiSetupMixin:
             has_tab and self.tab_widget.currentIndex() < (self.tab_widget.count() - 1)
         )
         self.close_all_unchanged_action.setEnabled(has_tab)
+        self.reopen_closed_tab_action.setEnabled(bool(getattr(self, "closed_tabs_history", [])))
+        self.closed_tabs_history_action.setEnabled(bool(getattr(self, "closed_tabs_history", [])))
         self.encoding_utf8_action.setEnabled(has_tab)
         self.encoding_utf16_action.setEnabled(has_tab)
         self.encoding_ansi_action.setEnabled(has_tab)
@@ -2175,6 +2550,8 @@ class UiSetupMixin:
         self.copy_dir_action.setEnabled(has_tab and bool(tab and tab.current_file))
         self.copy_all_filenames_action.setEnabled(has_tab)
         self.copy_all_paths_action.setEnabled(has_tab)
+        self.spell_check_document_action.setEnabled(has_tab and bool(self.settings.get("spellcheck_enabled", True)))
+        self.spell_check_word_action.setEnabled(has_tab and bool(self.settings.get("spellcheck_enabled", True)))
         self.open_selection_file_action.setEnabled(has_tab and has_selection)
         self.open_selection_folder_action.setEnabled(has_tab and has_selection)
         self.search_selection_web_action.setEnabled(has_tab and has_selection)
@@ -2259,6 +2636,8 @@ class UiSetupMixin:
             self.explorer_panel_action.setEnabled(True)
         if hasattr(self, "search_results_panel_action"):
             self.search_results_panel_action.setEnabled(True)
+        if hasattr(self, "productivity_hub_panel_action"):
+            self.productivity_hub_panel_action.setEnabled(True)
         if hasattr(self, "editor_panel_action"):
             self.editor_panel_action.setEnabled(True)
         if hasattr(self, "lock_layout_action"):
@@ -2719,6 +3098,9 @@ class UiSetupMixin:
         self.search_results_panel_action = QAction("Search Results Panel", self)
         self.search_results_panel_action.setCheckable(True)
         self.search_results_panel_action.triggered.connect(self.toggle_search_results_panel)
+        self.productivity_hub_panel_action = QAction("Productivity Hub Window", self)
+        self.productivity_hub_panel_action.setCheckable(True)
+        self.productivity_hub_panel_action.triggered.connect(self.toggle_productivity_hub_panel)
         self.editor_panel_action = QAction("Editor Panel", self)
         self.editor_panel_action.setCheckable(True)
         self.editor_panel_action.triggered.connect(self.toggle_editor_panel)
@@ -2757,14 +3139,37 @@ class UiSetupMixin:
         self.simple_mode_action.setCheckable(True)
         self.simple_mode_action.setChecked(bool(self.settings.get("simple_mode", False)))
         self.simple_mode_action.triggered.connect(self.toggle_simple_mode)
-        self.preset_reading_action = QAction("Preset: Reading", self)
-        self.preset_reading_action.triggered.connect(self.apply_reading_preset)
+        self.preset_reading_action = QAction("Preset: Writing", self)
+        self.preset_reading_action.triggered.connect(self.apply_writing_preset)
         self.preset_coding_action = QAction("Preset: Coding", self)
         self.preset_coding_action.triggered.connect(self.apply_coding_preset)
-        self.preset_focus_action = QAction("Preset: Focus", self)
-        self.preset_focus_action.triggered.connect(self.apply_focus_preset)
+        self.preset_focus_action = QAction("Preset: Review", self)
+        self.preset_focus_action.triggered.connect(self.apply_review_preset)
+        self.reopen_closed_tab_action = QAction("Reopen Closed Tab", self)
+        self.reopen_closed_tab_action.setShortcut(QKeySequence("Ctrl+Shift+T"))
+        self.reopen_closed_tab_action.triggered.connect(self.reopen_closed_tab)
+        self.closed_tabs_history_action = QAction("Recently Closed Tabs...", self)
+        self.closed_tabs_history_action.triggered.connect(self.show_recently_closed_tabs)
+        self.spell_check_document_action = QAction("Spell Check Document...", self)
+        self.spell_check_document_action.triggered.connect(self.open_spell_check_dialog)
+        self.spell_check_word_action = QAction("Spelling Suggestions", self)
+        self.spell_check_word_action.triggered.connect(self.show_spellcheck_suggestions_for_current_word)
+        self.what_can_i_do_action = QAction("What Can I Do Here?", self)
+        self.what_can_i_do_action.triggered.connect(self.show_discoverability_guide)
         self.gamification_dashboard_action = QAction("Gamification Dashboard", self)
         self.gamification_dashboard_action.triggered.connect(self.open_gamification_dashboard)
+        self.productivity_hub_action = QAction("Productivity Hub", self)
+        self.productivity_hub_action.triggered.connect(lambda _checked=False: self.toggle_productivity_hub_panel(True))
+        self.daily_briefing_action = QAction("Daily Briefing", self)
+        self.daily_briefing_action.triggered.connect(self.show_daily_briefing)
+        self.seasonal_event_briefing_action = QAction("Seasonal Event Briefing", self)
+        self.seasonal_event_briefing_action.triggered.connect(self.show_seasonal_event_briefing)
+        self.session_review_action = QAction("Session Review", self)
+        self.session_review_action.triggered.connect(lambda _checked=False: self.show_session_review(auto=False))
+        self.productivity_routine_action = QAction("Productivity Routine", self)
+        self.productivity_routine_action.triggered.connect(self.run_productivity_routine)
+        self.coach_recommendation_action = QAction("Coach Recommendation", self)
+        self.coach_recommendation_action.triggered.connect(self.run_coach_recommendation)
         self.focus_sprint_action = QAction("Challenge: Focus Sprint...", self)
         self.focus_sprint_action.triggered.connect(self.start_focus_sprint_mode)
         self.no_backspace_challenge_action = QAction("Challenge: No-Backspace", self)
@@ -3970,6 +4375,8 @@ class UiSetupMixin:
         self.file_menu.addSeparator()
         close_menu = self.file_menu.addMenu("Close")
         close_menu.addAction(self.close_tab_action)
+        close_menu.addAction(self.reopen_closed_tab_action)
+        close_menu.addAction(self.closed_tabs_history_action)
         close_menu.addAction(self.close_all_action)
         close_multi_menu = close_menu.addMenu("Close Multiple Documents")
         close_multi_menu.addAction(self.close_all_but_active_action)
@@ -4417,6 +4824,7 @@ class UiSetupMixin:
         project_panels_menu.addSeparator()
         project_panels_menu.addAction(self.explorer_panel_action)
         project_panels_menu.addAction(self.search_results_panel_action)
+        project_panels_menu.addAction(self.productivity_hub_panel_action)
         project_panels_menu.addAction(self.editor_panel_action)
         view_advanced_menu.addAction(self.define_language_action)
         view_advanced_menu.addAction(self.open_workspace_action)
@@ -4467,6 +4875,12 @@ class UiSetupMixin:
 
         self.play_menu = menu_bar.addMenu("&Play")
         self.play_menu.addAction(self.gamification_dashboard_action)
+        self.play_menu.addAction(self.productivity_hub_action)
+        self.play_menu.addAction(self.daily_briefing_action)
+        self.play_menu.addAction(self.seasonal_event_briefing_action)
+        self.play_menu.addAction(self.session_review_action)
+        self.play_menu.addAction(self.productivity_routine_action)
+        self.play_menu.addAction(self.coach_recommendation_action)
         self.play_menu.addSeparator()
         self.play_menu.addAction(self.focus_sprint_action)
         self.play_menu.addAction(self.no_backspace_challenge_action)
@@ -4479,6 +4893,7 @@ class UiSetupMixin:
 
         self.tools_menu = menu_bar.addMenu("&Tools")
         self.tools_menu.addAction(self.goto_definition_action)
+        self.tools_menu.addAction(self.spell_check_document_action)
         self.tools_menu.addAction(self.side_by_side_diff_action)
         self.tools_menu.addAction(self.three_way_merge_action)
         self.tools_menu.addAction(self.apply_patch_file_action)
@@ -4548,6 +4963,7 @@ class UiSetupMixin:
         self.help_menu.addAction(self.user_guide_action)
         self.help_menu.addAction(self.first_time_tutorial_action)
         self.help_menu.addAction(self.open_demo_pack_action)
+        self.help_menu.addAction(self.what_can_i_do_action)
         self.help_menu.addAction(self.reload_app_action)
         self.help_menu.addSeparator()
         self.help_menu.addAction(self.check_updates_action)

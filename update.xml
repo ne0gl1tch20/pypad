@@ -1,22 +1,19 @@
 ﻿<?xml version="1.0" encoding="UTF-8"?>
 <updates>
   <item>
-    <title>PyPad 1.7.10-prerelease</title>
-    <version>1.7.10</version>
-    <pubDate>2026-03-08</pubDate>
+    <title>PyPad 1.8.1-prerelease</title>
+    <version>1.8.1</version>
+    <pubDate>2026-03-13</pubDate>
     <description>
-      - HTML export now preserves markdown structure as real HTML elements (headings/lists/links/code).
-      - Added Demo Pack markdown templates under File > Templates > Demo Pack (new + insert actions).
-      - Added Help > Open Demo Pack (first template) one-click launcher.
-      - First-time tutorial now recommends trying the Demo Pack.
-      - Big plugins update! The plugins system has been refactored and improved, and all plugins have been updated to be compatible with the latest PyPad version. This includes:
-        - New plugin API for better performance and stability.
-      - Various bug fixes and performance improvements across the app.
+      - Added a visible gamification shell with status widgets, momentum banner, and reward toasts.
+      - Expanded the Productivity Hub with daily briefing, session review, milestones, secret trails, routines, and routine history.
+      - Companion guidance now routes users into practical next actions like focus sprint, workspace sweep, and planning loop.
+      - Gamification Dashboard now shows seasonal events, secret trails, and tracked productivity routine usage.
       - Detailed changelog: CHANGELOG.md
     </description>
     <sha256>0000000000000000000000000000000000000000000000000000000000000000</sha256>
     <enclosure
-      url="https://github.com/ne0gl1tch20/pypad/releases/download/1.7.10/PyPad-Setup-1.7.10-prerelease.exe"
+      url="https://github.com/ne0gl1tch20/pypad/releases/download/1.8.1/PyPad-Setup-1.8.1-prerelease.exe"
       type="application/octet-stream" />
   </item>
 </updates>

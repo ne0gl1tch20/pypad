@@ -13,6 +13,22 @@ from PySide6.QtCore import QObject, QEvent, Qt, QTimer, qInstallMessageHandler, 
 
 _MAIN_WINDOW = None
 
+
+def _configure_startup_runtime_env() -> None:
+    # Reduce Chromium/WebEngine stderr noise from benign GPU/direct-composition diagnostics.
+    flags = str(os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "") or "").strip()
+    desired_parts = ["--disable-logging", "--log-level=3"]
+    merged: list[str] = []
+    if flags:
+        merged.append(flags)
+    for part in desired_parts:
+        if part not in flags:
+            merged.append(part)
+    os.environ["QTWEBENGINE_CHROMIUM_FLAGS"] = " ".join(merged).strip()
+
+
+_configure_startup_runtime_env()
+
 def _bootstrap_import_paths() -> None:
     """Support both development and PyInstaller onedir layouts.
 
@@ -52,11 +68,11 @@ def _bootstrap_import_paths() -> None:
 _bootstrap_import_paths()
 
 from pypad.app import main
-from pypad.app_settings import get_crash_logs_file_path
-from pypad.logging_utils import configure_app_logging, get_logger
+from pypad.app_settings import get_crash_logs_file_path, get_settings_file_path
+from pypad.logging_utils import configure_app_logging, get_logger, resolve_persisted_log_level
 from pypad.ui.theme.asset_paths import resolve_asset_path
 
-configure_app_logging("INFO")
+configure_app_logging(resolve_persisted_log_level(get_settings_file_path(), default="INFO"))
 LOGGER = get_logger(__name__)
 
 
@@ -124,7 +140,6 @@ def _save_startup_traceback(traceback_text: str) -> None:
 
 def _startup_log(message: str) -> None:
     LOGGER.info(message)
-    _save_startup_traceback(f"[Startup] {message}")
 
 
 def _install_startup_exception_hooks() -> None:
@@ -152,6 +167,17 @@ def _install_startup_exception_hooks() -> None:
             mode_name = mode.name
         else:
             mode_name = str(mode)
+        should_persist = False
+        try:
+            warning_modes = {
+                QtMsgType.QtWarningMsg,
+                QtMsgType.QtCriticalMsg,
+                QtMsgType.QtFatalMsg,
+            }
+            should_persist = mode in warning_modes
+        except Exception:
+            normalized = str(mode_name).lower()
+            should_persist = any(token in normalized for token in ("warning", "critical", "fatal"))
         location = ""
         if context is not None:
             parts = []
@@ -163,7 +189,11 @@ def _install_startup_exception_hooks() -> None:
                 parts.append(context.function)
             if parts:
                 location = " (" + ":".join(parts) + ")"
-        _save_startup_traceback(f"[Qt:{mode_name}]{location} {message}")
+        rendered = f"[Qt:{mode_name}]{location} {message}"
+        if should_persist:
+            _save_startup_traceback(rendered)
+        else:
+            LOGGER.debug(rendered)
     qInstallMessageHandler(_qt_message_handler)
 
     # Capture low-level crashes (segfaults, aborts) to the same log.

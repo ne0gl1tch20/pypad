@@ -4,7 +4,8 @@ from typing import Optional
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QApplication
 
-from .logging_utils import configure_app_logging, get_logger
+from .app_settings import get_settings_file_path
+from .logging_utils import configure_app_logging, get_logger, resolve_persisted_log_level
 from .ui.main_window import Notepad
 
 LOGGER = get_logger(__name__)
@@ -13,7 +14,7 @@ def main(existing_app: Optional[QApplication] = None) -> Notepad:
     # Use existing QApplication if passed (from run.py), otherwise create one
     owns_app = existing_app is None
     app = existing_app or QApplication(sys.argv)
-    configure_app_logging("INFO")
+    configure_app_logging(resolve_persisted_log_level(get_settings_file_path(), default="INFO"))
     app.setApplicationName("Pypad")
     LOGGER.info("App main() starting (owns_app=%s)", owns_app)
 

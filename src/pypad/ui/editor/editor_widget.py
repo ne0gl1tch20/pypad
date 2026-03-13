@@ -217,11 +217,17 @@ class EditorWidget(QObject):
     def line_col_from_index(self, index: int) -> tuple[int, int]:
         if index <= 0:
             return 0, 0
-        lines = self.get_text().splitlines(keepends=True)
+        text = self.get_text()
+        lines = text.splitlines(keepends=True)
+        if not lines:
+            return 0, 0
+        if index >= len(text):
+            last_line = len(lines) - 1
+            return last_line, len(lines[last_line].rstrip("\r\n"))
         total = 0
         for i, line in enumerate(lines):
             next_total = total + len(line)
-            if index < next_total:
+            if index <= next_total:
                 return i, index - total
             total = next_total
         return max(0, len(lines) - 1), max(0, index - total)
@@ -237,7 +243,6 @@ class EditorWidget(QObject):
         line2, col2 = self.line_col_from_index(end)
         if self._is_scintilla:
             self.widget.setSelection(line1, col1, line2, col2)
-            self.widget.setCursorPosition(line2, col2)
             return
         cursor = self.widget.textCursor()
         cursor.setPosition(start)

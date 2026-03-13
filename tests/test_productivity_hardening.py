@@ -26,6 +26,10 @@ class ProductivityHardeningTests(unittest.TestCase):
         self.assertTrue(info.version.strip())
         self.assertTrue(info.pub_date.strip())
         self.assertTrue(info.download_url.strip())
+        numeric_version = version_text.replace("-prerelease", "")
+        self.assertEqual(info.version.strip(), numeric_version)
+        self.assertIn(f"/releases/download/{numeric_version}/", info.download_url)
+        self.assertIn(version_text, Path(info.download_url).name)
 
     def test_version_comparison_prefers_stable_over_prerelease(self) -> None:
         self.assertTrue(is_newer_version("1.8.0", "1.8.0-rc1"))

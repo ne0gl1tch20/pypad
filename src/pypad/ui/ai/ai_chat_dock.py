@@ -181,6 +181,14 @@ class _Bubble(QFrame):
         r"<a\b[^>]*href\s*=\s*['\"](pypad://[^'\"\s>]+)",
         re.IGNORECASE,
     )
+    _MARKDOWN_PYPAD_LINK_RE = re.compile(
+        r"\[([^\]]*?)\]\((pypad://[^)\s]+)\)+",
+        re.IGNORECASE,
+    )
+    _BROKEN_MARKDOWN_PYPAD_LINK_RE = re.compile(
+        r"\[([^\]]*?)\]\((pypad://[^\s]+)",
+        re.IGNORECASE,
+    )
     _PYPAD_LINK_RE = re.compile(r"(?<![\w/\"'])(pypad://[^\s<>'\")]+)", re.IGNORECASE)
     _MATH_RE = re.compile(
         r"\$[^$]+\$|\$\$[\s\S]+\$\$|\\\([^\)]+\\\)|\\\[[\s\S]+\\\]|\\begin\{[a-zA-Z*]+\}|"
@@ -390,16 +398,25 @@ class _Bubble(QFrame):
 
     @classmethod
     def _normalize_broken_pypad_buttons(cls, text: str) -> str:
+        def _replace_markdown_link(match: re.Match[str]) -> str:
+            href = cls._normalize_pypad_href(str(match.group(2) or ""))
+            return href or match.group(0)
+
         def _replace_anchor(match: re.Match[str]) -> str:
-            href = str(match.group(1) or "").strip()
+            href = cls._normalize_pypad_href(str(match.group(1) or ""))
             label = str(match.group(2) or "").strip()
             if not href:
                 return match.group(0)
             # Keep surrounding sentence readable; button rendering will happen in the next pass.
             return href if not label else href
 
+        text = cls._MARKDOWN_PYPAD_LINK_RE.sub(_replace_markdown_link, text)
+        text = cls._BROKEN_MARKDOWN_PYPAD_LINK_RE.sub(_replace_markdown_link, text)
         text = cls._BROKEN_PYPAD_ANCHOR_RE.sub(_replace_anchor, text)
-        text = cls._TRUNCATED_PYPAD_ANCHOR_RE.sub(lambda m: str(m.group(1) or "").strip(), text)
+        text = cls._TRUNCATED_PYPAD_ANCHOR_RE.sub(
+            lambda m: cls._normalize_pypad_href(str(m.group(1) or "")),
+            text,
+        )
 
         def _replace(match: re.Match[str]) -> str:
             path = str(match.group(1) or "").strip().strip("/")
@@ -3931,7 +3948,7 @@ class AIChatDock(QDockWidget):
     def _load_chat_sessions_from_disk(self, settings: dict[str, object]) -> list[dict[str, object]]:
         folder = self._chat_storage_dir()
         file_names: list[str] = []
-        raw_names = settings.get("ai_chat_session_files", [])
+        raw_names = settings.get("ai_chat_session_files")
         if isinstance(raw_names, list):
             file_names = [str(item).strip() for item in raw_names if str(item).strip()]
         elif folder.exists():

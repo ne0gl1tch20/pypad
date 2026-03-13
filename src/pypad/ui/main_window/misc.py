@@ -129,6 +129,7 @@ from pypad.ui.document.document_fidelity import DocumentFidelityError, export_do
 from pypad.ui.features.extensibility_ops import discover_window_actions
 from pypad.ui.features.gamification_system import GamificationSystem, XPResult
 from pypad.ui.features.gamification_dashboard_dialog import GamificationDashboardDialog
+from pypad.ui.features.gamification_widgets import CompactGamificationWidget, ProductivityHubDialog, ProductivityHubWidget
 from .notepadpp_pref_runtime import (
     apply_notepadpp_runtime_settings,
     apply_indentation_defaults_to_tab,
@@ -147,6 +148,7 @@ from pypad.ui.features.tutorial_dialog import InteractiveTutorialDialog
 from pypad.ui.editor.shortcut_mapper import PRESET_SHORTCUTS, ShortcutActionRow, ShortcutMapperDialog, parse_shortcut_value, sequence_to_string
 from pypad.ui.editor.command_palette import CommandPaletteDialog, PaletteItem
 from pypad.ui.editor.quick_open_dialog import QuickOpenDialog, QuickOpenEntry, extract_symbol_rows
+from pypad.ui.editor.spellcheck import spellcheck_available, suggestions_for_word, unknown_words, word_span_at
 from pypad.i18n.translator import language_code_for
 from .misc_settings_recent import MiscSettingsRecentMixin
 from .misc_tab_metadata import MiscTabMetadataMixin
@@ -159,8 +161,6 @@ from .misc_ai_usage import MiscAiUsageMixin
 from .misc_ai_templates import MiscAiTemplatesMixin
 from .misc_quick_open import MiscQuickOpenMixin
 from .misc_settings_dialog import SettingsDialog
-
-
 
 class MiscMixin(
     MiscSettingsRecentMixin,
@@ -176,6 +176,191 @@ class MiscMixin(
 ):
     if TYPE_CHECKING:
         def __getattr__(self, name: str) -> Any: ...
+
+    class _EasterEggBall(QWidget):
+        class _BallPreview(QWidget):
+            def __init__(self, color: QColor, parent: QWidget | None = None) -> None:
+                super().__init__(parent)
+                self._color = QColor(color)
+                self.setFixedSize(86, 86)
+
+            def set_color(self, color: QColor) -> None:
+                self._color = QColor(color)
+                self.update()
+
+            def paintEvent(self, event) -> None:  # type: ignore[override]
+                painter = QPainter(self)
+                painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+                painter.fillRect(self.rect(), QColor("#1f2329"))
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(self._color)
+                painter.drawEllipse(10, 10, 66, 66)
+                painter.setBrush(QColor(255, 255, 255, 80))
+                painter.drawEllipse(24, 18, 18, 14)
+                painter.end()
+                super().paintEvent(event)
+
+        def __init__(self, host: QWidget) -> None:
+            super().__init__(host)
+            self._host = host
+            self._diameter = 56
+            self._pos_x = 0.0
+            self._pos_y = 0.0
+            self._vel_x = 3.4
+            self._vel_y = -2.0
+            self._gravity = 0.42
+            self._bounce = 0.86
+            self._friction = 0.992
+            self._drag_offset = QPoint()
+            self._dragging = False
+            self._ball_color = QColor("#ff8a00")
+            self.setObjectName("pypadEasterEggBall")
+            self.setFixedSize(self._diameter, self._diameter)
+            self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+            self.setCursor(Qt.CursorShape.OpenHandCursor)
+            self.raise_()
+            self._timer = QTimer(self)
+            self._timer.timeout.connect(self._tick)
+            self._timer.start(16)
+
+        def paintEvent(self, event) -> None:  # type: ignore[override]
+            painter = QPainter(self)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(self._ball_color)
+            painter.drawEllipse(2, 2, self._diameter - 4, self._diameter - 4)
+            painter.setBrush(QColor(255, 255, 255, 80))
+            painter.drawEllipse(11, 9, 16, 12)
+            painter.end()
+            super().paintEvent(event)
+
+        def mousePressEvent(self, event) -> None:  # type: ignore[override]
+            if event.button() == Qt.MouseButton.LeftButton:
+                self._dragging = True
+                self._drag_offset = event.position().toPoint()
+                self.setCursor(Qt.CursorShape.ClosedHandCursor)
+                event.accept()
+                return
+            super().mousePressEvent(event)
+
+        def mouseMoveEvent(self, event) -> None:  # type: ignore[override]
+            if self._dragging:
+                target = self.mapToParent(event.position().toPoint() - self._drag_offset)
+                bounded = self._bounded_pos(target)
+                self._set_float_pos(bounded.x(), bounded.y())
+                event.accept()
+                return
+            super().mouseMoveEvent(event)
+
+        def mouseReleaseEvent(self, event) -> None:  # type: ignore[override]
+            if event.button() == Qt.MouseButton.LeftButton and self._dragging:
+                self._dragging = False
+                self.setCursor(Qt.CursorShape.OpenHandCursor)
+                bounds = self._bounds_rect()
+                center = bounds.center()
+                ball_center = self.geometry().center()
+                self._vel_x = -4.2 if ball_center.x() >= center.x() else 4.2
+                self._vel_y = -6.5 if ball_center.y() >= center.y() else -4.8
+                event.accept()
+                return
+            if event.button() == Qt.MouseButton.RightButton:
+                self._open_color_picker()
+                event.accept()
+                return
+            super().mouseReleaseEvent(event)
+
+        def moveEvent(self, event) -> None:  # type: ignore[override]
+            pos = self.pos()
+            self._pos_x = float(pos.x())
+            self._pos_y = float(pos.y())
+            super().moveEvent(event)
+
+        def _bounded_pos(self, pos: QPoint) -> QPoint:
+            bounds = self._bounds_rect()
+            min_x = bounds.left()
+            min_y = bounds.top()
+            max_x = max(min_x, bounds.right() - self.width() + 1)
+            max_y = max(min_y, bounds.bottom() - self.height() + 1)
+            return QPoint(max(min_x, min(pos.x(), max_x)), max(min_y, min(pos.y(), max_y)))
+
+        def _bounds_rect(self) -> QRect:
+            host = self.parentWidget()
+            if host is None:
+                return QRect(0, 0, 800, 600)
+            return host.rect()
+
+        def _open_color_picker(self) -> None:
+            dlg = QDialog(self, Qt.WindowType.Dialog | Qt.WindowType.CustomizeWindowHint | Qt.WindowType.WindowTitleHint | Qt.WindowType.WindowCloseButtonHint)
+            dlg.setWindowTitle("Ball Color")
+            dlg.setWindowFlag(Qt.WindowType.WindowMaximizeButtonHint, False)
+            dlg.setWindowFlag(Qt.WindowType.WindowMinimizeButtonHint, False)
+            dlg.setWindowFlag(Qt.WindowType.MSWindowsFixedSizeDialogHint, True)
+            dlg.setSizeGripEnabled(False)
+            apply_dialog_theme_from_window(self._host, dlg)
+            layout = QVBoxLayout(dlg)
+            layout.setContentsMargins(12, 12, 12, 12)
+            preview = self._BallPreview(self._ball_color, dlg)
+            preview_label = QLabel("Preview", dlg)
+            choose_btn = QPushButton("Choose Color...", dlg)
+            buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, Qt.Orientation.Horizontal, dlg)
+            chosen = QColor(self._ball_color)
+
+            def _choose() -> None:
+                nonlocal chosen
+                color = QColorDialog.getColor(chosen, dlg, "Choose Ball Color")
+                if color.isValid():
+                    chosen = QColor(color)
+                    preview.set_color(chosen)
+
+            choose_btn.clicked.connect(_choose)
+            buttons.accepted.connect(dlg.accept)
+            buttons.rejected.connect(dlg.reject)
+            layout.addWidget(preview_label)
+            layout.addWidget(preview, 0, Qt.AlignmentFlag.AlignHCenter)
+            layout.addWidget(choose_btn)
+            layout.addWidget(buttons)
+            dlg.setFixedSize(dlg.sizeHint())
+            if dlg.exec() == QDialog.DialogCode.Accepted:
+                self._ball_color = QColor(chosen)
+                self.update()
+
+        def _tick(self) -> None:
+            if self._dragging:
+                return
+            bounds = self._bounds_rect()
+            min_x = float(bounds.left())
+            min_y = float(bounds.top())
+            max_x = float(max(bounds.left(), bounds.right() - self.width() + 1))
+            max_y = float(max(bounds.top(), bounds.bottom() - self.height() + 1))
+            self._vel_y += self._gravity
+            self._vel_x *= self._friction
+            next_x = self._pos_x + self._vel_x
+            next_y = self._pos_y + self._vel_y
+            if next_x <= min_x:
+                next_x = min_x
+                self._vel_x = abs(self._vel_x) * self._bounce
+            elif next_x >= max_x:
+                next_x = max_x
+                self._vel_x = -abs(self._vel_x) * self._bounce
+            if next_y <= min_y:
+                next_y = min_y
+                self._vel_y = abs(self._vel_y) * self._bounce
+            elif next_y >= max_y:
+                next_y = max_y
+                self._vel_y = -abs(self._vel_y) * self._bounce
+                self._vel_x *= 0.985
+                if abs(self._vel_y) < 1.2:
+                    self._vel_y = -3.8
+            self._set_float_pos(next_x, next_y)
+
+        def _set_float_pos(self, x: float, y: float) -> None:
+            self._pos_x = float(x)
+            self._pos_y = float(y)
+            self.move(int(round(self._pos_x)), int(round(self._pos_y)))
+
+        def closeEvent(self, event) -> None:  # type: ignore[override]
+            self._timer.stop()
+            super().closeEvent(event)
 
     # ---------- Misc ----------
     class _ExplorerIconProvider(QFileIconProvider):
@@ -286,6 +471,8 @@ class MiscMixin(
         self.gamification.quests_snapshot()
         self._gamification_prev_text_len = 0
         self._focus_sprint_deadline_ts = 0.0
+        self._session_shortcut_count = 0
+        self._session_word_bursts = 0
         self._focus_sprint_timer = QTimer(self)
         self._focus_sprint_timer.setSingleShot(True)
         self._focus_sprint_timer.timeout.connect(self._finish_focus_sprint)
@@ -295,45 +482,339 @@ class MiscMixin(
     def _gamification_enabled(self) -> bool:
         return bool(self.settings.get("gamification_enabled", True))
 
+    def _session_review_enabled(self) -> bool:
+        return bool(self.settings.get("session_review_enabled", False))
+
     def _sync_seasonal_events(self) -> None:
         if not self._gamification_enabled():
             return
-        events = self.gamification.active_events()
-        if not events:
+        if not self.gamification.active_events():
             return
-        state = self.gamification.state()
-        badges = set(state.get("event_badges", []))
-        for event in events:
-            badge = str(event.get("badge", "")).strip()
-            if badge:
-                badges.add(badge)
-        state["event_badges"] = sorted(badges)
+        self.gamification.sync_active_event_progress()
+
+    def _refresh_seasonal_event_state(self) -> None:
+        if not self._gamification_enabled() or not hasattr(self, "gamification"):
+            return
+        unlocked = self.gamification.sync_active_event_progress()
+        for badge in unlocked:
+            self.gamification.push_activity(f"Event Badge: {badge}", "Seasonal quest complete.")
+            toast = getattr(self, "gamification_reward_toast", None)
+            if toast is not None:
+                toast.show_reward(f"Event Badge: {badge}", "Seasonal quest complete.", 3400)
+            self.show_status_message(f"Seasonal event unlocked: {badge}", 3400)
+        self._refresh_productivity_hub()
 
     def _update_gamification_status_labels(self) -> None:
         if not hasattr(self, "gamification") or not self._gamification_enabled():
             return
-        state = self.gamification.state()
-        txt = (
-            f"LVL {state.get('level', 1)} | XP {state.get('xp', 0)} | "
-            f"{state.get('companion', {}).get('name', 'Byte')}:{state.get('companion', {}).get('stage', 'Seed')}"
-        )
-        if hasattr(self, "gamification_status_label"):
-            self.gamification_status_label.setText(txt)
-        if hasattr(self, "status_panel_gamification_label"):
-            self.status_panel_gamification_label.setText(txt)
+        payload = self.gamification.progress_snapshot()
+        if hasattr(self, "gamification_status_widget"):
+            self.gamification_status_widget.update_payload(payload)
+        if hasattr(self, "status_panel_gamification_widget"):
+            self.status_panel_gamification_widget.update_payload(payload)
 
     def _show_gamification_progress(self, result: XPResult | None, notes: list[str] | None = None) -> None:
         if not self._gamification_enabled():
             return
         self._update_gamification_status_labels()
+        milestone_notes = self.gamification.sync_milestones()
         if result is None:
+            if milestone_notes:
+                for note in milestone_notes:
+                    self.gamification.push_activity("Milestone", note)
+                self._refresh_productivity_hub()
             return
         msg = f"+{result.xp_added} XP"
         if result.leveled_up:
             msg += f" | Level {result.level_after}"
+        fallback_detail = str(self.gamification.state().get("last_xp_reason", "") or "Progress updated")
         if notes:
             msg += f" | {notes[0]}"
+        self.gamification.push_activity(
+            f"+{result.xp_added} XP",
+            notes[0] if notes else fallback_detail,
+        )
         self.show_status_message(msg, 3000)
+        toast = getattr(self, "gamification_reward_toast", None)
+        if toast is not None:
+            title = f"+{result.xp_added} XP"
+            if result.leveled_up:
+                title += f"  Level {result.level_after}"
+            detail = notes[0] if notes else fallback_detail
+            toast.show_reward(title, detail, 2800)
+            if milestone_notes:
+                for note in milestone_notes:
+                    toast.show_reward("Milestone Reached", note, 3200)
+        for note in milestone_notes:
+            self.gamification.push_activity("Milestone", note)
+            self.show_status_message(note, 3200)
+        self._refresh_seasonal_event_state()
+        self._refresh_productivity_hub()
+
+    def _refresh_productivity_hub(self) -> None:
+        if hasattr(self, "gamification") and hasattr(self, "momentum_banner_widget"):
+            self.momentum_banner_widget.update_payload(self.gamification.productivity_snapshot())
+        hub = getattr(self, "productivity_hub_widget", None)
+        if hub is None or not hasattr(self, "gamification"):
+            return
+        hub.update_payload(self.gamification.productivity_snapshot())
+
+    def _show_productivity_info_dialog(
+        self,
+        *,
+        title: str,
+        subtitle: str,
+        sections: list[tuple[str, list[str]]],
+        primary_label: str | None = None,
+        primary_handler=None,
+    ) -> None:
+        dlg = QDialog(self)
+        dlg.setWindowTitle(title)
+        dlg.resize(760, 560)
+        apply_dialog_theme_from_window(self, dlg)
+        layout = QVBoxLayout(dlg)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(12)
+
+        title_label = QLabel(title, dlg)
+        title_label.setStyleSheet("font-size: 18px; font-weight: 700;")
+        subtitle_label = QLabel(subtitle, dlg)
+        subtitle_label.setWordWrap(True)
+        layout.addWidget(title_label)
+        layout.addWidget(subtitle_label)
+
+        for section_title, rows in sections:
+            header = QLabel(section_title, dlg)
+            header.setStyleSheet("font-weight: 600;")
+            body = QTextEdit(dlg)
+            body.setReadOnly(True)
+            body.setMinimumHeight(96)
+            body.setPlainText("\n".join(str(row) for row in rows if str(row).strip()) or "Nothing to show yet.")
+            layout.addWidget(header)
+            layout.addWidget(body)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Close, Qt.Horizontal, dlg)
+        if primary_label and callable(primary_handler):
+            primary_btn = buttons.addButton(primary_label, QDialogButtonBox.AcceptRole)
+            primary_btn.clicked.connect(lambda: (primary_handler(), dlg.accept()))
+        buttons.rejected.connect(dlg.reject)
+        buttons.accepted.connect(dlg.accept)
+        layout.addWidget(buttons)
+        dlg.exec()
+
+    def show_daily_briefing(self) -> None:
+        if not self._gamification_enabled() or not hasattr(self, "gamification"):
+            return
+        self.gamification.push_activity("Daily Briefing", "Opened today's quest and companion guidance.")
+        self._refresh_productivity_hub()
+        briefing = self.gamification.daily_briefing()
+        companion_hint = self.gamification.companion_hint()
+        self.show_status_message(companion_hint, 4200)
+        self._show_productivity_info_dialog(
+            title="Daily Briefing",
+            subtitle=companion_hint,
+            sections=[
+                ("Today's Briefing", [str(item) for item in briefing]),
+                ("Companion Guidance", [companion_hint]),
+            ],
+            primary_label="Coach Recommendation",
+            primary_handler=self.run_coach_recommendation,
+        )
+        self._onboarding_mark_step("opened_daily_briefing")
+
+    def show_seasonal_event_briefing(self) -> None:
+        if not self._gamification_enabled() or not hasattr(self, "gamification"):
+            return
+        self.gamification.push_activity("Seasonal Event", "Checked the live seasonal event briefing.")
+        self._refresh_seasonal_event_state()
+        briefing = self.gamification.event_briefing()
+        self.show_status_message(briefing[0] if briefing else "No active seasonal event.", 4200)
+        self._show_productivity_info_dialog(
+            title="Seasonal Event Briefing",
+            subtitle="Live event progress and reward tracking.",
+            sections=[("Seasonal Event", [str(item) for item in briefing])],
+        )
+        self._onboarding_mark_step("opened_seasonal_event_briefing")
+
+    def show_session_review(self, *, auto: bool = False) -> None:
+        if not self._gamification_enabled() or not hasattr(self, "gamification"):
+            return
+        review = self.gamification.record_session_review(
+            open_tabs=int(self.tab_widget.count()),
+            saved_session=bool(str(self.settings.get("last_session_file_path", "") or "").strip()),
+        )
+        self.gamification.push_activity(
+            "Session Review",
+            (
+                f"{int(review.get('words_written', 0))} words, "
+                f"{int(review.get('todo_fixed', 0))} TODOs, "
+                f"{int(review.get('focus_sprints_completed', 0))} sprint(s)"
+            ),
+        )
+        self._refresh_productivity_hub()
+        summary = (
+            f"Session review: {int(review.get('words_written', 0))} words | "
+            f"{int(review.get('todo_fixed', 0))} TODOs fixed | "
+            f"{int(review.get('focus_sprints_completed', 0))} focus sprint(s)"
+        )
+        self.show_status_message(summary, 4200)
+        self._show_productivity_info_dialog(
+            title="Session Review" if not auto else "Quick Session Review",
+            subtitle=summary,
+            sections=[
+                ("Session Summary", [summary]),
+                (
+                    "Highlights",
+                    [
+                        f"Words written: {int(review.get('words_written', 0))}",
+                        f"TODOs fixed: {int(review.get('todo_fixed', 0))}",
+                        f"Focus sprints: {int(review.get('focus_sprints_completed', 0))}",
+                        f"Open tabs: {int(review.get('open_tabs', 0) or self.tab_widget.count())}",
+                    ],
+                ),
+            ],
+        )
+        if not auto:
+            self._onboarding_mark_step("opened_session_review")
+
+    def run_coach_recommendation(self) -> None:
+        if not self._gamification_enabled() or not hasattr(self, "gamification"):
+            return
+        recommendation = self.gamification.recommended_action()
+        action_id = str(recommendation.get("action_id", "") or "daily_briefing")
+        label = str(recommendation.get("label", "") or "Recommended action")
+        detail = str(recommendation.get("detail", "") or "Here is the next best action based on your current progress.")
+
+        def _execute() -> None:
+            if action_id == "focus_sprint":
+                self.start_focus_sprint_mode()
+            elif action_id == "workspace_search":
+                self.search_workspace()
+            elif action_id == "command_palette":
+                self.open_command_palette()
+            elif action_id == "quick_open":
+                self.open_quick_open()
+            else:
+                self.show_daily_briefing()
+
+        self._show_productivity_info_dialog(
+            title="Coach Recommendation",
+            subtitle=detail,
+            sections=[
+                ("Recommended Move", [label, detail]),
+                ("Reasoning", [str(recommendation.get("reason", "") or "Based on your recent activity and progress.")]),
+            ],
+            primary_label="Run Recommendation",
+            primary_handler=_execute,
+        )
+        self._onboarding_mark_step("used_coach_recommendation")
+
+    def run_productivity_routine(self) -> None:
+        if not self._gamification_enabled() or not hasattr(self, "gamification"):
+            return
+        routines = self.gamification.productivity_routines()
+        if not routines:
+            self.show_daily_briefing()
+            return
+        routine = routines[0]
+        routine_id = str(routine.get("routine_id", "") or "daily_briefing")
+        label = str(routine.get("label", "") or "Productivity routine")
+        executed = False
+        if routine_id == "focus_sprint":
+            executed = bool(self.start_focus_sprint_mode())
+        elif routine_id == "workspace_search":
+            self.search_workspace()
+            executed = True
+        elif routine_id == "command_palette":
+            self.open_command_palette()
+            executed = True
+        elif routine_id == "bug_hunt":
+            executed = bool(self.start_bug_hunt_mode())
+        else:
+            self.show_daily_briefing()
+            executed = True
+        if not executed:
+            return
+        self.gamification.record_routine_run(routine_id)
+        self.gamification.push_activity("Routine", label)
+        self._refresh_productivity_hub()
+        self.show_status_message(label, 3200)
+        self._onboarding_mark_step("used_productivity_routine")
+
+    def _unlock_easter_egg(self, title: str, detail: str) -> None:
+        if not self._gamification_enabled():
+            return
+        if not self.gamification.add_achievement(title):
+            return
+        self.gamification.push_activity(f"Unlocked: {title}", detail)
+        self._update_gamification_status_labels()
+        self._refresh_productivity_hub()
+        toast = getattr(self, "gamification_reward_toast", None)
+        if toast is not None:
+            toast.show_reward(f"Unlocked: {title}", detail, 3200)
+        self.show_status_message(f"Unlocked: {title}", 3200)
+
+    def _evaluate_easter_eggs(self, event_name: str, payload: dict[str, Any] | None = None) -> None:
+        if not self._gamification_enabled() or not hasattr(self, "gamification"):
+            return
+        data = payload or {}
+        state = self.gamification.state()
+        stats = state.get("stats", {})
+        now = datetime.now()
+        if event_name == "words_written":
+            words = int(data.get("words", 0) or 0)
+            if words >= 80:
+                self._session_word_bursts += 1
+            self.gamification.record_activity_day("writing_days", now)
+            if now.hour >= 23 and int(stats.get("words_written", 0) or 0) >= 250:
+                self.gamification.set_secret_progress_max("night_owl_sessions", 1)
+                self._unlock_easter_egg("Night Owl", "Late-night writing session logged.")
+            if self._session_shortcut_count >= 50:
+                self._unlock_easter_egg("Keyboard Only", "Fifty shortcut-driven actions in one session.")
+        elif event_name == "todo_fixed":
+            if int(stats.get("todo_fixed", 0) or 0) >= 25:
+                self._unlock_easter_egg("Zero TODO Day", "Twenty-five TODO markers cleaned up.")
+        elif event_name == "focus_sprint":
+            self.gamification.record_activity_day("focus_days", now)
+            if int(stats.get("focus_sprints_completed", 0) or 0) >= 7:
+                self._unlock_easter_egg("Focus Beast", "Seven focus sprints completed.")
+        elif event_name == "workspace_review":
+            self.gamification.record_activity_day("review_days", now)
+            if int(stats.get("workspace_reviews", 0) or 0) >= 5:
+                self._unlock_easter_egg("Explorer", "Workspace review mastery unlocked.")
+        elif event_name == "plugin_used":
+            if int(stats.get("plugin_uses", 0) or 0) >= 5:
+                self._unlock_easter_egg("Plugin Tinkerer", "Five plugin-powered actions completed.")
+        elif event_name == "encryption_enabled":
+            encrypted = int(data.get("encrypted_count", 0) or 0)
+            self.gamification.set_secret_progress_max("vault_keeper_notes", encrypted)
+            if encrypted >= 3:
+                self._unlock_easter_egg("Vault Keeper", "Three encrypted-note moments discovered.")
+        elif event_name == "shortcut_used":
+            self._session_shortcut_count += 1
+            self.gamification.set_secret_progress_max("keyboard_shortcuts", self._session_shortcut_count)
+            if self._session_shortcut_count >= 50:
+                self._unlock_easter_egg("Keyboard Only", "Fifty shortcut-driven actions in one session.")
+        self._refresh_productivity_hub()
+
+    @staticmethod
+    def _gamification_word_count(text: str) -> int:
+        return len([word for word in re.findall(r"\b\w+\b", text or "") if word.strip()])
+
+    @staticmethod
+    def _gamification_todo_count(text: str) -> int:
+        return len(re.findall(r"TODO", text or "", flags=re.IGNORECASE))
+
+    def _sync_gamification_tab_snapshot(self, tab: Any) -> None:
+        if tab is None or not hasattr(tab, "text_edit"):
+            return
+        try:
+            text = str(tab.text_edit.get_text() or "")
+        except Exception:
+            return
+        tab._gamification_prev_text = text
+        tab._gamification_prev_word_count = self._gamification_word_count(text)
+        tab._gamification_prev_todo_count = self._gamification_todo_count(text)
 
     def _gamification_on_text_changed(self) -> None:
         if not self._gamification_enabled() or not hasattr(self, "gamification"):
@@ -341,27 +822,32 @@ class MiscMixin(
         tab = self.active_tab()
         if tab is None:
             return
-        text = tab.text_edit.get_text()
-        curr_len = len(text)
-        prev_len = int(getattr(self, "_gamification_prev_text_len", curr_len))
-        prev_todo_count = int(getattr(tab, "_gamification_prev_todo_count", len(re.findall(r"TODO", text, flags=re.IGNORECASE))))
-        curr_todo_count = len(re.findall(r"TODO", text, flags=re.IGNORECASE))
-        if curr_len < prev_len:
+        text = str(tab.text_edit.get_text() or "")
+        if not hasattr(tab, "_gamification_prev_text"):
+            self._sync_gamification_tab_snapshot(tab)
+            return
+        prev_text = str(getattr(tab, "_gamification_prev_text", "") or "")
+        prev_word_count = int(getattr(tab, "_gamification_prev_word_count", self._gamification_word_count(prev_text)))
+        prev_todo_count = int(getattr(tab, "_gamification_prev_todo_count", self._gamification_todo_count(prev_text)))
+        curr_word_count = self._gamification_word_count(text)
+        curr_todo_count = self._gamification_todo_count(text)
+        if len(text) < len(prev_text):
             mode = self.gamification.state().get("challenge_modes", {}).get("no_backspace", {})
             if isinstance(mode, dict) and bool(mode.get("active", False)):
                 self.gamification.set_challenge_state("no_backspace", False, {"failed": True})
                 self.show_status_message("No-backspace challenge failed.", 2500)
-        elif curr_len > prev_len:
-            added = text[prev_len:curr_len]
-            words = len([w for w in re.findall(r"\b\w+\b", added) if w.strip()])
-            if words > 0:
-                result, notes = self.gamification.add_written_words(words)
-                self._show_gamification_progress(result, notes)
+        words_added = max(0, curr_word_count - prev_word_count)
+        if words_added > 0:
+            result, notes = self.gamification.add_written_words(words_added)
+            self._show_gamification_progress(result, notes)
+            self._evaluate_easter_eggs("words_written", {"words": words_added})
         todo_removed = max(0, prev_todo_count - curr_todo_count)
         if todo_removed > 0:
             result, notes = self.gamification.add_todo_fixed(todo_removed)
             self._show_gamification_progress(result, notes)
-        self._gamification_prev_text_len = curr_len
+            self._evaluate_easter_eggs("todo_fixed", {"count": todo_removed})
+        tab._gamification_prev_text = text
+        tab._gamification_prev_word_count = curr_word_count
         tab._gamification_prev_todo_count = curr_todo_count
 
     def open_gamification_dashboard(self) -> None:
@@ -373,16 +859,17 @@ class MiscMixin(
         dlg.exec()
         self._maybe_show_contextual_tip("after_gamification_dashboard")
 
-    def start_focus_sprint_mode(self) -> None:
+    def start_focus_sprint_mode(self) -> bool:
         if not self._gamification_enabled():
-            return
+            return False
         minutes, ok = QInputDialog.getInt(self, "Focus Sprint", "Minutes:", value=15, minValue=1, maxValue=120)
         if not ok:
-            return
+            return False
         self.gamification.set_challenge_state("focus_sprint", True, {"minutes": int(minutes), "started_at": time.time()})
         self._focus_sprint_deadline_ts = time.time() + (int(minutes) * 60)
         self._focus_sprint_timer.start(int(minutes) * 60 * 1000)
         self.show_status_message(f"Focus sprint started: {minutes}m", 2500)
+        return True
 
     def _finish_focus_sprint(self) -> None:
         mode = self.gamification.state().get("challenge_modes", {}).get("focus_sprint", {})
@@ -391,6 +878,7 @@ class MiscMixin(
         self.gamification.set_challenge_state("focus_sprint", False, {"completed": True})
         result, notes = self.gamification.mark_focus_sprint_completed()
         self._show_gamification_progress(result, notes)
+        self._evaluate_easter_eggs("focus_sprint")
 
     def toggle_no_backspace_challenge(self) -> None:
         if not self._gamification_enabled():
@@ -401,13 +889,13 @@ class MiscMixin(
         self.gamification.set_challenge_state("no_backspace", next_state, {"failed": False, "started_at": time.time()})
         self.show_status_message("No-backspace challenge started." if next_state else "No-backspace challenge stopped.", 2500)
 
-    def start_bug_hunt_mode(self) -> None:
+    def start_bug_hunt_mode(self) -> bool:
         if not self._gamification_enabled():
-            return
+            return False
         root = self._workspace_root()
         if not root:
             QMessageBox.information(self, "Bug Hunt", "Set a workspace folder first.")
-            return
+            return False
         files = self._workspace_files()
         issues = 0
         for path in files[:200]:
@@ -418,6 +906,7 @@ class MiscMixin(
             issues += len(re.findall(r"TODO|FIXME|BUG", text, flags=re.IGNORECASE))
         self.gamification.set_challenge_state("bug_hunt", True, {"workspace_root": root, "found_markers": issues})
         self.show_status_message(f"Bug hunt mode ready: {issues} marker(s) found.", 3500)
+        return True
 
     def craft_template_tool(self) -> None:
         if not self._gamification_enabled():
@@ -473,9 +962,16 @@ class MiscMixin(
             return
         result, notes = self.gamification.mark_plugin_used()
         self._show_gamification_progress(result, notes)
+        self._evaluate_easter_eggs("plugin_used")
 
     def enable_note_encryption(self) -> None:
         self.security_controller.enable_note_encryption()
+        encrypted_count = 0
+        for index in range(self.tab_widget.count()):
+            tab = self.tab_widget.widget(index)
+            if isinstance(tab, EditorTab) and bool(getattr(tab, "encryption_enabled", False)):
+                encrypted_count += 1
+        self._evaluate_easter_eggs("encryption_enabled", {"encrypted_count": encrypted_count})
 
     def disable_note_encryption(self) -> None:
         self.security_controller.disable_note_encryption()
@@ -1984,6 +2480,7 @@ class MiscMixin(
         if hasattr(self, "gamification") and self._gamification_enabled():
             xp_result, notes = self.gamification.mark_quiz_finished()
             self._show_gamification_progress(xp_result, notes)
+            self._evaluate_easter_eggs("shortcut_used")
         self.quit_quiz_mode()
 
     def ai_commit_message_generator(self) -> None:
@@ -2498,6 +2995,7 @@ class MiscMixin(
         if hasattr(self, "gamification") and self._gamification_enabled():
             xp_result, notes = self.gamification.mark_workspace_review()
             self._show_gamification_progress(xp_result, notes)
+            self._evaluate_easter_eggs("workspace_review")
 
     def ai_rewrite_selection(self, mode: str) -> None:
         tab = self.active_tab()
@@ -2585,11 +3083,34 @@ class MiscMixin(
         self.apply_settings()
         self.show_status_message("Applied Reading preset.", 2500)
 
+    def apply_writing_preset(self) -> None:
+        self.settings["font_size"] = 15
+        self.settings["word_wrap"] = True
+        self.word_wrap_enabled = True
+        self.word_wrap_action.setChecked(True)
+        self.settings["show_main_toolbar"] = False
+        self.settings["show_markdown_toolbar"] = False
+        self.settings["status_show_breadcrumb"] = False
+        self.settings["status_show_selection_stats"] = True
+        if hasattr(self, "editor_dock"):
+            self.editor_dock.show()
+        for name in ("ai_chat_dock", "markdown_preview_dock", "search_results_dock", "minimap_dock", "outline_dock"):
+            dock = getattr(self, name, None)
+            if dock is not None:
+                dock.hide()
+        self.apply_settings()
+        self.show_status_message("Applied Writing preset.", 2500)
+
     def apply_coding_preset(self) -> None:
         self.settings["font_size"] = 12
         self.settings["tab_width"] = 4
         self.word_wrap_enabled = False
         self.word_wrap_action.setChecked(False)
+        self.settings["show_main_toolbar"] = True
+        self.settings["status_show_breadcrumb"] = True
+        self.settings["status_show_selection_stats"] = True
+        if hasattr(self, "outline_dock"):
+            self.outline_dock.show()
         self.apply_settings()
         self.show_status_message("Applied Coding preset.", 2500)
 
@@ -2597,6 +3118,21 @@ class MiscMixin(
         self.focus_mode_action.setChecked(True)
         self.toggle_focus_mode(True)
         self.show_status_message("Applied Focus preset.", 2500)
+
+    def apply_review_preset(self) -> None:
+        self.settings["show_main_toolbar"] = True
+        self.settings["status_show_breadcrumb"] = True
+        self.settings["status_show_selection_stats"] = True
+        self.word_wrap_enabled = True
+        self.word_wrap_action.setChecked(True)
+        if hasattr(self, "search_results_dock"):
+            self.search_results_dock.show()
+        if hasattr(self, "outline_dock"):
+            self.outline_dock.show()
+        if hasattr(self, "markdown_preview_dock") and bool(self.active_tab() and self.active_tab().markdown_mode_enabled):
+            self.markdown_preview_dock.show()
+        self.apply_settings()
+        self.show_status_message("Applied Review preset.", 2500)
 
     def toggle_ai_chat_panel(self, checked: bool | None = None) -> None:
         if not hasattr(self, "ai_chat_dock"):
@@ -2889,7 +3425,7 @@ class MiscMixin(
     def _run_autosave_cycle(self) -> None:
         if not self.settings.get("autosave_enabled", True):
             if hasattr(self, "autosave_status_label"):
-                self.autosave_status_label.setText("Autosave: off")
+                self.autosave_status_label.setText("Save off")
             return
         saved_count = 0
         draft_count = 0
@@ -2937,11 +3473,10 @@ class MiscMixin(
         self.autosave_store.save()
         self._capture_crash_snapshot()
         if hasattr(self, "autosave_status_label"):
-            stamp = datetime.now().strftime("%H:%M:%S")
             if saved_count > 0:
-                self.autosave_status_label.setText(f"Autosaved {saved_count} file(s) at {stamp}")
+                self.autosave_status_label.setText(f"Saved {saved_count}")
             elif draft_count > 0:
-                self.autosave_status_label.setText(f"Draft autosaved {draft_count} tab(s) at {stamp}")
+                self.autosave_status_label.setText(f"Draft {draft_count}")
         if autosave_marked_saved:
             self.update_action_states()
             self.update_window_title()
@@ -3038,47 +3573,61 @@ class MiscMixin(
         startup_ready_cb = QApplication.instance().property("startup_ready_callback")
         if callable(startup_ready_cb):
             startup_ready_cb(self)
+        app = QApplication.instance()
+        prior_quit_on_last = bool(app.quitOnLastWindowClosed()) if app is not None else True
         if entries:
-            dlg = AutoSaveRecoveryDialog(self, entries)
-            if dlg.exec() != QDialog.Accepted:
-                return
-            if dlg.selected_action == "discard" and dlg.selected_ids:
-                _consume_placeholder_tab()
-            restored_any = False
-            for autosave_id in dlg.selected_ids:
-                entry = self.autosave_store.entries.get(autosave_id)
-                if entry is None:
-                    continue
-                if dlg.selected_action == "discard":
-                    try:
-                        path = Path(entry.autosave_path)
-                        if path.exists():
-                            path.unlink()
-                    except Exception:
-                        pass
-                    self.autosave_store.remove(autosave_id)
-                    continue
-                try:
-                    text = Path(entry.autosave_path).read_text(encoding="utf-8")
-                except Exception:
-                    text = ""
-                if not restored_any:
+            try:
+                if app is not None and not self.isVisible():
+                    app.setQuitOnLastWindowClosed(False)
+                dlg = AutoSaveRecoveryDialog(self, entries)
+                if dlg.exec() != QDialog.Accepted:
+                    return
+                if dlg.selected_action == "discard" and dlg.selected_ids:
                     _consume_placeholder_tab()
-                tab = self.add_new_tab(text=text, file_path=entry.original_path or None, make_current=True)
-                tab.autosave_id = entry.autosave_id
-                tab.autosave_path = entry.autosave_path
-                self._seed_version_history(tab, label="Recovered")
-                self._apply_file_metadata_to_tab(tab)
-                tab.text_edit.set_modified(True)
-                restored_any = True
+                restored_any = False
+                for autosave_id in dlg.selected_ids:
+                    entry = self.autosave_store.entries.get(autosave_id)
+                    if entry is None:
+                        continue
+                    if dlg.selected_action == "discard":
+                        try:
+                            path = Path(entry.autosave_path)
+                            if path.exists():
+                                path.unlink()
+                        except Exception:
+                            pass
+                        self.autosave_store.remove(autosave_id)
+                        continue
+                    try:
+                        text = Path(entry.autosave_path).read_text(encoding="utf-8")
+                    except Exception:
+                        text = ""
+                    if not restored_any:
+                        _consume_placeholder_tab()
+                    tab = self.add_new_tab(text=text, file_path=entry.original_path or None, make_current=True)
+                    tab.autosave_id = entry.autosave_id
+                    tab.autosave_path = entry.autosave_path
+                    self._seed_version_history(tab, label="Recovered")
+                    self._apply_file_metadata_to_tab(tab)
+                    tab.text_edit.set_modified(True)
+                    restored_any = True
+            finally:
+                if app is not None:
+                    app.setQuitOnLastWindowClosed(prior_quit_on_last)
         elif snapshot_payload:
-            answer = QMessageBox.question(
-                self,
-                "Recover Last Crash Snapshot",
-                "Restore recovered tabs from the last crash snapshot?",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.Yes,
-            )
+            try:
+                if app is not None and not self.isVisible():
+                    app.setQuitOnLastWindowClosed(False)
+                answer = QMessageBox.question(
+                    self,
+                    "Recover Last Crash Snapshot",
+                    "Restore recovered tabs from the last crash snapshot?",
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.Yes,
+                )
+            finally:
+                if app is not None:
+                    app.setQuitOnLastWindowClosed(prior_quit_on_last)
             if answer == QMessageBox.Yes:
                 _consume_placeholder_tab()
                 self._restore_from_snapshot_payload(snapshot_payload)
@@ -3351,6 +3900,8 @@ class MiscMixin(
             self.syntax_combo.setVisible(show_syntax)
         if hasattr(self, "breadcrumb_label"):
             self.breadcrumb_label.setVisible(bool(self.settings.get("status_show_breadcrumb", True)))
+        if hasattr(self, "selection_stats_label"):
+            self.selection_stats_label.setVisible(bool(self.settings.get("status_show_selection_stats", True)))
         if hasattr(self, "ruler_label"):
             allow_ruler = bool(self.settings.get("status_show_ruler", True))
             show_ruler = bool(
@@ -3363,6 +3914,10 @@ class MiscMixin(
             self.ai_usage_label.setVisible(bool(self.settings.get("status_show_ai_usage", True)))
         if hasattr(self, "autosave_status_label"):
             self.autosave_status_label.setVisible(bool(self.settings.get("status_show_autosave", True)))
+        if hasattr(self, "gamification_status_widget"):
+            self.gamification_status_widget.setVisible(bool(self.settings.get("status_show_gamification", False)))
+        if hasattr(self, "momentum_banner_widget"):
+            self.momentum_banner_widget.setVisible(bool(self.settings.get("status_show_momentum", False)))
         if hasattr(self, "status_panel_position_label"):
             self.status_panel_position_label.setVisible(bool(self.settings.get("status_show_position", True)))
         if hasattr(self, "status_panel_zoom_label"):
@@ -3375,6 +3930,8 @@ class MiscMixin(
             self.status_panel_syntax_label.setVisible(bool(self.settings.get("status_show_syntax", True)))
         if hasattr(self, "status_panel_breadcrumb_label"):
             self.status_panel_breadcrumb_label.setVisible(bool(self.settings.get("status_show_breadcrumb", True)))
+        if hasattr(self, "status_panel_selection_stats_label"):
+            self.status_panel_selection_stats_label.setVisible(bool(self.settings.get("status_show_selection_stats", True)))
         if hasattr(self, "status_panel_ruler_label"):
             allow_ruler = bool(self.settings.get("status_show_ruler", True))
             show_ruler = bool(
@@ -3385,6 +3942,8 @@ class MiscMixin(
             self.status_panel_ruler_label.setVisible(show_ruler)
         if hasattr(self, "status_panel_ai_usage_label"):
             self.status_panel_ai_usage_label.setVisible(bool(self.settings.get("status_show_ai_usage", True)))
+        if hasattr(self, "status_panel_gamification_widget"):
+            self.status_panel_gamification_widget.setVisible(bool(self.settings.get("status_show_gamification", False)))
 
     def apply_settings(self) -> None:
         _perf_start = time.perf_counter()
@@ -3508,10 +4067,22 @@ class MiscMixin(
                 self._apply_search_panel_theme()
             if hasattr(self, "_apply_custom_dock_title_bars_theme"):
                 self._apply_custom_dock_title_bars_theme()
+            if hasattr(self, "_refresh_empty_tabs_widget"):
+                self._refresh_empty_tabs_widget()
             if hasattr(self, "_apply_ai_feature_icons"):
                 self._apply_ai_feature_icons()
             if hasattr(self, "_refresh_explorer_dock"):
                 self._refresh_explorer_dock()
+            if hasattr(self, "gamification_status_widget"):
+                self.gamification_status_widget.apply_theme(tokens)
+            if hasattr(self, "status_panel_gamification_widget"):
+                self.status_panel_gamification_widget.apply_theme(tokens)
+            if hasattr(self, "momentum_banner_widget"):
+                self.momentum_banner_widget.apply_theme(tokens)
+            if hasattr(self, "productivity_hub_widget"):
+                self.productivity_hub_widget.apply_theme(tokens)
+            if hasattr(self, "gamification_reward_toast"):
+                self.gamification_reward_toast.apply_theme(tokens)
             # Re-render tab file icons with the current theme icon color.
             if hasattr(self, "_refresh_tab_title"):
                 for index in range(self.tab_widget.count()):
@@ -3612,11 +4183,11 @@ class MiscMixin(
         if self.settings.get("autosave_enabled", True) and autosave_interval > 0:
             self.autosave_timer.start(autosave_interval * 1000)
             if hasattr(self, "autosave_status_label"):
-                self.autosave_status_label.setText("Autosave: running")
+                self.autosave_status_label.setText("Save on")
         else:
             self.autosave_timer.stop()
             if hasattr(self, "autosave_status_label"):
-                self.autosave_status_label.setText("Autosave: off")
+                self.autosave_status_label.setText("Save off")
 
         if hasattr(self, "syntax_combo"):
             self.syntax_combo.setEnabled(self.settings.get("syntax_highlighting_enabled", True))
@@ -4316,6 +4887,11 @@ class MiscMixin(
         except Exception:
             pass
         self.log_event("Info", "Application closing")
+        if self._session_review_enabled():
+            try:
+                self.show_session_review(auto=True)
+            except Exception:
+                pass
         type(self).windows_by_id.pop(self.window_id, None)
         event.accept()
 
@@ -4365,6 +4941,8 @@ class MiscMixin(
         self.settings["last_session_file_path"] = path
         self.save_settings_to_disk()
         self.show_status_message(f"Session saved: {path}", 3000)
+        if self._session_review_enabled() and hasattr(self, "show_session_review"):
+            self.show_session_review(auto=True)
         return True
 
     def save_session(self) -> None:
@@ -4558,6 +5136,126 @@ class MiscMixin(
         if workspace_root and Path(workspace_root).exists():
             self.settings["workspace_root"] = workspace_root
 
+    def _serialize_tab_for_reopen(self, tab: EditorTab) -> dict[str, object]:
+        return {
+            "path": str(tab.current_file or ""),
+            "text": tab.text_edit.get_text(),
+            "modified": bool(tab.text_edit.is_modified()),
+            "markdown_mode": bool(tab.markdown_mode_enabled),
+            "encoding": str(tab.encoding or ""),
+            "eol_mode": str(tab.eol_mode or ""),
+            "favorite": bool(tab.favorite),
+            "pinned": bool(tab.pinned),
+            "tab_color": str(tab.tab_color or ""),
+            "tags": list(tab.tags),
+            "bookmarks": sorted(int(line) for line in tab.bookmarks),
+            "read_only": bool(tab.read_only),
+            "closed_at": datetime.now().isoformat(timespec="seconds"),
+        }
+
+    def _push_closed_tab_snapshot(self, tab: EditorTab) -> None:
+        history = list(getattr(self, "closed_tabs_history", []))
+        history.insert(0, self._serialize_tab_for_reopen(tab))
+        self.closed_tabs_history = history[:20]
+        self.settings["closed_tab_history"] = list(self.closed_tabs_history)
+        self.save_settings_to_disk()
+
+    def _restore_closed_tab_snapshot(self, payload: dict[str, object]) -> bool:
+        path = str(payload.get("path", "") or "").strip()
+        text = str(payload.get("text", "") or "")
+        active = self.active_tab()
+        remove_placeholder = bool(
+            active is not None
+            and self.tab_widget.count() == 1
+            and not active.current_file
+            and not active.text_edit.is_modified()
+            and not active.text_edit.get_text().strip()
+        )
+        tab = self.add_new_tab(text=text, file_path=path or None, make_current=True)
+        tab.markdown_mode_enabled = bool(payload.get("markdown_mode", False))
+        tab.encoding = str(payload.get("encoding", "") or tab.encoding or "utf-8")
+        tab.eol_mode = str(payload.get("eol_mode", "") or tab.eol_mode or "CRLF")
+        tab.favorite = bool(payload.get("favorite", False))
+        tab.pinned = bool(payload.get("pinned", False))
+        tab.tab_color = str(payload.get("tab_color", "") or "") or None
+        tab.tags = [str(item) for item in payload.get("tags", []) if str(item).strip()]
+        tab.bookmarks = {int(item) for item in payload.get("bookmarks", []) if str(item).strip()}
+        tab.read_only = bool(payload.get("read_only", False))
+        tab.text_edit.set_read_only(tab.read_only)
+        tab.text_edit.set_modified(bool(payload.get("modified", False)))
+        if hasattr(self, "_sync_scintilla_bookmark_markers"):
+            self._sync_scintilla_bookmark_markers(tab)
+        if hasattr(self, "_refresh_tab_title"):
+            self._refresh_tab_title(tab)
+        if remove_placeholder and active is not None:
+            active_index = self.tab_widget.indexOf(active)
+            if active_index >= 0:
+                self.tab_widget.removeTab(active_index)
+                active.deleteLater()
+        self.update_status_bar()
+        return True
+
+    def reopen_closed_tab(self) -> None:
+        history = list(getattr(self, "closed_tabs_history", []))
+        if not history:
+            QMessageBox.information(self, "Reopen Closed Tab", "There are no recently closed tabs.")
+            return
+        payload = history.pop(0)
+        self.closed_tabs_history = history
+        self.settings["closed_tab_history"] = history
+        self._restore_closed_tab_snapshot(payload)
+        self.save_settings_to_disk()
+        self.update_action_states()
+        self.show_status_message("Reopened closed tab.", 2500)
+
+    def show_recently_closed_tabs(self) -> None:
+        history = list(getattr(self, "closed_tabs_history", []))
+        if not history:
+            QMessageBox.information(self, "Recently Closed Tabs", "There are no recently closed tabs.")
+            return
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Recently Closed Tabs")
+        dlg.resize(560, 380)
+        apply_dialog_theme_from_window(self, dlg)
+        layout = QVBoxLayout(dlg)
+        listing = QListWidget(dlg)
+        for row in history:
+            path = str(row.get("path", "") or "").strip()
+            title = Path(path).name if path else "Untitled"
+            stamp = str(row.get("closed_at", "") or "").strip()
+            listing.addItem(f"{title}    {stamp}")
+        layout.addWidget(listing)
+        buttons = QDialogButtonBox(QDialogButtonBox.Close, Qt.Horizontal, dlg)
+        reopen_btn = buttons.addButton("Reopen Selected", QDialogButtonBox.AcceptRole)
+        clear_btn = buttons.addButton("Clear History", QDialogButtonBox.DestructiveRole)
+        def _reopen_selected() -> None:
+            row = listing.currentRow()
+            if row < 0 or row >= len(history):
+                QMessageBox.information(self, "Recently Closed Tabs", "Select a tab to reopen.")
+                return
+            payload = history.pop(row)
+            self.closed_tabs_history = history
+            self.settings["closed_tab_history"] = history
+            self._restore_closed_tab_snapshot(payload)
+            self.save_settings_to_disk()
+            self.update_action_states()
+            dlg.accept()
+
+        def _clear_history() -> None:
+            self.closed_tabs_history = []
+            self.settings["closed_tab_history"] = []
+            self.save_settings_to_disk()
+            self.update_action_states()
+            dlg.accept()
+
+        reopen_btn.clicked.connect(_reopen_selected)
+        clear_btn.clicked.connect(_clear_history)
+        buttons.rejected.connect(dlg.reject)
+        layout.addWidget(buttons)
+        if listing.count() > 0:
+            listing.setCurrentRow(0)
+        dlg.exec()
+
     def _watch_file(self, path: str) -> None:
         watcher = getattr(self, "file_watcher", None)
         if watcher is None:
@@ -4606,15 +5304,57 @@ class MiscMixin(
             QMessageBox.warning(self, "File Changed", f"File was removed or renamed:\n{path}")
             return
         if tab.text_edit.is_modified():
-            ret = QMessageBox.question(
-                self,
-                "File Changed",
-                f'"{Path(path).name}" changed on disk.\n\nReload and discard your changes?',
-                QMessageBox.Yes | QMessageBox.No,
-            )
-            if ret != QMessageBox.Yes:
+            msg = QMessageBox(self)
+            msg.setWindowTitle("File Changed")
+            msg.setIcon(QMessageBox.Warning)
+            msg.setText(f'"{Path(path).name}" changed on disk while you also have local edits.')
+            msg.setInformativeText("Choose Reload from Disk, Keep My Changes, or Compare.")
+            reload_btn = msg.addButton("Reload from Disk", QMessageBox.AcceptRole)
+            keep_btn = msg.addButton("Keep My Changes", QMessageBox.RejectRole)
+            compare_btn = msg.addButton("Compare", QMessageBox.ActionRole)
+            msg.exec()
+            clicked = msg.clickedButton()
+            if clicked is compare_btn:
+                self._show_external_change_diff(tab, path)
+                return
+            if clicked is not reload_btn:
                 return
         self.reload_tab_from_disk(tab)
+
+    def _show_external_change_diff(self, tab: EditorTab, path: str) -> None:
+        try:
+            disk_text = Path(path).read_text(encoding="utf-8", errors="replace")
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.warning(self, "Compare with Disk", f"Could not read changed file:\n{exc}")
+            return
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Changed on Disk")
+        dlg.resize(980, 620)
+        apply_dialog_theme_from_window(self, dlg)
+        layout = QVBoxLayout(dlg)
+        summary = QLabel(f'Comparing current tab with on-disk file:\n{path}', dlg)
+        summary.setWordWrap(True)
+        layout.addWidget(summary)
+        split = QSplitter(Qt.Horizontal, dlg)
+        left = QTextEdit(split)
+        right = QTextEdit(split)
+        left.setReadOnly(True)
+        right.setReadOnly(True)
+        left.setPlainText(tab.text_edit.get_text())
+        right.setPlainText(disk_text)
+        split.addWidget(left)
+        split.addWidget(right)
+        split.setStretchFactor(0, 1)
+        split.setStretchFactor(1, 1)
+        layout.addWidget(split, 1)
+        buttons = QDialogButtonBox(QDialogButtonBox.Close, Qt.Horizontal, dlg)
+        reload_btn = buttons.addButton("Reload from Disk", QDialogButtonBox.AcceptRole)
+        keep_btn = buttons.addButton("Keep My Changes", QDialogButtonBox.ActionRole)
+        reload_btn.clicked.connect(lambda: (self.reload_tab_from_disk(tab), dlg.accept()))
+        keep_btn.clicked.connect(dlg.accept)
+        buttons.rejected.connect(dlg.reject)
+        layout.addWidget(buttons)
+        dlg.exec()
 
     def _bookmark_marker_id(self, tab: EditorTab) -> int | None:
         if not tab.text_edit.is_scintilla:
@@ -4915,6 +5655,7 @@ class MiscMixin(
         self._layout_docks_ready = True
         self._build_explorer_dock()
         self._build_search_results_dock()
+        self._build_productivity_hub_dialog()
         self._ensure_default_layout()
         for dock_name in ("ai_chat_dock", "markdown_preview_dock"):
             dock = getattr(self, dock_name, None)
@@ -5967,12 +6708,14 @@ class MiscMixin(
         self.status_panel_position_label = QLabel("Ln -, Col -", container)
         self.status_panel_zoom_label = QLabel("100%", container)
         self.status_panel_eol_label = QLabel("", container)
-        self.status_panel_encoding_label = QLabel("UTF-8", container)
-        self.status_panel_syntax_label = QLabel("Lang: Auto", container)
+        self.status_panel_encoding_label = QLabel("UTF8", container)
+        self.status_panel_syntax_label = QLabel("Lang Auto", container)
         self.status_panel_breadcrumb_label = QLabel("-", container)
+        self.status_panel_selection_stats_label = QLabel("W 0 | C 0", container)
         self.status_panel_ruler_label = QLabel("", container)
-        self.status_panel_ai_usage_label = QLabel("AI: 0 req | ~0 tok | ~$0.0000", container)
-        self.status_panel_gamification_label = QLabel("LVL 1 | XP 0 | Byte:Seed", container)
+        self.status_panel_ai_usage_label = QLabel("AI 0", container)
+        self.status_panel_gamification_widget = CompactGamificationWidget(container)
+        self.status_panel_gamification_widget.open_requested.connect(self.open_gamification_dashboard)
         for label in (
             self.status_panel_position_label,
             self.status_panel_zoom_label,
@@ -5980,12 +6723,13 @@ class MiscMixin(
             self.status_panel_encoding_label,
             self.status_panel_syntax_label,
             self.status_panel_breadcrumb_label,
+            self.status_panel_selection_stats_label,
             self.status_panel_ruler_label,
             self.status_panel_ai_usage_label,
-            self.status_panel_gamification_label,
         ):
-            label.setMargin(3)
+            label.setMargin(1)
             layout.addWidget(label)
+        layout.addWidget(self.status_panel_gamification_widget)
         layout.addStretch(1)
         dock.setWidget(container)
         self.status_panel_dock = dock
@@ -5994,6 +6738,65 @@ class MiscMixin(
         dock.visibilityChanged.connect(lambda _visible: self._sync_layout_panel_actions())
         if hasattr(self, "log_event"):
             self.log_event("Info", "[Startup] Dock created: Status Panel")
+
+    def _build_productivity_hub_dialog(self) -> None:
+        if hasattr(self, "productivity_hub_dialog"):
+            return
+        widget = ProductivityHubWidget(self)
+        widget.open_dashboard_requested.connect(self.open_gamification_dashboard)
+        widget.focus_sprint_requested.connect(self.start_focus_sprint_mode)
+        widget.bug_hunt_requested.connect(self.start_bug_hunt_mode)
+        widget.craft_tool_requested.connect(self.craft_template_tool)
+        widget.routine_requested.connect(self.run_productivity_routine)
+        widget.recommended_action_requested.connect(self.run_coach_recommendation)
+        if hasattr(self, "_icon"):
+            widget.apply_icons(self._icon)
+        dialog = ProductivityHubDialog(
+            self,
+            widget,
+            restore_geometry=self._restore_productivity_hub_dialog_geometry,
+            save_geometry=self._save_productivity_hub_dialog_geometry,
+        )
+        dialog.setObjectName("productivityHubDialog")
+        dialog.finished.connect(lambda _result: self._sync_layout_panel_actions())
+        self.productivity_hub_widget = widget
+        self.productivity_hub_dialog = dialog
+        self._refresh_productivity_hub()
+        if hasattr(self, "log_event"):
+            self.log_event("Info", "[Startup] Dialog created: Productivity Hub")
+
+    def _save_productivity_hub_dialog_geometry(self, dialog) -> None:
+        if dialog is None:
+            return
+        try:
+            geometry = self._encode_layout_bytes(dialog.saveGeometry())
+        except Exception:
+            return
+        self.settings["productivity_hub_dialog_geometry"] = geometry
+        if hasattr(self, "save_settings_to_disk"):
+            self.save_settings_to_disk()
+
+    def _restore_productivity_hub_dialog_geometry(self, dialog) -> None:
+        if dialog is None:
+            return
+        raw = str(self.settings.get("productivity_hub_dialog_geometry", "") or "")
+        if raw:
+            try:
+                geo = self._decode_layout_bytes(raw)
+                if not geo.isEmpty():
+                    dialog.restoreGeometry(geo)
+                    return
+            except Exception:
+                pass
+        try:
+            host_geo = self.geometry()
+            width = min(max(920, int(host_geo.width() * 0.8)), 1260)
+            height = min(max(640, int(host_geo.height() * 0.82)), 900)
+            dialog.resize(width, height)
+            center = host_geo.center()
+            dialog.move(center.x() - (dialog.width() // 2), center.y() - (dialog.height() // 2))
+        except Exception:
+            pass
 
     def _sync_layout_panel_actions(self) -> None:
         if hasattr(self, "workspace_panel_action") and hasattr(self, "workspace_dock"):
@@ -6008,6 +6811,10 @@ class MiscMixin(
             self.search_results_panel_action.blockSignals(True)
             self.search_results_panel_action.setChecked(self.search_results_dock.isVisible())
             self.search_results_panel_action.blockSignals(False)
+        if hasattr(self, "productivity_hub_panel_action") and hasattr(self, "productivity_hub_dialog"):
+            self.productivity_hub_panel_action.blockSignals(True)
+            self.productivity_hub_panel_action.setChecked(self.productivity_hub_dialog.isVisible())
+            self.productivity_hub_panel_action.blockSignals(False)
         if hasattr(self, "editor_panel_action") and hasattr(self, "editor_dock"):
             self.editor_panel_action.blockSignals(True)
             self.editor_panel_action.setChecked(self.editor_dock.isVisible())
@@ -6088,6 +6895,14 @@ class MiscMixin(
         label = getattr(self, "_closed_windows_hint_label", None)
         if label is not None:
             label.setGeometry(self.contentsRect())
+        if not getattr(self, "_layout_restore_in_progress", False):
+            QTimer.singleShot(0, self._rebalance_primary_side_docks)
+            self._schedule_layout_auto_save()
+
+    def moveEvent(self, event) -> None:  # type: ignore[override]
+        super().moveEvent(event)
+        if not getattr(self, "_layout_restore_in_progress", False):
+            self._schedule_layout_auto_save()
 
     def _install_layout_auto_save(self) -> None:
         if getattr(self, "_layout_auto_save_ready", False):
@@ -6102,6 +6917,7 @@ class MiscMixin(
         for name in (
             "editor_dock",
             "ai_chat_dock",
+            "markdown_preview_dock",
             "workspace_dock",
             "explorer_dock",
             "search_results_dock",
@@ -6204,6 +7020,18 @@ class MiscMixin(
         if not hasattr(self, "search_results_dock"):
             return
         self.search_results_dock.setVisible(bool(checked))
+
+    def toggle_productivity_hub_panel(self, checked: bool) -> None:
+        if not hasattr(self, "productivity_hub_dialog"):
+            return
+        if checked:
+            self._refresh_productivity_hub()
+            self.productivity_hub_dialog.show()
+            self.productivity_hub_dialog.raise_()
+            self.productivity_hub_dialog.activateWindow()
+        else:
+            self.productivity_hub_dialog.hide()
+        self._sync_layout_panel_actions()
 
     def toggle_editor_panel(self, checked: bool) -> None:
         if not hasattr(self, "editor_dock"):
@@ -6353,6 +7181,72 @@ class MiscMixin(
             return None
         return [editor_w, ai_w]
 
+    def _rebalance_primary_side_docks(self) -> None:
+        editor_dock = getattr(self, "editor_dock", None)
+        if editor_dock is None or not editor_dock.isVisible():
+            return
+        total_width = max(0, int(self.width()))
+        if total_width <= 0:
+            return
+
+        ai_chat_dock = getattr(self, "ai_chat_dock", None)
+        markdown_preview_dock = getattr(self, "markdown_preview_dock", None)
+        visible_side_docks = [
+            dock
+            for dock in (ai_chat_dock, markdown_preview_dock)
+            if dock is not None and dock.isVisible()
+        ]
+        if not visible_side_docks:
+            return
+
+        editor_min = min(max(520, total_width // 2), max(520, total_width - 220))
+        side_budget = max(220, total_width - editor_min)
+        if len(visible_side_docks) == 1:
+            side_limits = {
+                ai_chat_dock: min(420, side_budget),
+                markdown_preview_dock: min(460, side_budget),
+            }
+        else:
+            per_side_limit = max(180, side_budget // len(visible_side_docks))
+            side_limits = {
+                ai_chat_dock: min(360, per_side_limit),
+                markdown_preview_dock: min(420, per_side_limit),
+            }
+
+        side_sizes: dict[object, int] = {}
+        remaining_budget = side_budget
+        remaining_docks = len(visible_side_docks)
+        for dock in visible_side_docks:
+            limit = max(180, int(side_limits.get(dock, side_budget)))
+            try:
+                current = int(dock.width())
+            except Exception:
+                current = limit
+            desired = max(180, min(limit, current if current > 0 else limit))
+            min_share = max(180, remaining_budget // max(1, remaining_docks))
+            desired = min(desired, remaining_budget - 180 * max(0, remaining_docks - 1))
+            desired = max(180, max(min_share, desired) if remaining_budget >= 180 * remaining_docks else desired)
+            side_sizes[dock] = desired
+            remaining_budget = max(0, remaining_budget - desired)
+            remaining_docks -= 1
+
+        dock_order = []
+        size_order = []
+        if ai_chat_dock is not None and ai_chat_dock.isVisible():
+            dock_order.append(ai_chat_dock)
+            size_order.append(int(side_sizes.get(ai_chat_dock, 180)))
+        dock_order.append(editor_dock)
+        editor_size = max(editor_min, total_width - sum(size_order) - sum(int(side_sizes.get(d, 0)) for d in visible_side_docks if d not in dock_order))
+        size_order.append(editor_size)
+        if markdown_preview_dock is not None and markdown_preview_dock.isVisible():
+            dock_order.append(markdown_preview_dock)
+            size_order.append(int(side_sizes.get(markdown_preview_dock, 260)))
+
+        try:
+            self.resizeDocks(dock_order, size_order, Qt.Orientation.Horizontal)
+        except Exception:
+            return
+
     def _apply_primary_horizontal_dock_sizes(self, payload: dict[str, Any]) -> None:
         if not isinstance(payload, dict):
             return
@@ -6380,6 +7274,7 @@ class MiscMixin(
                 pass
         except Exception:
             return
+        self._rebalance_primary_side_docks()
         self._enforce_ai_chat_dock_width(payload)
 
     def _enforce_ai_chat_dock_width(self, payload: dict[str, Any]) -> None:
@@ -6408,6 +7303,7 @@ class MiscMixin(
                 self.resizeDocks([dock], [target], Qt.Orientation.Horizontal)
             except Exception:
                 return
+            self._rebalance_primary_side_docks()
             try:
                 self.log_event("Info", f"[Layout] Enforce ai_chat_dock_width target={target} current={int(dock.width())}")
             except Exception:
@@ -6530,6 +7426,8 @@ class MiscMixin(
             str(existing.get("state", "") or "") == str(snapshot.get("state", "") or "")
             and str(existing.get("geometry", "") or "") == str(snapshot.get("geometry", "") or "")
             and str(existing.get("window_mode", "") or "") == str(snapshot.get("window_mode", "") or "")
+            and list(existing.get("primary_dock_sizes", []) or []) == list(snapshot.get("primary_dock_sizes", []) or [])
+            and int(existing.get("ai_chat_dock_width", 0) or 0) == int(snapshot.get("ai_chat_dock_width", 0) or 0)
         )
         if unchanged:
             self.settings["layout_active"] = name
@@ -7171,6 +8069,8 @@ class MiscMixin(
                 QTimer.singleShot(900, lambda: self._maybe_show_contextual_tip("startup"))
             if bool(self.settings.get("onboarding_next_unlock_prompts_enabled", True)):
                 QTimer.singleShot(1400, self._maybe_show_next_unlock_prompt)
+                QTimer.singleShot(2100, self._maybe_show_daily_briefing_prompt)
+            QTimer.singleShot(2800, self._maybe_show_seasonal_event_prompt)
             return
         self.show_first_time_tutorial()
 
@@ -7230,6 +8130,14 @@ class MiscMixin(
             tips.append(("tip_quick_open", "Tip: press Ctrl+Alt+P for Quick Open and jump to files/symbols."))
         if not self._onboarding_has_step("opened_gamification_dashboard"):
             tips.append(("tip_gamification_dashboard", "Tip: open Play > Gamification Dashboard to track quests and unlocks."))
+        if not self._onboarding_has_step("opened_daily_briefing"):
+            tips.append(("tip_daily_briefing", "Tip: open Play > Daily Briefing for today's quest and companion guidance."))
+        if not self._onboarding_has_step("opened_seasonal_event_briefing"):
+            tips.append(("tip_seasonal_event", "Tip: open Play > Seasonal Event Briefing to track live event rewards."))
+        if not self._onboarding_has_step("opened_session_review"):
+            tips.append(("tip_session_review", "Tip: open Play > Session Review for a productivity recap and next unlock."))
+        if not self._onboarding_has_step("used_coach_recommendation"):
+            tips.append(("tip_coach_recommendation", "Tip: use the Productivity Hub recommendation button for the fastest next step."))
         if reason == "after_tutorial":
             tips.insert(0, ("tip_after_tutorial_demo", "Welcome tour done. Next: File > Templates > Demo Pack."))
             tips.insert(1, ("tip_after_tutorial", "Then try Command Palette (Ctrl+Shift+P)."))
@@ -7275,6 +8183,34 @@ class MiscMixin(
         state["unlock_prompt_levels"] = sorted(prompted_levels)
         self.save_settings_to_disk()
 
+    def _maybe_show_daily_briefing_prompt(self) -> None:
+        if not bool(self.settings.get("onboarding_enabled", True)):
+            return
+        if not bool(self.settings.get("onboarding_next_unlock_prompts_enabled", True)):
+            return
+        if not self._gamification_enabled() or not hasattr(self, "gamification"):
+            return
+        state = self._onboarding_state()
+        today_key = datetime.now().date().isoformat()
+        if str(state.get("daily_briefing_prompt_date", "") or "") == today_key:
+            return
+        state["daily_briefing_prompt_date"] = today_key
+        self.save_settings_to_disk()
+
+    def _maybe_show_seasonal_event_prompt(self) -> None:
+        if not bool(self.settings.get("onboarding_enabled", True)):
+            return
+        if not self._gamification_enabled() or not hasattr(self, "gamification"):
+            return
+        if not self.gamification.active_events():
+            return
+        state = self._onboarding_state()
+        today_key = datetime.now().date().isoformat()
+        if str(state.get("seasonal_event_prompt_date", "") or "") == today_key:
+            return
+        state["seasonal_event_prompt_date"] = today_key
+        self.save_settings_to_disk()
+
     def show_first_time_tutorial(self) -> None:
         tutorial = InteractiveTutorialDialog(self)
         accepted = tutorial.exec() == QDialog.Accepted
@@ -7287,6 +8223,8 @@ class MiscMixin(
         self.show_status_message("First time tutorial completed. Try File > Templates > Demo Pack.", 3200)
         QTimer.singleShot(700, lambda: self._maybe_show_contextual_tip("after_tutorial"))
         QTimer.singleShot(1400, self._maybe_show_next_unlock_prompt)
+        QTimer.singleShot(2100, self._maybe_show_daily_briefing_prompt)
+        QTimer.singleShot(2800, self._maybe_show_seasonal_event_prompt)
 
     def open_demo_pack_first_template(self) -> None:
         root_fn = getattr(self, "_demo_templates_root", None)
@@ -7399,6 +8337,28 @@ Pypad User Guide
         except Exception:
             return "N/A"
 
+    @staticmethod
+    def _text_stats(text: str) -> dict[str, int]:
+        probe = str(text or "")
+        return {
+            "words": len(re.findall(r"\S+", probe)),
+            "chars": len(probe),
+            "chars_no_eol": len(probe.replace("\r", "").replace("\n", "")),
+            "lines": probe.count("\n") + (1 if probe else 0),
+        }
+
+    def _selection_stats_text(self, tab: EditorTab | None) -> str:
+        if tab is None:
+            return "Words 0 | Chars 0"
+        selected = ""
+        try:
+            selected = str(tab.text_edit.selected_text() or "")
+        except Exception:
+            selected = ""
+        stats = self._text_stats(selected if selected else tab.text_edit.get_text())
+        prefix = "Sel" if selected else "Doc"
+        return f"{prefix} W {stats['words']} | C {stats['chars_no_eol']} | L {stats['lines']}"
+
     def show_document_summary(self) -> None:
         tab = self.active_tab()
         if tab is None:
@@ -7418,9 +8378,7 @@ Pypad User Guide
                 created = None
                 modified = None
 
-        chars_no_eol = len(text.replace("\r", "").replace("\n", ""))
-        words = len(re.findall(r"\S+", text))
-        lines = text.count("\n") + (1 if text else 0)
+        stats = self._text_stats(text)
 
         selection = tab.text_edit.selection_range()
         selected_chars = 0
@@ -7442,9 +8400,10 @@ Pypad User Guide
             f"Path: {file_path}\n"
             f"Created: {self._fmt_timestamp(created)}\n"
             f"Modified: {self._fmt_timestamp(modified)}\n\n"
-            f"Characters (without line endings): {chars_no_eol}\n"
-            f"Words: {words}\n"
-            f"Lines: {lines}\n\n"
+            f"Characters (without line endings): {stats['chars_no_eol']}\n"
+            f"Characters (with line endings): {stats['chars']}\n"
+            f"Words: {stats['words']}\n"
+            f"Lines: {stats['lines']}\n\n"
             f"Selected characters: {selected_chars}\n"
             f"Selected bytes (UTF-8): {selected_bytes}\n"
             f"Selection range: {selected_range}\n"
@@ -7463,6 +8422,149 @@ Pypad User Guide
         buttons.rejected.connect(dlg.reject)
         buttons.accepted.connect(dlg.accept)
         buttons.button(QDialogButtonBox.StandardButton.Close).clicked.connect(dlg.accept)
+        layout.addWidget(buttons)
+        dlg.exec()
+
+    def _spellcheck_custom_words(self) -> list[str]:
+        raw = self.settings.get("spellcheck_user_dictionary", [])
+        if isinstance(raw, list):
+            return [str(item).strip().lower() for item in raw if str(item).strip()]
+        return []
+
+    def open_spell_check_dialog(self) -> None:
+        tab = self.active_tab()
+        if tab is None:
+            QMessageBox.information(self, "Spell Check", "No active document.")
+            return
+        if not spellcheck_available():
+            QMessageBox.information(
+                self,
+                "Spell Check",
+                "Local spellcheck dependency is not installed.\n\n"
+                "Install it with:\n"
+                "pip install pyspellchecker\n\n"
+                "Or reinstall project requirements to enable Spell Check Document.",
+            )
+            return
+        self.show_status_message("Scanning document for misspellings...", 2000)
+        findings = unknown_words(
+            tab.text_edit.get_text(),
+            language=str(self.settings.get("spellcheck_language", "en") or "en"),
+            custom_words=self._spellcheck_custom_words(),
+        )
+        if not findings:
+            QMessageBox.information(self, "Spell Check", "No potential misspellings were found in the current document.")
+            return
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Spell Check")
+        dlg.resize(760, 520)
+        apply_dialog_theme_from_window(self, dlg)
+        layout = QVBoxLayout(dlg)
+        summary = QLabel(f"Potential misspellings found: {len(findings)}", dlg)
+        layout.addWidget(summary)
+        split = QSplitter(Qt.Horizontal, dlg)
+        words_list = QListWidget(split)
+        suggestion_list = QListWidget(split)
+        split.addWidget(words_list)
+        split.addWidget(suggestion_list)
+        split.setStretchFactor(0, 1)
+        split.setStretchFactor(1, 1)
+        layout.addWidget(split, 1)
+        for row in findings:
+            words_list.addItem(str(row.get("word", "")))
+
+        def _refresh_suggestions(row_index: int) -> None:
+            suggestion_list.clear()
+            if row_index < 0 or row_index >= len(findings):
+                return
+            for item in findings[row_index].get("suggestions", []):
+                suggestion_list.addItem(str(item))
+
+        def _replace_selected() -> None:
+            row_index = words_list.currentRow()
+            if row_index < 0 or row_index >= len(findings):
+                return
+            chosen = suggestion_list.currentItem()
+            if chosen is None:
+                return
+            entry = findings[row_index]
+            start = int(entry.get("start", 0))
+            end = int(entry.get("end", start))
+            tab.text_edit.set_selection_by_index(start, end)
+            tab.text_edit.replace_selection(chosen.text())
+            dlg.accept()
+            self.show_status_message("Spelling correction applied.", 2500)
+
+        words_list.currentRowChanged.connect(_refresh_suggestions)
+        buttons = QDialogButtonBox(QDialogButtonBox.Close, Qt.Horizontal, dlg)
+        replace_btn = buttons.addButton("Replace", QDialogButtonBox.AcceptRole)
+        replace_btn.clicked.connect(_replace_selected)
+        buttons.rejected.connect(dlg.reject)
+        layout.addWidget(buttons)
+        if findings:
+            words_list.setCurrentRow(0)
+        dlg.exec()
+
+    def show_spellcheck_suggestions_for_current_word(self) -> None:
+        tab = self.active_tab()
+        if tab is None:
+            return
+        if not spellcheck_available():
+            self.show_status_message("Spellcheck dependency is unavailable.", 2500)
+            return
+        span = word_span_at(tab.text_edit.get_text(), tab.text_edit.cursor_index())
+        if span is None:
+            self.show_status_message("Move the caret onto a word first.", 2500)
+            return
+        word, start, end = span
+        suggestions = suggestions_for_word(
+            word,
+            language=str(self.settings.get("spellcheck_language", "en") or "en"),
+            custom_words=self._spellcheck_custom_words(),
+        )
+        if not suggestions:
+            self.show_status_message("No spelling suggestions for the current word.", 2500)
+            return
+        menu = QMenu(self)
+        for suggestion in suggestions:
+            action = menu.addAction(suggestion)
+            action.triggered.connect(
+                lambda _checked=False, replacement=suggestion, lo=start, hi=end: (
+                    tab.text_edit.set_selection_by_index(lo, hi),
+                    tab.text_edit.replace_selection(replacement),
+                    self.show_status_message("Spelling correction applied.", 2500),
+                )
+            )
+        menu.exec(self.mapToGlobal(self.rect().center()))
+
+    def show_discoverability_guide(self) -> None:
+        body = (
+            "Core workflows\n"
+            "- File > Open / Quick Open for jumping into files fast\n"
+            "- File > More > Workspace for folders, search, and profiles\n"
+            "- View > Advanced > Project Panels for explorer, minimap, and symbol outline\n"
+            "- Tools > Spell Check Document for local spelling review\n"
+            "- Settings > UI Presets for Writing, Coding, and Review layouts\n\n"
+            "Useful shortcuts\n"
+            "- Ctrl+Shift+P: Command Palette\n"
+            "- Ctrl+Alt+P: Quick Open\n"
+            "- Ctrl+Shift+T: Reopen Closed Tab\n"
+            "- F12: Go To Definition\n"
+            "- Ctrl+F2 / F2: Toggle and navigate bookmarks\n"
+        )
+        dlg = QDialog(self)
+        dlg.setWindowTitle("What Can I Do Here?")
+        dlg.resize(720, 480)
+        apply_dialog_theme_from_window(self, dlg)
+        layout = QVBoxLayout(dlg)
+        viewer = QTextEdit(dlg)
+        viewer.setReadOnly(True)
+        viewer.setPlainText(body)
+        layout.addWidget(viewer)
+        buttons = QDialogButtonBox(QDialogButtonBox.Close, Qt.Horizontal, dlg)
+        buttons.rejected.connect(dlg.reject)
+        buttons.accepted.connect(dlg.accept)
+        buttons.button(QDialogButtonBox.Close).clicked.connect(dlg.accept)
         layout.addWidget(buttons)
         dlg.exec()
 
@@ -7544,46 +8646,30 @@ Pypad User Guide
             )
 
     def trigger_easter_egg(self) -> None:
-        """Play a short colorful theme animation, then restore normal theming."""
-        if self._easter_egg_running:
-            self.log_event("Debug", "Color burst ignored because one is already running")
+        """Spawn a draggable bouncing ball inside the main window."""
+        existing = getattr(self, "_easter_egg_ball", None)
+        if existing is not None and isinstance(existing, QWidget) and not existing.isHidden():
+            existing.raise_()
+            existing.activateWindow()
+            self.log_event("Debug", "Bouncing ball already active")
             return
         self._easter_egg_running = True
-        self.log_event("Info", "Color burst started")
+        ball = self._EasterEggBall(self)
+        self._easter_egg_ball = ball
+        x = max(0, min(self.width() // 3, self.width() - ball.width()))
+        y = max(0, min(self.height() // 4, self.height() - ball.height()))
+        ball.move(x, y)
+        ball.show()
+        ball.raise_()
 
-        # Small palette of bright color combinations
-        palettes: list[tuple[str, str]] = [
-            ("#ff1744", "#ffffff"),  # red
-            ("#ff9100", "#000000"),  # orange
-            ("#ffea00", "#000000"),  # yellow
-            ("#00e676", "#000000"),  # green
-            ("#00b0ff", "#ffffff"),  # blue
-            ("#d500f9", "#ffffff"),  # purple
-        ]
-        random.shuffle(palettes)
+        def _clear_ball() -> None:
+            self._easter_egg_running = False
+            if getattr(self, "_easter_egg_ball", None) is ball:
+                self._easter_egg_ball = None
+            self.log_event("Info", "Bouncing ball easter egg closed")
 
-        step_ms = 150
-        total_steps = len(palettes)
-        original_settings = dict(self.settings)
-
-        def apply_step(index: int) -> None:
-            if index >= total_steps:
-                self.settings = original_settings
-                self.apply_settings()
-                self._easter_egg_running = False
-                self.log_event("Info", "Color burst finished")
-                return
-
-            bg, text = palettes[index]
-            self.settings["use_custom_colors"] = True
-            self.settings["custom_editor_bg"] = bg
-            self.settings["custom_chrome_bg"] = bg
-            self.settings["custom_editor_fg"] = text
-            self.settings["accent_color"] = bg
-            self.apply_settings()
-            QTimer.singleShot(step_ms, lambda: apply_step(index + 1))
-
-        apply_step(0)
+        ball.destroyed.connect(lambda _obj=None: _clear_ball())
+        self.log_event("Info", "Bouncing ball easter egg spawned")
 
 
 

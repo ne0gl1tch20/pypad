@@ -79,6 +79,7 @@ from pypad.ui.system.updater_controller import UpdaterController
 from pypad.ui.system.version_history import VersionHistoryDialog
 from pypad.ui.workspace.workspace_controller import WorkspaceController
 from pypad.ui.features.advanced_features import AdvancedFeaturesController
+from pypad.ui.features.gamification_widgets import CompactGamificationWidget, GamificationToast, MomentumBannerWidget
 from pypad.i18n.translator import AppTranslator
 
 from .ui_setup import UiSetupMixin
@@ -164,6 +165,7 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
         self._search_results_query = ""
         self._search_results_items: list[dict[str, object]] = []
         self._search_results_index = -1
+        self.closed_tabs_history: list[dict[str, object]] = []
         self.ai_usage_session = {
             "requests": 0,
             "tokens": 0,
@@ -220,6 +222,7 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
             )
         self.markdown_preview_pane = MarkdownPreviewPane(self.markdown_preview_dock)
         self.markdown_preview_dock.setWidget(self.markdown_preview_pane)
+        self.markdown_preview_dock.setMinimumWidth(260)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.markdown_preview_dock)
         self.markdown_preview_dock.visibilityChanged.connect(self._on_markdown_preview_dock_visibility_changed)
         self.markdown_preview_dock.hide()
@@ -236,6 +239,8 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
         if hasattr(self, "apply_logging_preferences"):
             self.apply_logging_preferences()
         self.log_event("Info", f"[Startup] Settings loaded from: {self.settings_file}")
+        loaded_closed = self.settings.get("closed_tab_history", [])
+        self.closed_tabs_history = list(loaded_closed) if isinstance(loaded_closed, list) else []
         self._page_layout_view_enabled = bool(self.settings.get("page_layout_view_enabled", False))
         self.line_numbers_enabled = bool(self.settings.get("npp_margin_line_numbers_enabled", True))
         _mark_startup_stage("settings_loaded")
@@ -273,6 +278,21 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
 
         # Status bar
         self.status = QStatusBar(self)
+        self.status.setSizeGripEnabled(False)
+        self.status.setContentsMargins(0, 0, 0, 0)
+        self.status.setFixedHeight(24)
+        self.status.setStyleSheet(
+            """
+            QStatusBar {
+                padding: 0px;
+            }
+            QStatusBar::item {
+                border: none;
+                margin: 0px;
+                padding: 0px;
+            }
+            """
+        )
         self.setStatusBar(self.status)
         self.log_event("Info", "[Startup] Status bar initialized")
 
@@ -285,32 +305,42 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
         self.encoding_label = QLabel("UTF-8", self)
 
         for label in (self.position_label, self.zoom_label, self.eol_label, self.encoding_label):
-            label.setMargin(3)
+            label.setMargin(0)
             self.status.addPermanentWidget(label)
 
-        self.syntax_label = QLabel("Lang:", self)
-        self.syntax_label.setMargin(3)
+        self.syntax_label = QLabel("Lang", self)
+        self.syntax_label.setMargin(1)
         self.syntax_combo = QComboBox(self)
         self.syntax_combo.addItems(["Auto", "Python", "JavaScript", "JSON", "Markdown", "Plain"])
+        self.syntax_combo.setMinimumWidth(64)
+        self.syntax_combo.setMaximumWidth(88)
+        self.syntax_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContentsOnFirstShow)
         self.syntax_combo.currentTextChanged.connect(self._set_active_tab_language)
         self.status.addPermanentWidget(self.syntax_label)
         self.status.addPermanentWidget(self.syntax_combo)
         self.breadcrumb_label = QLabel("-", self)
-        self.breadcrumb_label.setMargin(3)
+        self.breadcrumb_label.setMargin(0)
         self.status.addPermanentWidget(self.breadcrumb_label)
+        self.selection_stats_label = QLabel("W 0 | C 0", self)
+        self.selection_stats_label.setMargin(0)
+        self.status.addPermanentWidget(self.selection_stats_label)
         self.ruler_label = QLabel("", self)
-        self.ruler_label.setMargin(3)
+        self.ruler_label.setMargin(0)
         self.ruler_label.setVisible(False)
         self.status.addPermanentWidget(self.ruler_label)
-        self.ai_usage_label = QLabel("AI: 0 req | ~0 tok | ~$0.0000", self)
-        self.ai_usage_label.setMargin(3)
+        self.ai_usage_label = QLabel("AI 0", self)
+        self.ai_usage_label.setMargin(0)
         self.status.addPermanentWidget(self.ai_usage_label)
-        self.autosave_status_label = QLabel("Autosave: waiting", self)
-        self.autosave_status_label.setMargin(3)
+        self.autosave_status_label = QLabel("Save idle", self)
+        self.autosave_status_label.setMargin(0)
         self.status.addPermanentWidget(self.autosave_status_label)
-        self.gamification_status_label = QLabel("LVL 1 | XP 0 | Byte:Seed", self)
-        self.gamification_status_label.setMargin(3)
-        self.status.addPermanentWidget(self.gamification_status_label)
+        self.gamification_status_widget = CompactGamificationWidget(self)
+        self.gamification_status_widget.open_requested.connect(self.open_gamification_dashboard)
+        self.status.addPermanentWidget(self.gamification_status_widget)
+        self.momentum_banner_widget = MomentumBannerWidget(self)
+        self.momentum_banner_widget.recommended_action_requested.connect(self.run_coach_recommendation)
+        self.status.addPermanentWidget(self.momentum_banner_widget, 1)
+        self.gamification_reward_toast = GamificationToast(self)
         self.quiz_quit_button = QPushButton("Quit", self)
         self.quiz_quit_button.setVisible(False)
         self.quiz_quit_button.clicked.connect(self.quit_quiz_mode)

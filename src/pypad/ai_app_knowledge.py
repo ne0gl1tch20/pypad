@@ -41,6 +41,9 @@ Current UI truths:
 - Markdown tools were migrated into `Format > Markdown` (not a top-level Markdown menu).
 - AI actions are available from `File > AI` and the AI Chat panel.
 - Workspace actions are available from `File > Workspace` and workspace panels.
+- Productivity and gamification actions are grouped under `Play`.
+- The visible productivity surfaces are the status-area widget, the momentum banner, the `Productivity Hub` dock, and the `Gamification Dashboard` dialog.
+- `Play` includes `Productivity Hub`, `Daily Briefing`, `Seasonal Event Briefing`, `Session Review`, `Productivity Routine`, and `Coach Recommendation`.
 - Preferences are under `Settings > Preferences`.
 - Preferences now combine PyPad pages and N++ compatibility pages in one dialog with `All`, `PyPad`, and `N++` scope filters.
 - N++ dark-mode compatibility options are embedded inside `Settings > Preferences > Appearance` (not a separate page).
@@ -97,6 +100,7 @@ Core editor capabilities (high-level):
 - Pin tabs, favorite tabs/files, tab colors, tags, and file metadata.
 - Read-only state handling and toggle actions.
 - Search/replace, regex workflows, bookmarks, line operations.
+- Local spellcheck workflows with document-wide review and current-word suggestions.
 - Macros (record/play/run saved macros).
 - Syntax highlighting and language selection.
 - Markdown editing tools + preview.
@@ -105,12 +109,22 @@ Core editor capabilities (high-level):
 - Export/import flows (text, markdown, html, docx, odt, pdf extraction workflows).
 - Autosave, local history, version history, session recovery.
 - Security/encryption flows for encrypted notes.
+- Productivity and gamification shell:
+  - compact XP and quest widget in the status area
+  - momentum banner with next-move action
+  - reward toasts
+  - Productivity Hub dock with quests, unlocks, briefings, milestones, secret trails, routines, and routine history
+  - Gamification Dashboard dialog with Quests, Skill Tree, Companion, Crafted Tools, Seasonal Events, Secret Trails, and Routines tabs
 - Updater checks and update settings.
 
 Settings keys (frequently useful):
 - ai_model
 - gemini_api_key
 - ai_app_knowledge_override   (user knowledge field; appended separately from built-in knowledge)
+- ai_knowledge_mode
+- ai_include_ui_action_appendix
+- ai_user_knowledge_max_chars
+- ai_selection_preview_chars
 - ai_private_mode
 - ai_verbose_logging
 - ai_preview_redacted_prompt
@@ -121,6 +135,9 @@ Settings keys (frequently useful):
 - ai_workspace_qa_max_lines_per_file
 - auto_check_updates
 - update_require_signed
+- spellcheck_enabled
+- spellcheck_language
+- spellcheck_user_dictionary
 - font_family
 - font_size
 - dark_mode
@@ -133,6 +150,9 @@ Settings keys (frequently useful):
 - show_markdown_toolbar
 - show_find_panel
 - workspace_root
+- gamification_enabled
+- gamification_custom_events
+- gamification_state
 - layout_auto_save_enabled
 - layout_active
 - layout_locked
@@ -179,15 +199,27 @@ Main window composition details:
 
 AI architecture (operational):
 - The AI controller prepares prompts using app metadata, built-in knowledge, user knowledge, runtime context, and the user prompt.
+- User knowledge is appended in a separate tagged block and should never replace built-in app knowledge.
+- Compact knowledge mode can omit the generated UI/action appendix to reduce token cost on routine requests.
 - The AI chat dock handles streaming UI, deep-link buttons, hidden insert/patch/apply command parsing, and local yes/no confirmation interception.
 - AI chat logging can include correlation IDs (`cid`) that tie stream callbacks, parse, and apply-confirm steps together when verbose/debug logging is enabled.
 - Prompt redaction can sanitize emails, paths, and token-like strings based on settings.
+
+Productivity and gamification behavior map:
+- `Daily Briefing` opens the current quest and companion-guidance loop.
+- `Seasonal Event Briefing` summarizes active seasonal goals and event badge progress.
+- `Session Review` summarizes recent writing, TODO, focus, and workspace activity.
+- `Productivity Routine` runs the top suggested practical workflow, such as a writing push, workspace sweep, command-palette power path, cleanup loop, or planning loop.
+- `Coach Recommendation` routes to the current best next action based on quests and stats.
+- Secret trails hint at hidden unlocks without fully spoiling them.
+- Routine history tracks which productivity routines the user has actually run.
 
 Troubleshooting map:
 - Startup visibility/exit issue: check startup markers/logging and layout restore timing.
 - Tab appearance/badge overlap: check tab accessory sizing, tab text spacing, and `QTabBar` style rules.
 - Save/favorite/pin metadata issue: check save/save-as flow and file metadata persistence helpers.
 - AI chat parsing/deep-link issue: check chat parsing/normalization logic and settings route aliases.
+- Productivity Hub or dashboard mismatch: check `gamification_system.py` snapshot payloads first, then the widget and dialog renderers.
 - Preferences Appearance contrast/race issue: inspect `SettingsThemeProbe` logs from `pypad.ui.main_window.settings_dialog` at `open`, `first_paint`, `post_150ms`, and `post_600ms`; compare token values (`dark_mode`, `text`, `surface_bg`, `input_bg`) with effective host/scroll/viewport/body palettes to detect theme/palette override mismatches.
 
 How to answer users effectively in PyPad:
@@ -299,16 +331,27 @@ def _generate_ui_setup_appendix() -> str:
     return "\n".join(lines)
 
 
-def get_default_ai_app_knowledge() -> str:
-    return _BASE_AI_APP_KNOWLEDGE + _generate_ui_setup_appendix()
+def get_default_ai_app_knowledge(*, include_ui_appendix: bool = True) -> str:
+    if include_ui_appendix:
+        return _BASE_AI_APP_KNOWLEDGE + _generate_ui_setup_appendix()
+    return _BASE_AI_APP_KNOWLEDGE
 
 
 DEFAULT_AI_APP_KNOWLEDGE = _BASE_AI_APP_KNOWLEDGE
 
 
-def resolve_ai_app_knowledge(override_text: object) -> str:
+def resolve_ai_app_knowledge(
+    override_text: object,
+    *,
+    include_ui_appendix: bool = True,
+    user_knowledge_char_limit: int | None = None,
+) -> str:
     custom = str(override_text or "").strip()
-    base = get_default_ai_app_knowledge().strip()
+    if user_knowledge_char_limit is not None and int(user_knowledge_char_limit) > 0:
+        limit = max(200, int(user_knowledge_char_limit))
+        if len(custom) > limit:
+            custom = custom[:limit].rstrip() + "\n[User knowledge truncated locally to save AI tokens.]"
+    base = get_default_ai_app_knowledge(include_ui_appendix=include_ui_appendix).strip()
     if not custom:
         return base
     return f"{base}\n\n[PYPAD_USER_KNOWLEDGE_OVERRIDE]\n{custom}\n[/PYPAD_USER_KNOWLEDGE_OVERRIDE]"

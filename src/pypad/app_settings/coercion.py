@@ -158,6 +158,7 @@ def migrate_settings(settings: dict) -> dict:
         current["save_debug_logs_to_appdata"] = coerce_bool(current.get("save_debug_logs_to_appdata", False), False)
         current["logging_level"] = _coerce_logging_level(current.get("logging_level", "INFO"))
         current["gamification_enabled"] = coerce_bool(current.get("gamification_enabled", True), True)
+        current["session_review_enabled"] = coerce_bool(current.get("session_review_enabled", False), False)
         custom_events = current.get("gamification_custom_events", [])
         current["gamification_custom_events"] = custom_events if isinstance(custom_events, list) else []
         gamification_state = current.get("gamification_state", {})
@@ -182,6 +183,32 @@ def migrate_settings(settings: dict) -> dict:
             1,
             20,
         )
+        current["status_show_selection_stats"] = coerce_bool(current.get("status_show_selection_stats", True), True)
+        current["ai_knowledge_mode"] = _coerce_enum(current.get("ai_knowledge_mode"), {"compact", "full"}, "compact")
+        current["ai_include_ui_action_appendix"] = coerce_bool(current.get("ai_include_ui_action_appendix", False), False)
+        current["ai_user_knowledge_max_chars"] = _coerce_int_clamped(
+            current.get("ai_user_knowledge_max_chars", 1800),
+            1800,
+            200,
+            12000,
+        )
+        current["ai_selection_preview_chars"] = _coerce_int_clamped(
+            current.get("ai_selection_preview_chars", 240),
+            240,
+            80,
+            5000,
+        )
+        current["spellcheck_enabled"] = coerce_bool(current.get("spellcheck_enabled", True), True)
+        current["spellcheck_language"] = str(current.get("spellcheck_language", "en") or "en").strip().lower() or "en"
+        raw_dict = current.get("spellcheck_user_dictionary", [])
+        if isinstance(raw_dict, str):
+            current["spellcheck_user_dictionary"] = sorted({part.strip().lower() for part in raw_dict.split(",") if part.strip()})
+        elif isinstance(raw_dict, list):
+            current["spellcheck_user_dictionary"] = sorted({str(part).strip().lower() for part in raw_dict if str(part).strip()})
+        else:
+            current["spellcheck_user_dictionary"] = []
+        closed_tab_history = current.get("closed_tab_history", [])
+        current["closed_tab_history"] = closed_tab_history if isinstance(closed_tab_history, list) else []
         normalize_ui_visibility_settings(current)
         ScintillaProfile.from_settings(current).apply_to_settings(current)
         return coerce_notepadpp_prefs(current)
@@ -312,8 +339,11 @@ def migrate_settings(settings: dict) -> dict:
     current["status_show_syntax"] = coerce_bool(current.get("status_show_syntax", True), True)
     current["status_show_breadcrumb"] = coerce_bool(current.get("status_show_breadcrumb", True), True)
     current["status_show_ruler"] = coerce_bool(current.get("status_show_ruler", True), True)
+    current["status_show_selection_stats"] = coerce_bool(current.get("status_show_selection_stats", True), True)
     current["status_show_ai_usage"] = coerce_bool(current.get("status_show_ai_usage", True), True)
     current["status_show_autosave"] = coerce_bool(current.get("status_show_autosave", True), True)
+    current["status_show_gamification"] = coerce_bool(current.get("status_show_gamification", False), False)
+    current["status_show_momentum"] = coerce_bool(current.get("status_show_momentum", False), False)
     current["accessibility_reduce_motion"] = coerce_bool(current.get("accessibility_reduce_motion", False), False)
     current["accessibility_cursor_blink"] = coerce_bool(current.get("accessibility_cursor_blink", True), True)
     current["accessibility_cursor_blink_rate_ms"] = _coerce_int_clamped(
@@ -328,6 +358,31 @@ def migrate_settings(settings: dict) -> dict:
     current["ai_send_redact_tokens"] = coerce_bool(current.get("ai_send_redact_tokens", True), True)
     current["ai_app_knowledge_override"] = str(current.get("ai_app_knowledge_override", "") or "")
     current["ai_personality_advanced"] = str(current.get("ai_personality_advanced", "") or "")
+    current["ai_knowledge_mode"] = _coerce_enum(current.get("ai_knowledge_mode"), {"compact", "full"}, "compact")
+    current["ai_include_ui_action_appendix"] = coerce_bool(current.get("ai_include_ui_action_appendix", False), False)
+    current["ai_user_knowledge_max_chars"] = _coerce_int_clamped(
+        current.get("ai_user_knowledge_max_chars", 1800),
+        1800,
+        200,
+        12000,
+    )
+    current["ai_selection_preview_chars"] = _coerce_int_clamped(
+        current.get("ai_selection_preview_chars", 240),
+        240,
+        80,
+        5000,
+    )
+    current["spellcheck_enabled"] = coerce_bool(current.get("spellcheck_enabled", True), True)
+    current["spellcheck_language"] = str(current.get("spellcheck_language", "en") or "en").strip().lower() or "en"
+    raw_dict = current.get("spellcheck_user_dictionary", [])
+    if isinstance(raw_dict, str):
+        current["spellcheck_user_dictionary"] = sorted({part.strip().lower() for part in raw_dict.split(",") if part.strip()})
+    elif isinstance(raw_dict, list):
+        current["spellcheck_user_dictionary"] = sorted({str(part).strip().lower() for part in raw_dict if str(part).strip()})
+    else:
+        current["spellcheck_user_dictionary"] = []
+    closed_tab_history = current.get("closed_tab_history", [])
+    current["closed_tab_history"] = closed_tab_history if isinstance(closed_tab_history, list) else []
     current["lsp_definition_enabled"] = coerce_bool(current.get("lsp_definition_enabled", True), True)
     current["lsp_definition_initialize_timeout_sec"] = _coerce_float_clamped(
         current.get("lsp_definition_initialize_timeout_sec", 5.0),
@@ -397,6 +452,7 @@ def migrate_settings(settings: dict) -> dict:
     current["save_debug_logs_to_appdata"] = coerce_bool(current.get("save_debug_logs_to_appdata", False), False)
     current["logging_level"] = _coerce_logging_level(current.get("logging_level", "INFO"))
     current["gamification_enabled"] = coerce_bool(current.get("gamification_enabled", True), True)
+    current["session_review_enabled"] = coerce_bool(current.get("session_review_enabled", False), False)
     custom_events = current.get("gamification_custom_events", [])
     current["gamification_custom_events"] = custom_events if isinstance(custom_events, list) else []
     gamification_state = current.get("gamification_state", {})
@@ -413,7 +469,7 @@ def migrate_settings(settings: dict) -> dict:
     onboarding_state = current.get("onboarding_state", {})
     current["onboarding_state"] = onboarding_state if isinstance(onboarding_state, dict) else {}
     current["backup_output_dir"] = str(current.get("backup_output_dir", "") or "").strip()
-    current["settings_schema_version"] = 2
+    current["settings_schema_version"] = 3
 
     normalize_ui_visibility_settings(current)
     ScintillaProfile.from_settings(current).apply_to_settings(current)

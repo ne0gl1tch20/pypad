@@ -285,6 +285,8 @@ class EditorTab(QWidget):
             "select_all_action",
         ):
             self._add_window_action(menu, window, attr)
+        self._add_window_action_if_enabled(menu, window, "spell_check_word_action")
+        self._add_window_action_if_enabled(menu, window, "spell_check_document_action")
         return menu
 
     def _add_quick_ai_row(self, menu: QMenu, window) -> bool:
@@ -420,6 +422,8 @@ class EditorTab(QWidget):
             "select_all_action",
         ):
             self._add_window_action(menu, window, attr)
+        self._add_window_action_if_enabled(menu, window, "spell_check_word_action")
+        self._add_window_action_if_enabled(menu, window, "spell_check_document_action")
         selected_text = ""
         try:
             selected_text = str(self.text_edit.selected_text() or "")

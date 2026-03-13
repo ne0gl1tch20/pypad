@@ -516,9 +516,12 @@ class SettingsDialog(QDialog):
             "status_show_encoding": "UTF-8",
             "status_show_syntax": "Lang: Auto",
             "status_show_breadcrumb": "untitled.txt > line 1",
+            "status_show_selection_stats": "Doc W 120 | C 720 | L 18",
             "status_show_ruler": "|----10----20----30----|",
             "status_show_ai_usage": "AI: 0 req | ~0 tok | ~$0.0000",
             "status_show_autosave": "Autosave: running",
+            "status_show_gamification": "LVL 1 | XP 0 | Today: No quest",
+            "status_show_momentum": "Momentum | Next Move",
         }
         return labels.get(key, key)
 
@@ -830,9 +833,12 @@ class SettingsDialog(QDialog):
             ("status_show_encoding", "Show encoding"),
             ("status_show_syntax", "Show language picker"),
             ("status_show_breadcrumb", "Show breadcrumb"),
+            ("status_show_selection_stats", "Show word/character stats"),
             ("status_show_ruler", "Show ruler"),
             ("status_show_ai_usage", "Show AI usage"),
             ("status_show_autosave", "Show autosave status"),
+            ("status_show_gamification", "Show Play summary"),
+            ("status_show_momentum", "Show momentum banner"),
         ):
             cb = self._add_check(status_items_form, idx, label)
             self._status_layout_controls.append((key, cb))
@@ -948,6 +954,10 @@ class SettingsDialog(QDialog):
         )
         ai_layout.addRow("AI Personality (Advanced)", self.ai_personality_advanced_edit)
         self._register_search(idx, "AI Personality Advanced", self.ai_personality_advanced_edit)
+        self.ai_knowledge_mode_combo = self._add_combo(ai_layout, idx, "AI knowledge mode", ["compact", "full"])
+        self.ai_include_ui_appendix_checkbox = self._add_check(ai_layout, idx, "Always include large UI/action appendix")
+        self.ai_user_knowledge_max_chars_spin = self._add_spin(ai_layout, idx, "AI user knowledge max chars", 200, 12000)
+        self.ai_selection_preview_chars_spin = self._add_spin(ai_layout, idx, "AI selection preview chars", 80, 5000)
         self.update_feed_url_edit = QLineEdit(ai)
         self.update_feed_url_edit.setPlaceholderText(DEFAULT_UPDATE_FEED_URL)
         self.update_feed_url_edit.setReadOnly(True)
@@ -996,6 +1006,15 @@ class SettingsDialog(QDialog):
         self.ai_cost_rate_spin.setSingleStep(0.0001)
         ai_layout.addRow("Estimated USD per 1k tokens", self.ai_cost_rate_spin)
         self._register_search(idx, "Estimated USD per 1k tokens", self.ai_cost_rate_spin)
+        self.spellcheck_enabled_checkbox = self._add_check(ai_layout, idx, "Enable local spellcheck")
+        self.spellcheck_language_edit = QLineEdit(ai)
+        self.spellcheck_language_edit.setPlaceholderText("en")
+        ai_layout.addRow("Spellcheck language", self.spellcheck_language_edit)
+        self._register_search(idx, "Spellcheck language", self.spellcheck_language_edit)
+        self.spellcheck_user_dictionary_edit = QLineEdit(ai)
+        self.spellcheck_user_dictionary_edit.setPlaceholderText("comma,separated,custom,words")
+        ai_layout.addRow("Spellcheck custom words", self.spellcheck_user_dictionary_edit)
+        self._register_search(idx, "Spellcheck custom words", self.spellcheck_user_dictionary_edit)
         self.lsp_definition_enabled_checkbox = self._add_check(ai_layout, idx, "Enable LSP go-to-definition")
         self.lsp_init_timeout_spin = QDoubleSpinBox(ai)
         self.lsp_init_timeout_spin.setDecimals(1)
@@ -1135,7 +1154,7 @@ class SettingsDialog(QDialog):
             0,
             15000,
         )
-        self.settings_schema_version_label = QLabel("2", advanced)
+        self.settings_schema_version_label = QLabel("3", advanced)
         advanced_layout.addRow("Settings schema version", self.settings_schema_version_label)
         self._register_search(idx, "Settings schema version", self.settings_schema_version_label)
 
@@ -1601,14 +1620,17 @@ class SettingsDialog(QDialog):
         self.onboarding_next_unlock_prompts_checkbox.setChecked(bool(s.get("onboarding_next_unlock_prompts_enabled", True)))
         status_defaults = {
             "status_show_position": True,
-            "status_show_zoom": True,
-            "status_show_eol": True,
-            "status_show_encoding": True,
-            "status_show_syntax": True,
-            "status_show_breadcrumb": True,
-            "status_show_ruler": True,
-            "status_show_ai_usage": True,
-            "status_show_autosave": True,
+            "status_show_zoom": False,
+            "status_show_eol": False,
+            "status_show_encoding": False,
+            "status_show_syntax": False,
+            "status_show_breadcrumb": False,
+            "status_show_selection_stats": False,
+            "status_show_ruler": False,
+            "status_show_ai_usage": False,
+            "status_show_autosave": False,
+            "status_show_gamification": False,
+            "status_show_momentum": False,
         }
         for key, checkbox in getattr(self, "_status_layout_controls", []):
             checkbox.setChecked(bool(s.get(key, status_defaults.get(key, True))))
@@ -1633,6 +1655,10 @@ class SettingsDialog(QDialog):
         self.ai_model_edit.setText(str(s.get("ai_model", "gemini-3-flash-preview")))
         self.ai_app_knowledge_edit.setPlainText(str(s.get("ai_app_knowledge_override", "") or ""))
         self.ai_personality_advanced_edit.setPlainText(str(s.get("ai_personality_advanced", "") or ""))
+        self.ai_knowledge_mode_combo.setCurrentText(str(s.get("ai_knowledge_mode", "compact") or "compact"))
+        self.ai_include_ui_appendix_checkbox.setChecked(bool(s.get("ai_include_ui_action_appendix", False)))
+        self.ai_user_knowledge_max_chars_spin.setValue(int(s.get("ai_user_knowledge_max_chars", 1800) or 1800))
+        self.ai_selection_preview_chars_spin.setValue(int(s.get("ai_selection_preview_chars", 240) or 240))
         self.update_feed_url_edit.setText(str(s.get("update_feed_url", DEFAULT_UPDATE_FEED_URL)))
         self.auto_check_updates_checkbox.setChecked(bool(s.get("auto_check_updates", True)))
         self.update_require_signed_checkbox.setChecked(bool(s.get("update_require_signed_metadata", False)))
@@ -1661,6 +1687,10 @@ class SettingsDialog(QDialog):
         )
         self.ai_verbose_logging_checkbox.setChecked(bool(s.get("ai_verbose_logging", False)))
         self.ai_cost_rate_spin.setValue(float(s.get("ai_estimated_cost_per_1k_tokens", 0.0005) or 0.0005))
+        self.spellcheck_enabled_checkbox.setChecked(bool(s.get("spellcheck_enabled", True)))
+        self.spellcheck_language_edit.setText(str(s.get("spellcheck_language", "en") or "en"))
+        words = s.get("spellcheck_user_dictionary", [])
+        self.spellcheck_user_dictionary_edit.setText(", ".join(words if isinstance(words, list) else []))
         self.lsp_definition_enabled_checkbox.setChecked(bool(s.get("lsp_definition_enabled", True)))
         self.lsp_init_timeout_spin.setValue(float(s.get("lsp_definition_initialize_timeout_sec", 5.0) or 5.0))
         self.lsp_request_timeout_spin.setValue(float(s.get("lsp_definition_request_timeout_sec", 3.0) or 3.0))
@@ -1710,7 +1740,7 @@ class SettingsDialog(QDialog):
         self.accessibility_cursor_blink_checkbox.setChecked(bool(s.get("accessibility_cursor_blink", True)))
         self.accessibility_cursor_blink_rate_spin.setValue(int(s.get("accessibility_cursor_blink_rate_ms", 1000)))
         self._sync_accessibility_controls_enabled()
-        self.settings_schema_version_label.setText(str(int(s.get("settings_schema_version", 2))))
+        self.settings_schema_version_label.setText(str(int(s.get("settings_schema_version", 3))))
         load_notepadpp_like_page_settings(self, s)
 
     def _collect_settings(self) -> dict:
@@ -1777,6 +1807,10 @@ class SettingsDialog(QDialog):
         s["ai_model"] = self.ai_model_edit.text().strip() or "gemini-3-flash-preview"
         s["ai_app_knowledge_override"] = self.ai_app_knowledge_edit.toPlainText().strip()
         s["ai_personality_advanced"] = self.ai_personality_advanced_edit.toPlainText().strip()
+        s["ai_knowledge_mode"] = self.ai_knowledge_mode_combo.currentText()
+        s["ai_include_ui_action_appendix"] = self.ai_include_ui_appendix_checkbox.isChecked()
+        s["ai_user_knowledge_max_chars"] = int(self.ai_user_knowledge_max_chars_spin.value())
+        s["ai_selection_preview_chars"] = int(self.ai_selection_preview_chars_spin.value())
         s["update_feed_url"] = self.update_feed_url_edit.text().strip() or DEFAULT_UPDATE_FEED_URL
         s["auto_check_updates"] = self.auto_check_updates_checkbox.isChecked()
         s["update_require_signed_metadata"] = self.update_require_signed_checkbox.isChecked()
@@ -1801,6 +1835,11 @@ class SettingsDialog(QDialog):
         )
         s["ai_verbose_logging"] = self.ai_verbose_logging_checkbox.isChecked()
         s["ai_estimated_cost_per_1k_tokens"] = float(self.ai_cost_rate_spin.value())
+        s["spellcheck_enabled"] = self.spellcheck_enabled_checkbox.isChecked()
+        s["spellcheck_language"] = self.spellcheck_language_edit.text().strip().lower() or "en"
+        s["spellcheck_user_dictionary"] = [
+            part.strip().lower() for part in self.spellcheck_user_dictionary_edit.text().split(",") if part.strip()
+        ]
         s["lsp_definition_enabled"] = self.lsp_definition_enabled_checkbox.isChecked()
         s["lsp_definition_initialize_timeout_sec"] = float(self.lsp_init_timeout_spin.value())
         s["lsp_definition_request_timeout_sec"] = float(self.lsp_request_timeout_spin.value())
@@ -1837,7 +1876,7 @@ class SettingsDialog(QDialog):
         s["accessibility_reduce_motion"] = self.accessibility_reduce_motion_checkbox.isChecked()
         s["accessibility_cursor_blink"] = self.accessibility_cursor_blink_checkbox.isChecked()
         s["accessibility_cursor_blink_rate_ms"] = int(self.accessibility_cursor_blink_rate_spin.value())
-        s["settings_schema_version"] = 2
+        s["settings_schema_version"] = 3
         collect_notepadpp_like_page_settings(self, s)
         return migrate_settings(s)
 

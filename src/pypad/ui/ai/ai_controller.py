@@ -308,6 +308,10 @@ class AIController:
         self._active_stream_thread: QThread | None = None
         self._app_metadata_block = self._build_app_metadata_block()
         self._ai_request_counter = 0
+        self._cached_knowledge_block = ""
+        self._cached_knowledge_key: tuple[object, ...] | None = None
+        self._connectivity_cache_ok = False
+        self._connectivity_cache_checked_at = 0.0
 
     def _log_ai(self, message: str) -> None:
         if not bool(self.window.settings.get("ai_verbose_logging", False)):
@@ -340,14 +344,35 @@ class AIController:
         )
 
     def _build_app_knowledge_block(self) -> str:
-        knowledge = resolve_ai_app_knowledge(self.window.settings.get("ai_app_knowledge_override", ""))
+        mode = str(self.window.settings.get("ai_knowledge_mode", "compact") or "compact").strip().lower()
+        include_appendix = bool(self.window.settings.get("ai_include_ui_action_appendix", False))
+        if mode == "full":
+            include_appendix = True
+        cache_key = (
+            mode,
+            include_appendix,
+            int(self.window.settings.get("ai_user_knowledge_max_chars", 1800) or 1800),
+            str(self.window.settings.get("ai_app_knowledge_override", "") or ""),
+        )
+        if cache_key == self._cached_knowledge_key:
+            return self._cached_knowledge_block
+        knowledge = resolve_ai_app_knowledge(
+            self.window.settings.get("ai_app_knowledge_override", ""),
+            include_ui_appendix=include_appendix,
+            user_knowledge_char_limit=int(self.window.settings.get("ai_user_knowledge_max_chars", 1800) or 1800),
+        )
         if not knowledge:
+            self._cached_knowledge_key = cache_key
+            self._cached_knowledge_block = ""
             return ""
-        return (
+        block = (
             "[PYPAD_KNOWLEDGE]\n"
             f"{knowledge}\n"
             "[/PYPAD_KNOWLEDGE]"
         )
+        self._cached_knowledge_key = cache_key
+        self._cached_knowledge_block = block
+        return block
 
     def _build_advanced_personality_block(self) -> str:
         personality = str(self.window.settings.get("ai_personality_advanced", "") or "").strip()
@@ -371,7 +396,8 @@ class AIController:
             try:
                 has_selection = bool(tab.text_edit.has_selection())
                 if has_selection:
-                    selection_preview = str(tab.text_edit.selected_text() or "")[:500]
+                    limit = max(80, int(self.window.settings.get("ai_selection_preview_chars", 240) or 240))
+                    selection_preview = str(tab.text_edit.selected_text() or "")[:limit]
             except Exception:
                 has_selection = False
                 selection_preview = ""
@@ -451,9 +477,8 @@ class AIController:
             f"prepare prompt action={action_title!r} chars={len(candidate)}"
         )
         app_name = str(QApplication.applicationName() or "Pypad").strip() or "Pypad"
-        self.window.settings["ai_last_prompt_app_name"] = app_name
-        if hasattr(self.window, "save_settings_to_disk"):
-            self.window.save_settings_to_disk()
+        if self.window.settings.get("ai_last_prompt_app_name") != app_name:
+            self.window.settings["ai_last_prompt_app_name"] = app_name
         blocks = [
             self._app_metadata_block,
             self._build_app_knowledge_block(),
@@ -462,6 +487,14 @@ class AIController:
             candidate,
         ]
         candidate = "\n\n".join(part for part in blocks if str(part).strip())
+        self._log_ai(
+            "prompt assembly "
+            f"knowledge_mode={self.window.settings.get('ai_knowledge_mode', 'compact')!r} "
+            f"appendix={bool(self.window.settings.get('ai_include_ui_action_appendix', False))} "
+            f"user_knowledge_limit={int(self.window.settings.get('ai_user_knowledge_max_chars', 1800) or 1800)} "
+            f"selection_preview_limit={int(self.window.settings.get('ai_selection_preview_chars', 240) or 240)} "
+            f"assembled_chars={len(candidate)}"
+        )
         redacted, changes = sanitize_prompt_text(candidate, self.window.settings)
         if not changes:
             self._log_ai(
@@ -481,13 +514,22 @@ class AIController:
         return redacted
 
     @staticmethod
-    def _has_internet_connection(timeout_sec: float = 0.8) -> bool:
+    def _probe_internet_connection(timeout_sec: float = 0.25) -> bool:
         try:
             sock = socket.create_connection(("1.1.1.1", 53), timeout=timeout_sec)
             sock.close()
             return True
         except OSError:
             return False
+
+    def _has_internet_connection(self, timeout_sec: float = 0.25, cache_ttl_sec: float = 5.0) -> bool:
+        now = datetime.now().timestamp()
+        if self._connectivity_cache_ok and (now - self._connectivity_cache_checked_at) <= cache_ttl_sec:
+            return True
+        ok = self._probe_internet_connection(timeout_sec=timeout_sec)
+        self._connectivity_cache_ok = ok
+        self._connectivity_cache_checked_at = now
+        return ok
 
     def _start_stream_generation(
         self,

@@ -105,6 +105,19 @@ from pypad.ui.document.document_review import (
 
 
 class ViewOpsMixin:
+    def _rebalance_markdown_preview_dock(self) -> None:
+        dock = getattr(self, "markdown_preview_dock", None)
+        editor_dock = getattr(self, "editor_dock", None)
+        if dock is None or editor_dock is None or not dock.isVisible():
+            return
+        available_width = max(0, int(self.width()))
+        target_preview = min(max(320, available_width // 4), 460)
+        target_editor = max(640, available_width - target_preview)
+        try:
+            self.resizeDocks([editor_dock, dock], [target_editor, target_preview], Qt.Orientation.Horizontal)
+        except Exception:
+            return
+
     def _on_markdown_preview_dock_visibility_changed(self, visible: bool) -> None:
         tab = self.active_tab()
         if tab is None:
@@ -117,6 +130,7 @@ class ViewOpsMixin:
         if visible:
             # Populate preview immediately when the dock is shown (including app startup).
             self._sync_markdown_preview_for_active_tab()
+            QTimer.singleShot(0, self._rebalance_markdown_preview_dock)
 
     def _sync_markdown_preview_for_active_tab(self) -> None:
         tab = self.active_tab()
@@ -1681,18 +1695,22 @@ class ViewOpsMixin:
             ln_label = self._translate_text("Ln", lang_code)
             col_label = self._translate_text("Col", lang_code)
             self.position_label.setText(f"{ln_label} -, {col_label} -")
-            self.eol_label.setText(self._translate_text("No EOL", lang_code))
+            self.eol_label.setText("--")
             if hasattr(self, "zoom_label"):
                 self.zoom_label.setText("100%")
             if hasattr(self, "encoding_label"):
-                self.encoding_label.setText("UTF-8")
+                self.encoding_label.setText("UTF8")
+            if hasattr(self, "selection_stats_label"):
+                self.selection_stats_label.setText("W 0 | C 0")
             if hasattr(self, "ruler_label"):
                 self.ruler_label.setVisible(False)
             if hasattr(self, "status_panel_position_label"):
                 self.status_panel_position_label.setText(f"{ln_label} -, {col_label} -")
                 self.status_panel_zoom_label.setText("100%")
-                self.status_panel_eol_label.setText(self._translate_text("No EOL", lang_code))
-                self.status_panel_encoding_label.setText("UTF-8")
+                self.status_panel_eol_label.setText("--")
+                self.status_panel_encoding_label.setText("UTF8")
+                if hasattr(self, "status_panel_selection_stats_label"):
+                    self.status_panel_selection_stats_label.setText("W 0 | C 0")
                 self.status_panel_ruler_label.setVisible(False)
             if hasattr(self, "_apply_status_layout_visibility"):
                 self._apply_status_layout_visibility()
@@ -1706,6 +1724,8 @@ class ViewOpsMixin:
         ln_label = self._translate_text("Ln", lang_code)
         col_label = self._translate_text("Col", lang_code)
         self.position_label.setText(f"{ln_label} {line}, {col_label} {column}")
+        if hasattr(self, "_selection_stats_text") and hasattr(self, "selection_stats_label"):
+            self.selection_stats_label.setText(self._selection_stats_text(tab))
         self.update_markdown_preview()
         if hasattr(self, "ruler_label"):
             show_ruler = bool(
@@ -1719,18 +1739,18 @@ class ViewOpsMixin:
 
         eol_mode = tab.eol_mode or "LF"
         if eol_mode == "CRLF":
-            eol_text = self._translate_text("Windows (CRLF)", lang_code)
+            eol_text = "CRLF"
         elif eol_mode == "LF":
-            eol_text = self._translate_text("Unix (LF)", lang_code)
+            eol_text = "LF"
         else:
-            eol_text = self._translate_text("No EOL", lang_code)
+            eol_text = "--"
         self.eol_label.setText(eol_text)
         if hasattr(self, "encoding_label"):
-            self.encoding_label.setText((tab.encoding or "UTF-8").upper())
+            self.encoding_label.setText((tab.encoding or "UTF-8").upper().replace("-", ""))
         if hasattr(self, "status_panel_position_label"):
             self.status_panel_position_label.setText(f"{ln_label} {line}, {col_label} {column}")
             self.status_panel_eol_label.setText(eol_text)
-            self.status_panel_encoding_label.setText((tab.encoding or "UTF-8").upper())
+            self.status_panel_encoding_label.setText((tab.encoding or "UTF-8").upper().replace("-", ""))
             if hasattr(self, "status_panel_zoom_label"):
                 self.status_panel_zoom_label.setText(self.zoom_label.text() if hasattr(self, "zoom_label") else "100%")
             if hasattr(self, "status_panel_ruler_label"):
@@ -1743,9 +1763,11 @@ class ViewOpsMixin:
                 if show_ruler:
                     self.status_panel_ruler_label.setText(build_ruler_text(column, width=100))
             if hasattr(self, "syntax_combo") and hasattr(self, "status_panel_syntax_label"):
-                self.status_panel_syntax_label.setText(f"Lang: {self.syntax_combo.currentText()}")
+                self.status_panel_syntax_label.setText(f"Lang {self.syntax_combo.currentText()}")
             if hasattr(self, "breadcrumb_label") and hasattr(self, "status_panel_breadcrumb_label"):
                 self.status_panel_breadcrumb_label.setText(self.breadcrumb_label.text())
+            if hasattr(self, "_selection_stats_text") and hasattr(self, "status_panel_selection_stats_label"):
+                self.status_panel_selection_stats_label.setText(self._selection_stats_text(tab))
             if hasattr(self, "ai_usage_label") and hasattr(self, "status_panel_ai_usage_label"):
                 self.status_panel_ai_usage_label.setText(self.ai_usage_label.text())
         if hasattr(self, "full_screen_action"):

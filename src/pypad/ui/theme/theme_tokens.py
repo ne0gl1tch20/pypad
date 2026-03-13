@@ -1012,13 +1012,16 @@ def build_main_window_qss(*, tokens: UIThemeTokens, tab_close_icon_url: str, clo
         }}
         QStatusBar QLabel, QStatusBar::item {{
             color: {tokens.text};
+            padding: 0px 2px;
+            margin: 0px;
         }}
         QStatusBar QComboBox {{
             background: {tokens.button_bg};
             color: {tokens.text};
             border: 1px solid {tokens.border};
             border-radius: {tokens.radius_sm}px;
-            padding: 1px 6px;
+            padding: 0px 3px;
+            min-height: 16px;
         }}
         QStatusBar QComboBox QAbstractItemView {{
             background: {tokens.surface_bg};
@@ -1097,5 +1100,172 @@ def build_main_window_qss(*, tokens: UIThemeTokens, tab_close_icon_url: str, clo
             color: {tokens.text_muted};
             font-size: 14px;
             background: transparent;
+        }}
+    """
+
+
+def build_gamification_widget_qss(tokens: UIThemeTokens) -> str:
+    card_bg = _mix(tokens.surface_bg, tokens.chrome_bg, 0.18 if tokens.dark_mode else 0.08)
+    quest_bg = _mix(tokens.accent, tokens.surface_bg, 0.88 if tokens.dark_mode else 0.90)
+    toast_border = _mix(tokens.accent, tokens.border, 0.45)
+    return f"""
+        QFrame#pypadGamificationWidget {{
+            background: {card_bg};
+            border: 1px solid {tokens.border};
+            border-radius: {tokens.radius_lg}px;
+        }}
+        QLabel#pypadGamificationSummary {{
+            color: {tokens.text};
+            font-weight: 700;
+            background: transparent;
+        }}
+        QLabel#pypadGamificationQuest {{
+            color: {tokens.text_muted};
+            background: {quest_bg};
+            border-radius: {tokens.radius_sm}px;
+            padding: 0px 5px;
+        }}
+        QPushButton#pypadGamificationOpenButton {{
+            background: {tokens.toolbar_checked_bg};
+            color: {tokens.text};
+            border: 1px solid {tokens.border};
+            border-radius: {tokens.radius_md}px;
+            padding: 0px {tokens.space_sm}px;
+            min-height: 16px;
+            font-weight: 600;
+        }}
+        QPushButton#pypadGamificationOpenButton:hover {{
+            background: {tokens.toolbar_checked_hover_bg};
+            border: 1px solid {tokens.border_strong};
+        }}
+        QFrame#pypadGamificationToast {{
+            background: transparent;
+            border: none;
+        }}
+        QFrame#pypadGamificationToastBox {{
+            background: {card_bg};
+            border: 1px solid {toast_border};
+            border-radius: {tokens.radius_lg + 2}px;
+        }}
+        QLabel#pypadGamificationToastTitle {{
+            color: {tokens.text};
+            font-weight: 700;
+            background: transparent;
+            padding-bottom: 2px;
+        }}
+        QLabel#pypadGamificationToastDetail {{
+            color: {tokens.text_muted};
+            background: transparent;
+        }}
+        QFrame#pypadProductivityHub {{
+            background: transparent;
+            border: none;
+            border-radius: {tokens.radius_lg}px;
+        }}
+        QDialog#pypadProductivityHubDialog {{
+            background: {tokens.chrome_bg};
+        }}
+        QLabel#pypadProductivityHubDialogTitle {{
+            color: {tokens.text};
+            font-size: 18px;
+            font-weight: 800;
+            background: transparent;
+        }}
+        QLabel#pypadProductivityHubDialogSubtitle {{
+            color: {tokens.text_muted};
+            background: transparent;
+        }}
+        QToolButton#pypadProductivityHubDialogClose {{
+            background: {tokens.button_bg};
+            color: {tokens.text};
+            border: 1px solid {tokens.border};
+            border-radius: {tokens.radius_md}px;
+            padding: {tokens.space_xs}px {tokens.space_md}px;
+        }}
+        QToolButton#pypadProductivityHubDialogClose:hover {{
+            background: {tokens.dock_button_hover_bg};
+            border: 1px solid {tokens.border_strong};
+        }}
+        QWidget#pypadProductivityHubSidebar {{
+            background: transparent;
+        }}
+        QFrame#pypadProductivityHubHero,
+        QFrame#pypadProductivityHubCard {{
+            background: {card_bg};
+            border: 1px solid {tokens.border};
+            border-radius: {tokens.radius_lg}px;
+        }}
+        QLabel#pypadProductivityHubTitle {{
+            color: {tokens.text};
+            font-size: 14px;
+            font-weight: 700;
+            background: transparent;
+        }}
+        QLabel#pypadProductivityHubSubtitle,
+        QLabel#pypadProductivityHubMeta,
+        QLabel#pypadProductivityHubCompanion {{
+            color: {tokens.text_muted};
+            background: transparent;
+        }}
+        QLabel#pypadProductivityHubSummary {{
+            color: {tokens.text};
+            font-weight: 700;
+            background: transparent;
+        }}
+        QLabel#pypadProductivityHubSection {{
+            color: {tokens.text};
+            font-weight: 600;
+            background: transparent;
+            padding-top: 2px;
+        }}
+        QListWidget#pypadProductivityHubList {{
+            background: {tokens.input_bg};
+            color: {tokens.text};
+            border: 1px solid {tokens.border};
+            border-radius: {tokens.radius_md}px;
+        }}
+        QListWidget#pypadProductivityHubList::item:selected {{
+            background: {tokens.toolbar_checked_bg};
+            color: {tokens.text};
+        }}
+        QPushButton#pypadProductivityHubAction {{
+            background: {tokens.toolbar_checked_bg};
+            color: {tokens.text};
+            border: 1px solid {tokens.border};
+            border-radius: {tokens.radius_md}px;
+            padding: {tokens.space_sm}px {tokens.space_md}px;
+            font-weight: 600;
+            text-align: left;
+        }}
+        QPushButton#pypadProductivityHubAction:hover {{
+            background: {tokens.toolbar_checked_hover_bg};
+            border: 1px solid {tokens.border_strong};
+        }}
+        QFrame#pypadMomentumBanner {{
+            background: {card_bg};
+            border: 1px solid {tokens.border};
+            border-radius: {tokens.radius_lg}px;
+        }}
+        QLabel#pypadMomentumBannerTitle {{
+            color: {tokens.text};
+            font-weight: 700;
+            background: transparent;
+        }}
+        QLabel#pypadMomentumBannerDetail {{
+            color: {tokens.text_muted};
+            background: transparent;
+        }}
+        QPushButton#pypadMomentumBannerButton {{
+            background: {tokens.toolbar_checked_bg};
+            color: {tokens.text};
+            border: 1px solid {tokens.border};
+            border-radius: {tokens.radius_md}px;
+            padding: 0px {tokens.space_sm}px;
+            min-height: 16px;
+            font-weight: 600;
+        }}
+        QPushButton#pypadMomentumBannerButton:hover {{
+            background: {tokens.toolbar_checked_hover_bg};
+            border: 1px solid {tokens.border_strong};
         }}
     """

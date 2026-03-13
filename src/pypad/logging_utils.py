@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 import sys
 import threading
+import json
+from pathlib import Path
 from datetime import datetime
 from collections import deque
 
@@ -147,6 +149,23 @@ def configure_app_logging(level: object = DEFAULT_LOG_LEVEL) -> str:
     root_logger.setLevel(get_level_number(level_name))
     logging.captureWarnings(True)
     return level_name
+
+
+def resolve_persisted_log_level(
+    settings_path: str | Path | None,
+    *,
+    default: str = DEFAULT_LOG_LEVEL,
+) -> str:
+    path = Path(settings_path) if settings_path else None
+    if path is None or not path.exists():
+        return normalize_log_level_name(default)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return normalize_log_level_name(default)
+    if not isinstance(payload, dict):
+        return normalize_log_level_name(default)
+    return normalize_log_level_name(payload.get("logging_level", default), default)
 
 
 def get_logger(name: str) -> logging.Logger:

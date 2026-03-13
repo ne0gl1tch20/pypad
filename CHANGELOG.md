@@ -5,6 +5,86 @@ All notable changes to this project will be documented in this file.
 The format is based on Keep a Changelog, and this project uses Semantic Versioning.
 
 
+## [1.8.1-prerelease] - 2026-03-13
+
+### Added
+- Visible gamification shell across the main window:
+  - compact XP/streak widget in the status area
+  - momentum banner with one-click next-move routing
+  - token-driven reward toast notifications
+- Productivity Hub expansion:
+  - daily briefing
+  - seasonal event briefing
+  - session review
+  - long-term milestones
+  - secret trails
+  - productivity routines
+  - routine history
+- Companion guidance now acts like a coach with actionable recommendations tied to real workflows.
+- Seasonal event progress and structured secret/easter-egg tracking are now visible in the app instead of staying hidden in raw state.
+- Gamification Dashboard now includes richer surfaces for:
+  - seasonal event progress
+  - secret trails
+  - productivity routines with usage stats
+
+### Changed
+- Gamification and productivity systems now share one continuous state model instead of separate passive UI fragments.
+- Productivity routines now route into built-in actions such as focus sprint, workspace search, command palette, bug hunt, and daily briefing.
+- Routine usage is now tracked so the app can show cadence and history, not just suggestions.
+- New productivity/gamification UI follows existing PyPad token-based dark/light styling instead of one-off colors.
+
+### Docs
+- Updated project summaries, AI app knowledge, and the welcome demo template to reflect the current Productivity Hub, Play menu, routine tracking, and onboarding flow without changing the app version line.
+
+## [1.8.0-prerelease] - 2026-03-13
+
+### Added
+- Local spellcheck support powered by `pyspellchecker` with:
+  - `Tools > Spell Check Document...`
+  - editor context-menu spelling suggestions for the current word
+  - spellcheck language/custom dictionary settings in `Settings > Preferences > AI & Updates`
+- Reopen closed tab support with:
+  - `Ctrl+Shift+T`
+  - `File > Close > Recently Closed Tabs...`
+  - persisted recently-closed tab history with text/metadata restore
+- New discoverability surfaces:
+  - stronger empty-tab start surface with quick actions, recent files, and templates
+  - `Help > What Can I Do Here?`
+- New status-bar/status-panel selection stats item showing live word/character/line counts
+
+### Changed
+- UI presets are now positioned as `Writing`, `Coding`, and `Review` layouts.
+- External file-change handling now offers `Reload from Disk`, `Keep My Changes`, or `Compare` instead of a simple yes/no prompt.
+- AI prompt knowledge assembly now includes token-saving controls:
+  - compact vs full knowledge mode
+  - optional UI/action appendix inclusion
+  - user-knowledge character cap
+  - selection preview cap
+- AI user knowledge remains appended separately from built-in app knowledge and no longer risks replacing it.
+- Document summary now includes both character counts with and without line endings.
+- Startup logging now resolves the persisted `logging_level` before main-window bootstrap so launcher/app startup respects the saved level earlier.
+- Startup crash logging is cleaner:
+  - normal startup status lines no longer get mirrored into `crash_tracebacks.log`
+  - only Qt warning/critical/fatal messages are persisted to the crash log
+  - lower-value Qt info/debug messages stay out of crash traces
+- Startup runtime environment now applies quieter Chromium/WebEngine flags to reduce benign stderr noise.
+- Release/update consistency checks now verify that `assets/version.txt`, `update.xml`, and installer download metadata all agree on the `1.8.0` release line.
+- Empty-editor start surface styling now follows PyPad theme tokens for panels, buttons, borders, hover states, recent-file rows, and scrollbars instead of relying on ad hoc palette-derived colors.
+- Empty-editor recent files now use dedicated filename/subtitle rows rather than single-line path buttons for better readability.
+- Empty-editor start content now lives inside a themed scroll area so quick actions, recents, and templates remain reachable in smaller window sizes.
+- Markdown preview dock now opens with a more readable width and rebalances against the editor instead of staying stuck in an overly narrow stretched column.
+
+### Fixed
+- Startup autosave recovery no longer causes the app to quit when the top-level recovery dialog closes before the hidden main window is shown.
+- `Open Selected` recovery flow is now safe during startup by temporarily disabling `quitOnLastWindowClosed` while recovery dialogs are active.
+- Recently closed tab reopening now uses explicit restore handlers instead of brittle inline dialog lambdas.
+- Reopening a closed tab now correctly replaces the single blank placeholder tab instead of competing with startup tab state.
+- `Spell Check Document...` now always provides visible feedback when spellcheck dependencies are missing or when no misspellings are found.
+- Spellcheck suggestion generation now tolerates `pyspellchecker` returning `None` from `candidates(...)` instead of crashing with `TypeError`.
+- Spellcheck suggestion generation now falls back to close dictionary matches when `pyspellchecker` returns no candidates, preventing empty suggestion panes for obvious typos.
+- Custom dock title bars again position window titles, close buttons, and undock buttons correctly after the empty-state UI refactor.
+- Empty-editor start surface no longer renders with off-theme black blocks and now matches PyPad dock/title/button chrome more closely.
+
 ## [1.7.10-prerelease] - 2026-03-08
 
 ### Added

@@ -1,8 +1,10 @@
 import base64
 import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -10,7 +12,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from pypad.ui.ai.ai_chat_dock import AIChatDock
+from pypad.ui.ai.ai_chat_dock import AIChatDock, _Bubble
 
 
 def _b64_json(obj: dict) -> str:
@@ -19,6 +21,50 @@ def _b64_json(obj: dict) -> str:
 
 
 class AIChatDockProtocolTests(unittest.TestCase):
+    def test_load_chat_sessions_from_disk_falls_back_to_folder_scan_when_index_key_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            session = {
+                "id": "chat-1",
+                "title": "Persisted Chat",
+                "messages": [{"role": "user", "text": "hello"}],
+                "updated_at": "2026-03-13T10:00:00",
+            }
+            (folder / "session-a.json").write_text(json.dumps(session), encoding="utf-8")
+            dock = SimpleNamespace(
+                _chat_storage_dir=lambda: folder,
+                _new_chat_id=lambda: "chat-generated",
+                _sanitize_context_attachments=lambda raw: [],
+                _sanitize_memory_policy=lambda raw: {},
+                _sanitize_chat_sessions=lambda raw: AIChatDock._sanitize_chat_sessions(dock, raw),
+            )
+
+            sessions = AIChatDock._load_chat_sessions_from_disk(dock, {})
+
+            self.assertEqual(len(sessions), 1)
+            self.assertEqual(sessions[0]["id"], "chat-1")
+            self.assertEqual(sessions[0]["storage_file"], "session-a.json")
+
+    def test_normalize_broken_pypad_buttons_rewrites_markdown_deep_links_to_bare_href(self) -> None:
+        text = "Open settings via [Settings > Preferences > AI & Updates](pypad://settings/ai-updates)."
+
+        normalized = _Bubble._normalize_broken_pypad_buttons(text)
+
+        self.assertEqual(
+            normalized,
+            "Open settings via pypad://settings/ai-updates.",
+        )
+
+    def test_normalize_broken_pypad_buttons_strips_trailing_punctuation_from_broken_markdown_link(self) -> None:
+        text = "Use [Open settings](pypad://settings/ai-updates)) for configuration."
+
+        normalized = _Bubble._normalize_broken_pypad_buttons(text)
+
+        self.assertEqual(
+            normalized,
+            "Use pypad://settings/ai-updates for configuration.",
+        )
+
     def test_extract_hidden_commands_parses_insert_set_file_title_patch_and_action(self) -> None:
         patch_payload = {
             "format": "unified_diff",

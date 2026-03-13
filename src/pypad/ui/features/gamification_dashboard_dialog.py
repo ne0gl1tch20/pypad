@@ -43,13 +43,17 @@ class GamificationDashboardDialog(QDialog):
         self.companion_text = QTextEdit(self)
         self.companion_text.setReadOnly(True)
         self.crafted_list = QListWidget(self)
-        self.events_list = QListWidget(self)
+        self.events_table = QTableWidget(self)
+        self.secrets_table = QTableWidget(self)
+        self.routines_table = QTableWidget(self)
 
         self._build_quests_tab()
         self._build_skill_tree_tab()
         self._build_companion_tab()
         self._build_crafted_tools_tab()
         self._build_events_tab()
+        self._build_secrets_tab()
+        self._build_routines_tab()
 
         buttons = QDialogButtonBox(QDialogButtonBox.Close, self)
         buttons.rejected.connect(self.reject)
@@ -108,8 +112,41 @@ class GamificationDashboardDialog(QDialog):
         )
         help_text.setWordWrap(True)
         layout.addWidget(help_text)
-        layout.addWidget(self.events_list, 1)
+        self.events_table.setColumnCount(6)
+        self.events_table.setHorizontalHeaderLabels(["Event", "Quest", "Progress", "Target", "Done", "Badge"])
+        self.events_table.horizontalHeader().setStretchLastSection(True)
+        layout.addWidget(self.events_table, 1)
         self.tabs.addTab(container, "Seasonal Events")
+
+    def _build_secrets_tab(self) -> None:
+        container = QWidget(self)
+        layout = QVBoxLayout(container)
+        help_text = QLabel(
+            "Secret trails hint at hidden unlocks without fully spoiling them. Progress is tracked from your real usage.",
+            container,
+        )
+        help_text.setWordWrap(True)
+        layout.addWidget(help_text)
+        self.secrets_table.setColumnCount(5)
+        self.secrets_table.setHorizontalHeaderLabels(["Secret", "Progress", "Target", "Status", "Hint"])
+        self.secrets_table.horizontalHeader().setStretchLastSection(True)
+        layout.addWidget(self.secrets_table, 1)
+        self.tabs.addTab(container, "Secret Trails")
+
+    def _build_routines_tab(self) -> None:
+        container = QWidget(self)
+        layout = QVBoxLayout(container)
+        help_text = QLabel(
+            "Productivity routines are reusable workflow starts. PyPad tracks which ones you actually use.",
+            container,
+        )
+        help_text.setWordWrap(True)
+        layout.addWidget(help_text)
+        self.routines_table.setColumnCount(4)
+        self.routines_table.setHorizontalHeaderLabels(["Routine", "Suggested Action", "Runs", "Last Run"])
+        self.routines_table.horizontalHeader().setStretchLastSection(True)
+        layout.addWidget(self.routines_table, 1)
+        self.tabs.addTab(container, "Routines")
 
     def refresh(self) -> None:
         state = self.gamification.state()
@@ -182,13 +219,40 @@ class GamificationDashboardDialog(QDialog):
                 item.setData(256, name)
                 self.crafted_list.addItem(item)
 
-        self.events_list.clear()
-        for row in self.gamification.active_events():
-            self.events_list.addItem(
-                f"{row.get('name', '')} | Theme: {row.get('theme_pack', '')} | Badge: {row.get('badge', '')}"
-            )
-        if self.events_list.count() == 0:
-            self.events_list.addItem("No active events.")
+        events = self.gamification.active_event_snapshot()
+        self.events_table.setRowCount(len(events))
+        for idx, row in enumerate(events):
+            self.events_table.setItem(idx, 0, QTableWidgetItem(str(row.get("name", ""))))
+            self.events_table.setItem(idx, 1, QTableWidgetItem(str(row.get("quest_label", ""))))
+            self.events_table.setItem(idx, 2, QTableWidgetItem(str(row.get("progress", "0"))))
+            self.events_table.setItem(idx, 3, QTableWidgetItem(str(row.get("target", "1"))))
+            self.events_table.setItem(idx, 4, QTableWidgetItem(str(row.get("done", "No"))))
+            self.events_table.setItem(idx, 5, QTableWidgetItem(str(row.get("badge", ""))))
+        if not events:
+            self.events_table.setRowCount(1)
+            self.events_table.setItem(0, 0, QTableWidgetItem("No active events."))
+
+        secrets = self.gamification.easter_egg_snapshot()
+        self.secrets_table.setRowCount(len(secrets))
+        for idx, row in enumerate(secrets):
+            self.secrets_table.setItem(idx, 0, QTableWidgetItem(str(row.get("title", ""))))
+            self.secrets_table.setItem(idx, 1, QTableWidgetItem(str(row.get("progress", "0"))))
+            self.secrets_table.setItem(idx, 2, QTableWidgetItem(str(row.get("target", "1"))))
+            self.secrets_table.setItem(idx, 3, QTableWidgetItem(str(row.get("status", "Hidden"))))
+            self.secrets_table.setItem(idx, 4, QTableWidgetItem(str(row.get("hint", ""))))
+
+        routines = self.gamification.productivity_routines()
+        routine_stats = state.get("routine_stats", {})
+        self.routines_table.setRowCount(len(routines))
+        for idx, row in enumerate(routines):
+            routine_id = str(row.get("routine_id", "") or "")
+            stats_row = routine_stats.get(routine_id, {}) if isinstance(routine_stats, dict) else {}
+            runs = int(stats_row.get("runs", 0) or 0) if isinstance(stats_row, dict) else 0
+            last_run = str(stats_row.get("last_run", "") or "") if isinstance(stats_row, dict) else ""
+            self.routines_table.setItem(idx, 0, QTableWidgetItem(routine_id or "-"))
+            self.routines_table.setItem(idx, 1, QTableWidgetItem(str(row.get("label", ""))))
+            self.routines_table.setItem(idx, 2, QTableWidgetItem(str(runs)))
+            self.routines_table.setItem(idx, 3, QTableWidgetItem(last_run or "-"))
 
     def _selected_tool_name(self) -> str:
         item = self.crafted_list.currentItem()

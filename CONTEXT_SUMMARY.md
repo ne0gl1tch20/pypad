@@ -1,164 +1,104 @@
-﻿# Context Summary
+# Context Summary
 
 ## Docs Updated
-- Last docs sync: 2026-03-08
+- Last docs sync: 2026-03-13
 - Synced files:
   - `CONTEXT_SUMMARY.md`
   - `APP_SUMMARY.md`
-  - `README.md`
   - `CHANGELOG.md`
-  - `update.xml`
-  - `assets/version.txt`
-  - `assets/version_info.txt`
+  - `src/pypad/ai_app_knowledge.py`
+  - `templates/demo_pack/01_welcome_quick_tour.md`
 
 ## Current Release Metadata
-- Version: `1.7.10-prerelease`
-- Update feed entry: `update.xml` (2026-03-08)
-- Changelog entry added: `1.7.10-prerelease`
+- Version: `1.8.1-prerelease`
+- App version files intentionally unchanged in this docs sync
+- Latest release notes already live in `CHANGELOG.md` and `update.xml`
 
 ## Current Focus (Completed)
-- HTML export now converts markdown syntax into structured HTML elements during export.
-- Demo Pack onboarding templates added under `templates/demo_pack/` and wired into File/Edit template menus.
-- Added one-click Help action to open first Demo Pack template.
-- First-time tutorial and post-tutorial prompts now encourage using Demo Pack.
-- LSP definition client hardening (timeouts/retries/logging + server preference settings)
-- Factory reset workflow added in Settings (confirmation + close-on-reset)
-- Release metadata/docs updated for `1.7.10-prerelease`
-- Quiz mode restored and expanded:
-  - mixed-format parser (MCQ/TF/short-answer)
-  - `{user}`/`[user]` answer anchors
-  - metadata hide/restore in quiz mode
-  - detailed scoring dialog + per-question breakdown
-  - save/autosave safeguards during quiz mode
-- AI chat panel quick-actions restored:
-  - `+` menu replacing idle badge
-  - Add Files file-picker attachment flow
-  - live status row in menu (`Idle/Thinking/Streaming/Error`)
-- Settings-close reliability fixes:
-  - reset sticky cached settings flags
-  - explicit reload-only behavior (no auto theme-restart close)
-  - temporary close-event trace logging for root-cause diagnostics
-- PySide6 Scintilla-compat engine expanded to cover advanced editing/view behaviors without PyQt/Qsci dependency
-- Explorer panel alignment toward VSCode behavior:
-  - custom chevron glyphs
-  - compact header strip + tighter rows
-  - SVG extension icons with theme-aware tint refresh
-  - context actions/shortcuts and shell-menu action
-- Workspace opening behavior adjusted:
-  - selected root persists immediately to settings
-  - opening workspace no longer auto-opens file list dialogs
-- In-tab media mode:
-  - image/audio/video open inside editor tabs
-  - rich playback controls and `Open Raw in Editor` in-tab
+- visible gamification shell:
+  - status-area XP and quest widget
+  - momentum banner
+  - reward toasts
+- Productivity Hub rollout:
+  - daily briefing
+  - seasonal event briefing
+  - session review
+  - milestones
+  - secret trails
+  - productivity routines
+  - routine history
+- companion and coach routing into real app actions:
+  - focus sprint
+  - workspace search
+  - command palette
+  - bug hunt
+  - daily briefing
+- Gamification Dashboard now includes structured tabs for:
+  - seasonal event progress
+  - secret trails
+  - productivity routine usage
+- recent stabilization fixes:
+  - routine runs are counted only after the underlying workflow actually starts
+  - secret-trail progress now reflects stored real progress instead of placeholder-style values for shortcut, encryption, and night-owl tracking
 
-## What Was Completed (Phases 1-4)
+## What Was Completed (Current Productivity / Delight Slice)
 
-### Theme Architecture
-- Added `UIThemeTokens` and token builders in `src/pypad/ui/theme_tokens.py`
-- Main window chrome QSS now generated from tokens
-- Dialog theme system in `src/pypad/ui/dialog_theme.py` now token-driven
-- Shared wrappers for themed `QMessageBox` and `QProgressDialog`
+### App Logic
+- `GamificationSystem` now owns:
+  - quests
+  - streaks
+  - activity timeline
+  - seasonal event progress
+  - milestones
+  - secret progress
+  - productivity routines
+  - routine stats and history
+- `MiscMixin` wires the system into real workflows instead of only passive counters
 
-### UI Overhaul Coverage
-- Core chrome: tabs, toolbars, menus, docks, status bar, scrollbars
-- High-traffic dialogs/panels:
-  - Settings
-  - Tutorial
-  - Autosave recovery
-  - Quick Open / Go to Anything
-  - AI Chat dock
-  - AI Edit Preview / AI Rewrite dialogs
-  - Workspace dialogs
-  - Debug Logs dialog
-  - updater dialogs
-- Additional custom dialogs in `main_window/misc.py` now use shared dialog theming (windows manager, macro run dialog, licenses, jump history, search results window, user guide, document summary, and more)
+### UI Surfaces
+- Main window:
+  - compact gamification widget
+  - momentum banner
+- Dock:
+  - Productivity Hub
+- Dialog:
+  - Gamification Dashboard with Quests, Skill Tree, Companion, Crafted Tools, Seasonal Events, Secret Trails, and Routines tabs
 
-### Scintilla Compatibility Expansion (Post-Release Ongoing in Unreleased)
-- Added `src/pypad/ui/editor/scintilla_compat.py` and routed fallback editor path through Scintilla-like backend.
-- Margin system improvements:
-  - fold/marker/line-number painting
-  - per-margin type/width/mask/sensitivity controls
-  - margin index click signal routing
-- Marker symbol families implemented (circle/arrow/plus/minus/rect/empty).
-- Folding now supports indentation + bracket-guided regions with fold-all/line/level operations.
-- Column mode and multi-caret upgrades:
-  - persistent rectangular selections after edits
-  - synchronized typing/delete/navigation
-  - row-aware multi-paste support
-- Indicator/hotspot features:
-  - styled indicator ranges with active hover state
-  - hotspot and indicator hover/click payload signals
-- Added lightweight calltip/annotation methods, brace-match highlighting, symbol overlays, and lexer-style token ranges.
-
-### Quick Open / Productivity Features
-- file/line/symbol/workspace-symbol/command modes
-- grouped results
-- `Tab` / `Shift+Tab` mode cycling
-- background indexing + persistent file/symbol caches
-- incremental auto-refresh during indexing
-- same-count refresh detection via content signatures
-
-### AI Chat UX + Apply Flow
-- one-click assistant actions: Insert / Replace / Append / New Tab / Replace File / Diff
-- hidden command parsing compatibility (`OFF_INSERT` alias support)
-- improved apply and diff-preview workflows
-
-### Visual Regression Tooling
-- `tests/test_ui_visual_smoke_screenshots.py`
-- Screenshots generated into `tests_tmp/visual_smoke_phase2/`
-- HTML manifest: `tests_tmp/visual_smoke_phase2/index.html`
-- Baseline file: `tests/visual_smoke_phase2_baseline.json`
-- Compare/update modes via env vars:
-  - `PYPAD_VISUAL_BASELINE_MODE`
-  - `PYPAD_VISUAL_AHASH_THRESHOLD`
-
-### CI / Local Dev Workflow
-- CI workflows:
-  - `.github/workflows/ui-fast-and-runtime.yml`
-  - `.github/workflows/ui-visual-smoke.yml`
-- Local runner:
-  - `scripts/run_ui_checks.ps1` (`-Fast`, `-Runtime`, `-Visual`, `-All`, `-UpdateVisualBaseline`)
+### UX Direction
+- gamification is visible but still productivity-first
+- hidden unlocks are hinted through secret trails instead of being completely opaque
+- daily guidance is layered into the normal app shell rather than buried in one dialog
 
 ## Key Files (Most Relevant Now)
-- `src/pypad/ui/theme_tokens.py`
-- `src/pypad/ui/dialog_theme.py`
+- `src/pypad/ui/features/gamification_system.py`
+- `src/pypad/ui/features/gamification_widgets.py`
+- `src/pypad/ui/features/gamification_dashboard_dialog.py`
 - `src/pypad/ui/main_window/misc.py`
-- `src/pypad/ui/main_window/view_ops.py`
-- `src/pypad/ui/main_window/settings_dialog.py`
-- `src/pypad/ui/quick_open_dialog.py`
-- `src/pypad/ui/ai_chat_dock.py`
-- `tests/test_ui_visual_smoke_screenshots.py`
-- `tests/visual_smoke_phase2_baseline.json`
-- `scripts/run_ui_checks.ps1`
+- `src/pypad/ui/main_window/ui_setup.py`
+- `src/pypad/ui/main_window/window.py`
+- `src/pypad/ai_app_knowledge.py`
+- `templates/demo_pack/01_welcome_quick_tour.md`
 
 ## Validation Snapshot (Recent)
-- Visual baseline compare test passes
-- Targeted UI/theme/runtime/visual suites pass (including long visual/runtime runs)
-- `.pytest_cache` warnings may appear due local filesystem permissions; non-blocking
-- Preferences Appearance race instrumentation retained:
-  - `SettingsThemeProbe` logs from `pypad.ui.main_window.settings_dialog` at `open`, `first_paint`, `post_150ms`, `post_600ms`
-  - Logs include computed theme tokens (`dark_mode`, `text`, `surface_bg`, `input_bg`) and effective palettes for host/scroll/viewport/body
-  - Keep enabled for future regressions where settings content contrast/background appears inconsistent at dialog startup
+- `tests/test_gamification_system.py` passes
+- `tests/test_ui_theme_tokens.py` passes
+- `tests/test_productivity_hardening.py` passes
+- compile checks for the recent gamification/productivity modules pass
 
 ## Next Easy Resume Points
-1. Build/release packaging validation for `1.7.10-prerelease` (installer output + update feed URL verification).
-2. Optional visual baseline refresh after intentional UI/editor rendering changes using `scripts/run_ui_checks.ps1 -Visual -UpdateVisualBaseline`.
-3. If targeting deeper Scintilla parity, prioritize:
-   - advanced lexer stateful styling/perf
-   - fuller indicator metadata/query APIs
-   - annotation/calltip theming and interaction polish
-
+1. Add broader UI smoke coverage for Productivity Hub and dashboard tabs.
+2. Expand more demo templates so they explicitly teach the `Play` menu and productivity flow.
+3. If continuing this line, next good targets are companion polish, more unlock content, and routine-aware onboarding.
 
 PyPad UI defaults:
 
 - Style: soft rounded modern
-- Layout: Notepad++ style menus + dock panels
+- Layout: Notepad++ style menus plus dock panels
 - Minimap: right dock, toggle in View
-- Panels: QDockWidget-based
-- Icons: monochrome SVG themed (if dark mode, white icons, if light mode, black in icons)
+- Panels: `QDockWidget` based
+- Icons: monochrome SVG themed
 - Density: medium compact
 - Platform feel: Windows-first but cross-platform safe
 
 If ambiguous, choose the simplest consistent option.
 Ask at most one clarification question.
-
