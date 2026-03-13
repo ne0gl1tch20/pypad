@@ -63,7 +63,7 @@ class _ConsoleCaptureTee:
         stream = self._stream
         if stream is not None:
             try:
-                stream.write(text)
+                self._safe_stream_write(stream, text)
             except Exception:
                 pass
         self._partial += text
@@ -93,6 +93,16 @@ class _ConsoleCaptureTee:
             raise AttributeError(name)
         return getattr(stream, name)
 
+    @staticmethod
+    def _safe_stream_write(stream, text: str) -> None:
+        try:
+            stream.write(text)
+            return
+        except UnicodeEncodeError:
+            encoding = getattr(stream, "encoding", None) or "utf-8"
+            repaired = str(text).encode(encoding, errors="backslashreplace").decode(encoding, errors="replace")
+            stream.write(repaired)
+
 
 class _CapturingStreamHandler(logging.StreamHandler):
     def emit(self, record: logging.LogRecord) -> None:
@@ -102,7 +112,19 @@ class _CapturingStreamHandler(logging.StreamHandler):
             rendered = ""
         if rendered:
             _append_console_line(rendered)
-        super().emit(record)
+        try:
+            stream = self.stream
+            if stream is None:
+                return
+            msg = str(rendered or "")
+            if not msg:
+                return
+            _ConsoleCaptureTee._safe_stream_write(stream, msg + self.terminator)
+            self.flush()
+        except RecursionError:
+            raise
+        except Exception:
+            self.handleError(record)
 
 
 class _PypadLogFormatter(logging.Formatter):

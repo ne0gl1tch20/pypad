@@ -29,7 +29,7 @@ def _read_app_version() -> str:
     if version_file is None:
         return "v?.?.?"
     try:
-        version = version_file.read_text(encoding="utf-8").strip()
+        version = version_file.read_text(encoding="utf-8-sig").strip().lstrip("\ufeff")
     except FileNotFoundError:
         return "v?.?.?"
     return version or "v?.?.?"

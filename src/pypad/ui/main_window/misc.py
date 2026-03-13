@@ -21,8 +21,9 @@ from pathlib import Path
 from urllib.parse import quote_plus
 from html import escape as html_escape
 from urllib.parse import quote as url_quote, unquote as url_unquote
+import importlib.util
 
-from PySide6.QtCore import QByteArray, QEvent, QFileInfo, QObject, QPoint, QRect, QSize, Qt, QTimer, Signal, Slot
+from PySide6.QtCore import QByteArray, QEvent, QFileInfo, QObject, QPoint, QRect, QSize, Qt, QTimer, Signal, Slot, QProcess
 from PySide6.QtGui import (
     QAction,
     QColor,
@@ -143,6 +144,53 @@ from pypad.ui.ai.ai_collaboration import (
     paragraph_bounds,
     strip_model_fences,
 )
+
+
+def _terminal_debug_log(message: str, *args) -> None:
+    _LOGGER.debug("[Terminal] " + str(message), *args)
+
+
+class _TerminalOutputEdit(QTextEdit):
+    def __init__(self, owner, parent=None) -> None:
+        super().__init__(parent)
+        self._owner = owner
+
+    def focusInEvent(self, event) -> None:
+        try:
+            QTimer.singleShot(0, self._owner._terminal_move_cursor_to_end)
+        except Exception:
+            pass
+        super().focusInEvent(event)
+
+    def mousePressEvent(self, event) -> None:
+        super().mousePressEvent(event)
+        try:
+            QTimer.singleShot(0, self._owner._terminal_move_cursor_to_end)
+        except Exception:
+            pass
+
+    def mouseDoubleClickEvent(self, event) -> None:
+        super().mouseDoubleClickEvent(event)
+        try:
+            QTimer.singleShot(0, self._owner._terminal_move_cursor_to_end)
+        except Exception:
+            pass
+
+    def mouseReleaseEvent(self, event) -> None:
+        super().mouseReleaseEvent(event)
+        try:
+            QTimer.singleShot(0, self._owner._terminal_move_cursor_to_end)
+        except Exception:
+            pass
+
+    def keyPressEvent(self, event) -> None:
+        try:
+            if self._owner._handle_terminal_output_keypress(event):
+                event.accept()
+                return
+        except Exception:
+            pass
+        super().keyPressEvent(event)
 from .settings_dialog import SettingsDialog as SidebarSettingsDialog
 from pypad.ui.features.tutorial_dialog import InteractiveTutorialDialog
 from pypad.ui.editor.shortcut_mapper import PRESET_SHORTCUTS, ShortcutActionRow, ShortcutMapperDialog, parse_shortcut_value, sequence_to_string
@@ -1956,6 +2004,27 @@ class MiscMixin(
     def show_task_workflow_panel(self) -> None:
         self.advanced_features.show_tasks()
 
+    def show_git_workspace_panel(self) -> None:
+        self.show_git_panel()
+
+    def lsp_hover_current(self) -> None:
+        self.advanced_features.lsp_hover_current()
+
+    def lsp_find_references(self) -> None:
+        self.advanced_features.lsp_find_references()
+
+    def lsp_rename_symbol(self) -> None:
+        self.advanced_features.lsp_rename_symbol()
+
+    def lsp_show_completion(self) -> None:
+        self.advanced_features.lsp_show_completion()
+
+    def lsp_format_document(self) -> None:
+        self.advanced_features.lsp_format_document()
+
+    def lsp_refresh_diagnostics(self) -> None:
+        self.advanced_features.lsp_refresh_diagnostics()
+
     def configure_backup_scheduler(self) -> None:
         self.advanced_features.configure_backup()
 
@@ -3094,7 +3163,7 @@ class MiscMixin(
         self.settings["status_show_selection_stats"] = True
         if hasattr(self, "editor_dock"):
             self.editor_dock.show()
-        for name in ("ai_chat_dock", "markdown_preview_dock", "search_results_dock", "minimap_dock", "outline_dock"):
+        for name in ("ai_chat_dock", "markdown_preview_dock", "search_results_dock", "terminal_tasks_dock", "git_dock", "problems_dock", "output_dock", "gitlens_dock", "minimap_dock", "outline_dock"):
             dock = getattr(self, name, None)
             if dock is not None:
                 dock.hide()
@@ -3570,9 +3639,6 @@ class MiscMixin(
             if store is not None:
                 store.clear_crash_snapshot()
             return
-        startup_ready_cb = QApplication.instance().property("startup_ready_callback")
-        if callable(startup_ready_cb):
-            startup_ready_cb(self)
         app = QApplication.instance()
         prior_quit_on_last = bool(app.quitOnLastWindowClosed()) if app is not None else True
         if entries:
@@ -3945,12 +4011,19 @@ class MiscMixin(
         if hasattr(self, "status_panel_gamification_widget"):
             self.status_panel_gamification_widget.setVisible(bool(self.settings.get("status_show_gamification", False)))
 
-    def apply_settings(self) -> None:
+    def apply_settings(self, *, startup_deferred: bool = False) -> None:
         _perf_start = time.perf_counter()
         _perf_marks: list[tuple[str, int]] = []
 
         def _mark(stage: str) -> None:
             _perf_marks.append((stage, int((time.perf_counter() - _perf_start) * 1000)))
+
+        def _log_breakdown() -> None:
+            _LOGGER.info(
+                "apply_settings breakdown(ms)%s: %s",
+                " [startup-deferred]" if startup_deferred else "",
+                ", ".join(f"{name}={ms}" for name, ms in _perf_marks),
+            )
 
         self.settings = migrate_settings(dict(self.settings))
         profile = ScintillaProfile.from_settings(self.settings)
@@ -4060,43 +4133,61 @@ class MiscMixin(
                 self.setStyleSheet(qss)
             self._last_applied_main_qss = qss
         if qss_changed or icons_changed:
-            self._apply_main_toolbar_icons()
-            self._apply_markdown_icons()
-            self._apply_format_icons()
-            if hasattr(self, "_apply_search_panel_theme"):
-                self._apply_search_panel_theme()
-            if hasattr(self, "_apply_custom_dock_title_bars_theme"):
-                self._apply_custom_dock_title_bars_theme()
-            if hasattr(self, "_refresh_empty_tabs_widget"):
-                self._refresh_empty_tabs_widget()
-            if hasattr(self, "_apply_ai_feature_icons"):
-                self._apply_ai_feature_icons()
-            if hasattr(self, "_refresh_explorer_dock"):
-                self._refresh_explorer_dock()
-            if hasattr(self, "gamification_status_widget"):
-                self.gamification_status_widget.apply_theme(tokens)
-            if hasattr(self, "status_panel_gamification_widget"):
-                self.status_panel_gamification_widget.apply_theme(tokens)
-            if hasattr(self, "momentum_banner_widget"):
-                self.momentum_banner_widget.apply_theme(tokens)
-            if hasattr(self, "productivity_hub_widget"):
-                self.productivity_hub_widget.apply_theme(tokens)
-            if hasattr(self, "gamification_reward_toast"):
-                self.gamification_reward_toast.apply_theme(tokens)
-            # Re-render tab file icons with the current theme icon color.
-            if hasattr(self, "_refresh_tab_title"):
-                for index in range(self.tab_widget.count()):
-                    tab = self.tab_widget.widget(index)
-                    if isinstance(tab, EditorTab):
-                        try:
-                            self._refresh_tab_title(tab)
-                        except Exception:
-                            pass
-            if hasattr(self, "show_symbol_toolbar_button") and self.show_symbol_toolbar_button is not None:
-                self.show_symbol_toolbar_button.setIcon(self._svg_icon("show-symbol"))
-            if hasattr(self, "_schedule_main_toolbar_overflow_update"):
-                self._schedule_main_toolbar_overflow_update()
-            self._last_applied_icon_signature = icon_signature
+            def _apply_visual_refresh_batch() -> None:
+                batch_start = time.perf_counter()
+                self._apply_main_toolbar_icons()
+                self._apply_markdown_icons()
+                self._apply_format_icons()
+                if hasattr(self, "_apply_search_panel_theme"):
+                    self._apply_search_panel_theme()
+                if hasattr(self, "_apply_custom_dock_title_bars_theme"):
+                    self._apply_custom_dock_title_bars_theme()
+                if hasattr(self, "_refresh_empty_tabs_widget"):
+                    self._refresh_empty_tabs_widget()
+                if hasattr(self, "_apply_ai_feature_icons"):
+                    self._apply_ai_feature_icons()
+                if hasattr(self, "gamification_status_widget"):
+                    self.gamification_status_widget.apply_theme(tokens)
+                if hasattr(self, "status_panel_gamification_widget"):
+                    self.status_panel_gamification_widget.apply_theme(tokens)
+                if hasattr(self, "momentum_banner_widget"):
+                    self.momentum_banner_widget.apply_theme(tokens)
+                if hasattr(self, "productivity_hub_widget"):
+                    self.productivity_hub_widget.apply_theme(tokens)
+                if hasattr(self, "gamification_reward_toast"):
+                    self.gamification_reward_toast.apply_theme(tokens)
+                if hasattr(self, "show_symbol_toolbar_button") and self.show_symbol_toolbar_button is not None:
+                    self.show_symbol_toolbar_button.setIcon(self._svg_icon("show-symbol"))
+                if hasattr(self, "_schedule_main_toolbar_overflow_update"):
+                    self._schedule_main_toolbar_overflow_update()
+                self._last_applied_icon_signature = icon_signature
+                _LOGGER.info(
+                    "apply_settings visual_refresh_batch=%sms",
+                    int((time.perf_counter() - batch_start) * 1000),
+                )
+
+            def _apply_deferred_explorer_and_tab_title_refresh() -> None:
+                batch_start = time.perf_counter()
+                if hasattr(self, "_refresh_explorer_dock"):
+                    self._refresh_explorer_dock()
+                if hasattr(self, "_refresh_tab_title"):
+                    for index in range(self.tab_widget.count()):
+                        tab = self.tab_widget.widget(index)
+                        if isinstance(tab, EditorTab):
+                            try:
+                                self._refresh_tab_title(tab)
+                            except Exception:
+                                pass
+                _LOGGER.info(
+                    "apply_settings explorer_tab_refresh_batch=%sms",
+                    int((time.perf_counter() - batch_start) * 1000),
+                )
+
+            _apply_visual_refresh_batch()
+            if startup_deferred:
+                QTimer.singleShot(0, _apply_deferred_explorer_and_tab_title_refresh)
+            else:
+                _apply_deferred_explorer_and_tab_title_refresh()
         _mark("qss_icons")
         icon_px = int(self.settings.get("icon_size_px", 18))
         label_mode = str(self.settings.get("toolbar_label_mode", "icons_only"))
@@ -4203,39 +4294,70 @@ class MiscMixin(
             )
         _mark("timers_menus_advanced")
 
-        for index in range(self.tab_widget.count()):
-            tab = self.tab_widget.widget(index)
-            if isinstance(tab, EditorTab):
-                if hasattr(tab.text_edit, "set_theme_colors"):
-                    tab.text_edit.set_theme_colors(
-                        background=tokens.editor_bg,
-                        foreground=tokens.text,
-                        selection_bg=tokens.selection_bg,
-                        selection_fg=tokens.selection_fg,
-                        caret_line_bg=tokens.tab_hover_bg,
-                        gutter_bg=tokens.chrome_bg,
-                        gutter_fg=tokens.text_muted,
-                    )
-                self._apply_syntax_highlighting(tab)
-                tab.version_history.max_entries = int(self.settings.get("version_history_max_entries", 50))
-                self._apply_tab_color(tab)
-                tab.column_mode = bool(profile.column_mode)
-                tab.multi_caret = bool(profile.multi_caret)
-                tab.code_folding = bool(profile.code_folding)
-                tab.auto_completion_mode = str(profile.auto_completion_mode or "all").lower()
-                tab.show_space_tab = bool(profile.show_space_tab)
-                tab.show_eol = bool(profile.show_eol)
-                tab.show_non_printing = bool(profile.show_non_printing)
-                tab.show_control_chars = bool(profile.show_control_chars)
-                tab.show_all_chars = bool(profile.show_all_chars)
-                tab.show_indent_guides = bool(profile.show_indent_guides)
-                tab.show_wrap_symbol = bool(profile.show_wrap_symbol)
-                tab.show_line_numbers = bool(profile.line_numbers_visible)
-                tab.text_edit.set_wrap_enabled(profile.wrap_mode == "word")
-                tab.text_edit.configure_indentation(tab_width=profile.tab_width, use_tabs=profile.use_tabs)
-                if hasattr(self, "_apply_scintilla_modes"):
-                    self._apply_scintilla_modes(tab)
-                apply_indentation_defaults_to_tab(self, tab)
+        def _apply_tab_runtime_settings(tab: EditorTab) -> None:
+            if hasattr(tab.text_edit, "set_theme_colors"):
+                tab.text_edit.set_theme_colors(
+                    background=tokens.editor_bg,
+                    foreground=tokens.text,
+                    selection_bg=tokens.selection_bg,
+                    selection_fg=tokens.selection_fg,
+                    caret_line_bg=tokens.tab_hover_bg,
+                    gutter_bg=tokens.chrome_bg,
+                    gutter_fg=tokens.text_muted,
+                )
+            self._apply_syntax_highlighting(tab)
+            tab.version_history.max_entries = int(self.settings.get("version_history_max_entries", 50))
+            self._apply_tab_color(tab)
+            tab.column_mode = bool(profile.column_mode)
+            tab.multi_caret = bool(profile.multi_caret)
+            tab.code_folding = bool(profile.code_folding)
+            tab.auto_completion_mode = str(profile.auto_completion_mode or "all").lower()
+            tab.show_space_tab = bool(profile.show_space_tab)
+            tab.show_eol = bool(profile.show_eol)
+            tab.show_non_printing = bool(profile.show_non_printing)
+            tab.show_control_chars = bool(profile.show_control_chars)
+            tab.show_all_chars = bool(profile.show_all_chars)
+            tab.show_indent_guides = bool(profile.show_indent_guides)
+            tab.show_wrap_symbol = bool(profile.show_wrap_symbol)
+            tab.show_line_numbers = bool(profile.line_numbers_visible)
+            tab.text_edit.set_wrap_enabled(profile.wrap_mode == "word")
+            tab.text_edit.configure_indentation(tab_width=profile.tab_width, use_tabs=profile.use_tabs)
+            if hasattr(self, "_apply_scintilla_modes"):
+                self._apply_scintilla_modes(tab)
+            apply_indentation_defaults_to_tab(self, tab)
+
+        if startup_deferred:
+            tabs: list[EditorTab] = []
+            for index in range(self.tab_widget.count()):
+                tab = self.tab_widget.widget(index)
+                if isinstance(tab, EditorTab):
+                    tabs.append(tab)
+            active_tab = self.active_tab()
+            if isinstance(active_tab, EditorTab) and active_tab in tabs:
+                _apply_tab_runtime_settings(active_tab)
+                tabs = [tab for tab in tabs if tab is not active_tab]
+
+            def _apply_remaining_tabs_chunk(remaining: list[EditorTab]) -> None:
+                chunk_start = time.perf_counter()
+                next_remaining = remaining[4:]
+                for tab in remaining[:4]:
+                    _apply_tab_runtime_settings(tab)
+                _LOGGER.info(
+                    "apply_settings tab_chunk count=%s elapsed=%sms remaining=%s",
+                    min(4, len(remaining)),
+                    int((time.perf_counter() - chunk_start) * 1000),
+                    len(next_remaining),
+                )
+                if next_remaining:
+                    QTimer.singleShot(0, lambda rem=next_remaining: _apply_remaining_tabs_chunk(rem))
+
+            if tabs:
+                QTimer.singleShot(0, lambda rem=tabs: _apply_remaining_tabs_chunk(rem))
+        else:
+            for index in range(self.tab_widget.count()):
+                tab = self.tab_widget.widget(index)
+                if isinstance(tab, EditorTab):
+                    _apply_tab_runtime_settings(tab)
         _mark("tab_theme_syntax_modes")
         if hasattr(self, "ai_chat_dock") and self.ai_chat_dock is not None:
             self.ai_chat_dock.refresh_theme()
@@ -4265,10 +4387,7 @@ class MiscMixin(
         self.apply_language()
         apply_notepadpp_runtime_settings(self)
         _mark("finalize")
-        _LOGGER.info(
-            "apply_settings breakdown(ms): %s",
-            ", ".join(f"{name}={ms}" for name, ms in _perf_marks),
-        )
+        _log_breakdown()
 
     def apply_language(self, *, force: bool = False) -> None:
         lang_label = str(self.settings.get("language", "English") or "English")
@@ -5083,7 +5202,8 @@ class MiscMixin(
         self.save_settings_to_disk()
         self.show_status_message(f"Session loaded: {path}", 3000)
 
-    def restore_last_session(self) -> None:
+    def restore_last_session(self, *, startup_deferred: bool = False) -> None:
+        started = time.perf_counter()
         if not self.settings.get("restore_last_session", True):
             return
         files = [p for p in self.settings.get("last_session_files", []) if isinstance(p, str) and p]
@@ -5108,6 +5228,84 @@ class MiscMixin(
             active_unsaved_index = -1
         workspace_root = str(self.settings.get("last_session_workspace_root", "") or "")
         opened_unsaved: list[EditorTab] = []
+
+        def _select_restored_target() -> None:
+            if active_file:
+                for index in range(self.tab_widget.count()):
+                    tab = self.tab_widget.widget(index)
+                    if isinstance(tab, EditorTab) and tab.current_file == active_file:
+                        self.tab_widget.setCurrentIndex(index)
+                        break
+            elif 0 <= active_unsaved_index < len(opened_unsaved):
+                target = opened_unsaved[active_unsaved_index]
+                target_idx = self.tab_widget.indexOf(target)
+                if target_idx >= 0:
+                    self.tab_widget.setCurrentIndex(target_idx)
+            if workspace_root and Path(workspace_root).exists():
+                self.settings["workspace_root"] = workspace_root
+            _LOGGER.info(
+                "restore_last_session total=%sms files=%s unsaved=%s deferred=%s",
+                int((time.perf_counter() - started) * 1000),
+                len(files),
+                len(unsaved_tabs),
+                startup_deferred,
+            )
+
+        def _open_file_batch(remaining_files: list[str], on_done) -> None:
+            batch_start = time.perf_counter()
+            next_remaining = remaining_files[2:]
+            for path in remaining_files[:2]:
+                if Path(path).exists():
+                    if self._open_file_path(path):
+                        tab = self.active_tab()
+                        if tab is not None and hasattr(self, "_ensure_tab_autosave_meta"):
+                            self._ensure_tab_autosave_meta(tab)
+            _LOGGER.info(
+                "restore_last_session file_batch count=%s elapsed=%sms remaining=%s",
+                min(2, len(remaining_files)),
+                int((time.perf_counter() - batch_start) * 1000),
+                len(next_remaining),
+            )
+            if next_remaining:
+                QTimer.singleShot(0, lambda rem=next_remaining: _open_file_batch(rem, on_done))
+            else:
+                on_done()
+
+        def _open_unsaved_batch(remaining_tabs: list[dict], on_done) -> None:
+            batch_start = time.perf_counter()
+            next_remaining = remaining_tabs[4:]
+            for row in remaining_tabs[:4]:
+                text = str(row.get("text", "") or "")
+                tab = self.add_new_tab(text=text, file_path=None, make_current=True)
+                tab.markdown_mode_enabled = bool(row.get("markdown_mode", False))
+                tab.text_edit.set_modified(bool(row.get("modified", bool(text))))
+                if hasattr(self, "_sync_markdown_preview_for_active_tab") and tab is self.active_tab():
+                    self._sync_markdown_preview_for_active_tab()
+                opened_unsaved.append(tab)
+            _LOGGER.info(
+                "restore_last_session unsaved_batch count=%s elapsed=%sms remaining=%s",
+                min(4, len(remaining_tabs)),
+                int((time.perf_counter() - batch_start) * 1000),
+                len(next_remaining),
+            )
+            if next_remaining:
+                QTimer.singleShot(0, lambda rem=next_remaining: _open_unsaved_batch(rem, on_done))
+            else:
+                on_done()
+
+        if startup_deferred and (files or unsaved_tabs):
+            def _after_files() -> None:
+                if unsaved_tabs:
+                    _open_unsaved_batch(list(unsaved_tabs), _select_restored_target)
+                else:
+                    _select_restored_target()
+
+            if files:
+                _open_file_batch(list(files), _after_files)
+            else:
+                _after_files()
+            return
+
         for path in files:
             if Path(path).exists():
                 if self._open_file_path(path):
@@ -5122,19 +5320,7 @@ class MiscMixin(
             if hasattr(self, "_sync_markdown_preview_for_active_tab") and tab is self.active_tab():
                 self._sync_markdown_preview_for_active_tab()
             opened_unsaved.append(tab)
-        if active_file:
-            for index in range(self.tab_widget.count()):
-                tab = self.tab_widget.widget(index)
-                if isinstance(tab, EditorTab) and tab.current_file == active_file:
-                    self.tab_widget.setCurrentIndex(index)
-                    break
-        elif 0 <= active_unsaved_index < len(opened_unsaved):
-            target = opened_unsaved[active_unsaved_index]
-            target_idx = self.tab_widget.indexOf(target)
-            if target_idx >= 0:
-                self.tab_widget.setCurrentIndex(target_idx)
-        if workspace_root and Path(workspace_root).exists():
-            self.settings["workspace_root"] = workspace_root
+        _select_restored_target()
 
     def _serialize_tab_for_reopen(self, tab: EditorTab) -> dict[str, object]:
         return {
@@ -5655,6 +5841,8 @@ class MiscMixin(
         self._layout_docks_ready = True
         self._build_explorer_dock()
         self._build_search_results_dock()
+        self._build_terminal_tasks_dock()
+        self._build_git_dock()
         self._build_productivity_hub_dialog()
         self._ensure_default_layout()
         for dock_name in ("ai_chat_dock", "markdown_preview_dock"):
@@ -6387,6 +6575,9 @@ class MiscMixin(
         self.search_results_filter_case_checkbox.setObjectName("searchResultsCaseCheckbox")
         self.search_results_filter_case_checkbox.setText("Aa")
         self.search_results_filter_case_checkbox.setToolTip("Case sensitive filter")
+        self.search_results_group_combo = QComboBox(container)
+        self.search_results_group_combo.setObjectName("searchResultsGroupCombo")
+        self.search_results_group_combo.addItems(["Flat", "By File"])
         self.search_results_replace_btn = QPushButton("Replace...", container)
         self.search_results_replace_btn.setObjectName("searchResultsReplaceBtn")
         self.search_results_replace_btn.setToolTip("Replace in displayed search results")
@@ -6397,16 +6588,26 @@ class MiscMixin(
             self.search_results_replace_btn.setIcon(replace_icon)
         filter_row.addWidget(self.search_results_filter_edit, 1)
         filter_row.addWidget(self.search_results_filter_case_checkbox)
+        filter_row.addWidget(self.search_results_group_combo)
         filter_row.addWidget(self.search_results_replace_btn)
         layout.addLayout(filter_row)
-        self.search_results_list = QListWidget(container)
+        results_splitter = QSplitter(Qt.Orientation.Vertical, container)
+        self.search_results_list = QListWidget(results_splitter)
         self.search_results_list.setObjectName("searchResultsList")
         self.search_results_list.setAlternatingRowColors(False)
         self.search_results_list.itemDoubleClicked.connect(self._open_search_result_from_dock)
-        layout.addWidget(self.search_results_list, 1)
+        self.search_results_preview = QTextEdit(results_splitter)
+        self.search_results_preview.setObjectName("searchResultsPreview")
+        self.search_results_preview.setReadOnly(True)
+        self.search_results_preview.setPlaceholderText("Select a result to preview surrounding lines.")
+        results_splitter.setChildrenCollapsible(False)
+        results_splitter.setSizes([360, 180])
+        layout.addWidget(results_splitter, 1)
         self.search_results_filter_edit.textChanged.connect(self._refresh_search_results_dock)
         self.search_results_filter_case_checkbox.toggled.connect(self._refresh_search_results_dock)
+        self.search_results_group_combo.currentTextChanged.connect(self._refresh_search_results_dock)
         self.search_results_replace_btn.clicked.connect(self.replace_in_search_results)
+        self.search_results_list.currentItemChanged.connect(lambda _cur, _prev: self._update_search_result_preview())
         class _SearchResultsResizeFilter(QObject):
             def __init__(self, owner):
                 super().__init__(owner)
@@ -6445,22 +6646,31 @@ class MiscMixin(
         if not items:
             self.search_results_label.setText("No search results")
         else:
+            unique_files = len({str(item.get("path", "") or "") for item in items if str(item.get("path", "") or "")})
             if len(filtered_indices) == len(items):
-                self.search_results_label.setText(f"Query: {query} ({len(items)} result(s))")
+                self.search_results_label.setText(f"Query: {query} ({len(items)} hit(s) in {unique_files} file(s))")
             else:
                 self.search_results_label.setText(
-                    f"Query: {query} ({len(filtered_indices)}/{len(items)} filtered)"
+                    f"Query: {query} ({len(filtered_indices)}/{len(items)} filtered, {unique_files} file(s))"
                 )
         self.search_results_list.clear()
+        group_mode = self.search_results_group_combo.currentText() if hasattr(self, "search_results_group_combo") else "Flat"
+        last_path = ""
         for idx in filtered_indices:
             item = items[idx]
             path = Path(str(item.get("path", "") or ""))
+            if group_mode == "By File" and str(path) != last_path:
+                header = QListWidgetItem(str(path), self.search_results_list)
+                header.setFlags(Qt.ItemFlag.ItemIsEnabled)
+                header.setData(Qt.UserRole, None)
+                last_path = str(path)
             line_no = int(item.get("line_no", 1) or 1)
             line_text = str(item.get("line_text", "") or "").strip()
             row = f"{path.name}:{line_no} | {line_text}"
             lw_item = QListWidgetItem(row, self.search_results_list)
             lw_item.setToolTip(str(path))
             lw_item.setData(Qt.UserRole, idx)
+        self._update_search_result_preview()
 
     def _apply_search_results_theme(self) -> None:
         if not hasattr(self, "search_results_list"):
@@ -6489,6 +6699,14 @@ class MiscMixin(
             }}
             QCheckBox#searchResultsCaseCheckbox {{
                 color: {tokens.text};
+            }}
+            QComboBox#searchResultsGroupCombo {{
+                background: {tokens.input_bg};
+                color: {tokens.text};
+                border: 1px solid {tokens.border};
+                border-radius: {tokens.radius_sm}px;
+                padding: 3px 6px;
+                min-height: {max(24, int(tokens.input_height) - 2)}px;
             }}
             QPushButton#searchResultsReplaceBtn {{
                 background: {tokens.button_bg};
@@ -6522,6 +6740,13 @@ class MiscMixin(
                 background: {tokens.accent};
                 color: {tokens.text_on_accent};
             }}
+            QTextEdit#searchResultsPreview {{
+                background: {tokens.input_bg};
+                color: {tokens.text};
+                border: 1px solid {tokens.border};
+                border-radius: {tokens.radius_sm}px;
+                padding: 6px;
+            }}
             """
         )
 
@@ -6529,8 +6754,9 @@ class MiscMixin(
         btn = getattr(self, "search_results_replace_btn", None)
         edit = getattr(self, "search_results_filter_edit", None)
         case_cb = getattr(self, "search_results_filter_case_checkbox", None)
+        group_combo = getattr(self, "search_results_group_combo", None)
         dock = getattr(self, "search_results_dock", None)
-        if btn is None or edit is None or case_cb is None or dock is None:
+        if btn is None or edit is None or case_cb is None or group_combo is None or dock is None:
             return
         icon_px = max(14, int(self.settings.get("icon_size_px", 18) or 18))
         button_h = max(24, int(build_tokens_from_settings(self.settings).input_height) - 2)
@@ -6544,6 +6770,7 @@ class MiscMixin(
             btn.setProperty("compactIconOnly", True)
             edit.setPlaceholderText("Filter...")
             case_cb.setText("Aa")
+            group_combo.setMinimumWidth(84)
         else:
             btn.setText(str(getattr(self, "_search_results_replace_btn_full_text", "Replace...")))
             btn.setMinimumWidth(0)
@@ -6553,6 +6780,7 @@ class MiscMixin(
             btn.setProperty("compactIconOnly", False)
             edit.setPlaceholderText("Filter results text/path...")
             case_cb.setText("Aa")
+            group_combo.setMinimumWidth(108)
         style = btn.style()
         if style is not None:
             style.unpolish(btn)
@@ -6580,6 +6808,48 @@ class MiscMixin(
                 out.append(idx)
         return out
 
+    def _selected_search_result_indices(self) -> list[int]:
+        if not hasattr(self, "search_results_list"):
+            return []
+        rows: list[int] = []
+        for item in self.search_results_list.selectedItems():
+            idx = item.data(Qt.UserRole)
+            if isinstance(idx, int):
+                rows.append(idx)
+        return rows
+
+    def _update_search_result_preview(self) -> None:
+        preview = getattr(self, "search_results_preview", None)
+        if preview is None or not hasattr(self, "search_results_list"):
+            return
+        current = self.search_results_list.currentItem()
+        if current is None:
+            preview.setPlainText("")
+            return
+        idx = current.data(Qt.UserRole)
+        items = list(getattr(self, "_search_results_items", []))
+        if not isinstance(idx, int) or idx < 0 or idx >= len(items):
+            preview.setPlainText("")
+            return
+        row = items[idx]
+        path = str(row.get("path", "") or "")
+        line_no = int(row.get("line_no", 1) or 1)
+        if not path:
+            preview.setPlainText("")
+            return
+        try:
+            lines = Path(path).read_text(encoding="utf-8", errors="replace").splitlines()
+        except Exception as exc:
+            preview.setPlainText(f"{path}\n\nPreview unavailable:\n{exc}")
+            return
+        start = max(0, line_no - 3)
+        end = min(len(lines), line_no + 2)
+        preview_lines = [path, ""]
+        for idx_line in range(start, end):
+            marker = ">" if idx_line + 1 == line_no else " "
+            preview_lines.append(f"{marker} {idx_line + 1:>5}: {lines[idx_line]}")
+        preview.setPlainText("\n".join(preview_lines))
+
     def _open_search_result_from_dock(self, item: QListWidgetItem) -> None:
         idx = item.data(Qt.UserRole)
         items = list(getattr(self, "_search_results_items", []))
@@ -6593,7 +6863,7 @@ class MiscMixin(
         if not items:
             QMessageBox.information(self, "Replace in Results", "No search results available.")
             return
-        target_indices = self._filtered_search_result_indices(items)
+        target_indices = self._selected_search_result_indices() or self._filtered_search_result_indices(items)
         if not target_indices:
             QMessageBox.information(self, "Replace in Results", "No displayed results to replace.")
             return
@@ -6694,6 +6964,1006 @@ class MiscMixin(
         )
         if failures:
             QMessageBox.warning(self, "Replace in Results", f"Completed with {failures} file error(s).")
+
+    def _default_workspace_tasks(self) -> list[dict[str, str]]:
+        return [
+            {"name": "Tests", "command": "python -m pytest", "cwd": "${workspace}"},
+            {"name": "Lint", "command": "python -m ruff check .", "cwd": "${workspace}"},
+            {"name": "Compile", "command": "python -m compileall src", "cwd": "${workspace}"},
+        ]
+
+    def _workspace_tasks(self) -> list[dict[str, str]]:
+        raw = self.settings.get("workspace_tasks", [])
+        rows: list[dict[str, str]] = []
+        if isinstance(raw, list):
+            for item in raw:
+                if not isinstance(item, dict):
+                    continue
+                name = str(item.get("name", "") or "").strip()
+                command = str(item.get("command", "") or "").strip()
+                if not name or not command:
+                    continue
+                rows.append(
+                    {
+                        "name": name,
+                        "command": command,
+                        "cwd": str(item.get("cwd", "${workspace}") or "${workspace}"),
+                    }
+                )
+        if not rows:
+            rows = self._default_workspace_tasks()
+            self.settings["workspace_tasks"] = rows
+        return rows
+
+    def _resolve_task_cwd(self, raw: str) -> str:
+        workspace_root = str(self.settings.get("workspace_root", "") or "").strip()
+        fallback = workspace_root or str(Path.cwd())
+        text = str(raw or "").strip() or "${workspace}"
+        if text == "${workspace}":
+            return fallback
+        return text.replace("${workspace}", fallback)
+
+    def _terminal_cwd_marker(self) -> str:
+        return "__PYPAD_CWD__"
+
+    def _style_panel_action_button(self, button: QPushButton, icon_name: str, tooltip: str) -> None:
+        button.setToolTip(tooltip)
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+        button.setMinimumHeight(max(28, int(build_tokens_from_settings(self.settings).input_height)))
+        button.setObjectName("panelActionButton")
+        icon = self._svg_icon(icon_name)
+        if icon is not None and not icon.isNull():
+            button.setIcon(icon)
+
+    def _apply_panel_surface_theme(self, container: QWidget, *, extra_qss: str = "") -> None:
+        tokens = build_tokens_from_settings(self.settings)
+        container.setStyleSheet(
+            f"""
+            QWidget {{
+                background: {tokens.surface_bg};
+                color: {tokens.text};
+            }}
+            QLabel {{
+                color: {tokens.text};
+            }}
+            QLabel#panelSummaryLabel,
+            QLabel#terminalCwdLabel {{
+                color: {tokens.text};
+                font-weight: 600;
+                padding: 2px 0px;
+            }}
+            QLineEdit, QComboBox, QListWidget, QTextEdit {{
+                background: {tokens.input_bg};
+                color: {tokens.text};
+                border: 1px solid {tokens.border};
+                border-radius: {tokens.radius_sm}px;
+                padding: 4px 6px;
+            }}
+            QPushButton#panelActionButton {{
+                background: {tokens.button_bg};
+                color: {tokens.text};
+                border: 1px solid {tokens.border};
+                border-radius: {tokens.radius_sm}px;
+                padding: 4px 10px;
+            }}
+            QPushButton#panelActionButton[compactIconOnly="true"] {{
+                padding: 0px;
+            }}
+            QPushButton#panelActionButton:hover {{
+                background: {tokens.toolbar_hover_bg};
+            }}
+            QPushButton#panelActionButton:pressed {{
+                background: {tokens.toolbar_checked_bg};
+            }}
+            {extra_qss}
+            """
+        )
+
+    def _build_terminal_tasks_dock(self) -> None:
+        if hasattr(self, "terminal_tasks_dock"):
+            return
+        dock = QDockWidget("Terminal & Tasks", self)
+        dock.setObjectName("terminalTasksDock")
+        dock.setAllowedAreas(Qt.AllDockWidgetAreas)
+        dock.setFeatures(QDockWidget.DockWidgetMovable | QDockWidget.DockWidgetFloatable | QDockWidget.DockWidgetClosable)
+        if hasattr(self, "_install_custom_dock_title_bar"):
+            self._install_custom_dock_title_bar(dock, "Terminal & Tasks", "terminal_tasks_dock_title_bar")
+        terminal_title_bar = getattr(self, "terminal_tasks_dock_title_bar", None)
+        if terminal_title_bar is not None and hasattr(terminal_title_bar, "add_right_widget"):
+            self.terminal_title_tab_btn = QToolButton(terminal_title_bar)
+            self.terminal_title_tab_btn.setObjectName("terminalTitleTabButton")
+            self.terminal_title_tab_btn.setText("Terminal")
+            self.terminal_title_tab_btn.setCheckable(True)
+            self.terminal_title_tab_btn.setChecked(True)
+            self.terminal_title_tab_btn.setAutoRaise(True)
+            self.terminal_title_tab_btn.setToolTip("Terminal")
+            self.terminal_kill_btn = QToolButton(terminal_title_bar)
+            self.terminal_kill_btn.setObjectName("terminalKillButton")
+            self.terminal_kill_btn.setText("Kill")
+            self.terminal_kill_btn.setAutoRaise(True)
+            self.terminal_kill_btn.setToolTip("Kill terminal session")
+            terminal_title_bar.add_right_widget(self.terminal_title_tab_btn)
+            terminal_title_bar.add_right_widget(self.terminal_kill_btn)
+        container = QWidget(dock)
+        container.setMinimumHeight(0)
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        self.terminal_output = _TerminalOutputEdit(self, container)
+        self.terminal_output.setObjectName("terminalOutput")
+        self.terminal_output.setReadOnly(False)
+        self.terminal_output.setAcceptRichText(False)
+        self.terminal_output.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
+        self.terminal_output.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.terminal_output.setMinimumHeight(0)
+        layout.addWidget(self.terminal_output, 1)
+        self._apply_panel_surface_theme(
+            container,
+            extra_qss="""
+            QTextEdit#terminalOutput {
+                background: #0f1116;
+                color: #e6edf3;
+                border: none;
+                border-radius: 0px;
+                padding: 8px 10px;
+                selection-background-color: #264f78;
+                selection-color: #e6edf3;
+                font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+            }
+            QWidget#pypadDockTitleBar QToolButton#terminalTitleTabButton {
+                background: transparent;
+                color: #e6edf3;
+                border: none;
+                border-bottom: 2px solid #4ea1ff;
+                border-radius: 0px;
+                padding: 1px 6px 3px 6px;
+                font-weight: 600;
+            }
+            QWidget#pypadDockTitleBar QToolButton#terminalKillButton {
+                min-width: 38px;
+            }
+            """
+        )
+        dock.setWidget(container)
+        dock.setMinimumHeight(72)
+        self.terminal_tasks_dock = dock
+        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, dock)
+        dock.hide()
+        dock.visibilityChanged.connect(lambda _visible: self._sync_layout_panel_actions())
+        self.terminal_process = QProcess(self)
+        self.terminal_process.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
+        self.terminal_process.readyReadStandardOutput.connect(self._append_terminal_output)
+        self.terminal_process.finished.connect(self._on_terminal_process_finished)
+        if hasattr(self, "terminal_kill_btn"):
+            self.terminal_kill_btn.clicked.connect(self.restart_terminal_session)
+        self._refresh_terminal_tasks_panel()
+        self._terminal_output_partial = ""
+        self._terminal_prompt_cursor = 0
+        self._terminal_prompt_active = False
+        self.start_terminal_session()
+
+    def _refresh_terminal_tasks_panel(self) -> None:
+        cwd = self._resolve_task_cwd("${workspace}")
+        if not str(getattr(self, "_terminal_current_cwd", "") or "").strip():
+            self._terminal_current_cwd = cwd
+
+    def _load_selected_workspace_task(self) -> None:
+        cwd = self._resolve_task_cwd("${workspace}")
+        self._terminal_current_cwd = cwd
+
+    def _append_terminal_output(self, final: bool = False) -> None:
+        proc = getattr(self, "terminal_process", None)
+        output = self.terminal_output if hasattr(self, "terminal_output") else None
+        if proc is None or output is None:
+            return
+        try:
+            data = bytes(proc.readAllStandardOutput()).decode("utf-8", errors="replace")
+        except RuntimeError:
+            if final:
+                self._update_terminal_prompt(disconnected=True)
+            return
+        if data:
+            _terminal_debug_log("stdout chars=%d final=%s raw=%r", len(data), final, data[:400])
+            combined = str(getattr(self, "_terminal_output_partial", "") or "") + data
+            hidden_fragment = str(getattr(self, "_terminal_hidden_echo_fragment", "") or "")
+            if hidden_fragment:
+                combined = combined.replace(hidden_fragment, "")
+            marker = self._terminal_cwd_marker()
+            visible_parts: list[str] = []
+            saw_cwd_marker = False
+            while True:
+                idx = combined.find(marker)
+                if idx < 0:
+                    break
+                visible_parts.append(combined[:idx])
+                remainder = combined[idx + len(marker) :]
+                newline_idx = remainder.find("\n")
+                if newline_idx < 0:
+                    self._terminal_output_partial = combined[idx:]
+                    combined = ""
+                    break
+                cwd_text = remainder[:newline_idx].strip().strip("\r")
+                if cwd_text:
+                    saw_cwd_marker = True
+                    self._terminal_current_cwd = cwd_text
+                combined = remainder[newline_idx + 1 :]
+            else:
+                pass
+            if combined:
+                visible_parts.append(combined)
+                self._terminal_output_partial = ""
+            visible = "".join(visible_parts)
+            if visible:
+                self._terminal_insert_output_text(visible)
+            if saw_cwd_marker:
+                _terminal_debug_log("cwd marker seen cwd=%r", getattr(self, "_terminal_current_cwd", ""))
+                self._update_terminal_prompt()
+        if final:
+            try:
+                code = proc.exitCode()
+            except RuntimeError:
+                code = 0
+            _terminal_debug_log(
+                "process finished backend=%s code=%s state=%s",
+                getattr(self, "_terminal_backend", ""),
+                code,
+                proc.state(),
+            )
+            if str(getattr(self, "_terminal_backend", "")) == "cmd_runner":
+                self._update_terminal_prompt()
+                return
+            status = "finished" if code == 0 else f"failed ({code})"
+            self._terminal_insert_output_text(f"\n[process {status}]\n")
+            self._update_terminal_prompt(disconnected=True)
+
+    def _on_terminal_process_finished(self, *_args) -> None:
+        self._append_terminal_output(final=True)
+
+    def _update_terminal_prompt(self, *, disconnected: bool = False) -> None:
+        edit = getattr(self, "terminal_output", None)
+        if edit is None:
+            return
+        if bool(getattr(self, "_terminal_prompt_active", False)):
+            _terminal_debug_log("skip prompt update active=%s disconnected=%s", True, disconnected)
+            return
+        cwd = str(getattr(self, "_terminal_current_cwd", "") or self._resolve_task_cwd("${workspace}"))
+        if disconnected:
+            self._terminal_prompt_prefix_text = "[offline] "
+            self._terminal_ensure_prompt()
+            return
+        if os.name == "nt" and str(getattr(self, "_terminal_backend", "")) == "powershell":
+            self._terminal_prompt_prefix_text = f"PS {cwd}> "
+        elif os.name == "nt":
+            self._terminal_prompt_prefix_text = f"{cwd}> "
+        else:
+            self._terminal_prompt_prefix_text = f"$ {cwd} "
+        _terminal_debug_log(
+            "update prompt backend=%s cwd=%r prompt=%r",
+            getattr(self, "_terminal_backend", ""),
+            cwd,
+            self._terminal_prompt_prefix_text,
+        )
+        self._terminal_ensure_prompt()
+
+    def _sync_terminal_input_prompt(self, *, previous_prefix: str = "") -> None:
+        return
+
+    def _enforce_terminal_prompt_prefix(self, _text: str) -> None:
+        # Input normalization is now handled by key/mouse event guards instead of
+        # rewriting the line on every text edit, which was causing duplicated prompt
+        # and command text during backspace and replacement flows.
+        return
+
+    def _terminal_extract_command_suffix(self, text: str, *, previous_prefix: str, current_prefix: str) -> str:
+        value = str(text or "")
+        if previous_prefix and value.startswith(previous_prefix):
+            return value[len(previous_prefix) :]
+        if current_prefix and value.startswith(current_prefix):
+            return value[len(current_prefix) :]
+        # The input is a plain command field now, but clean up old persisted or
+        # already-corrupted values that still contain shell prompt prefixes.
+        prompt_pattern = r"^(?:(?:PS [^\r\n>]+> )|(?:\$ [^\r\n]* ))+"
+        return re.sub(prompt_pattern, "", value, count=1)
+
+    def _clamp_terminal_prompt_selection(self) -> None:
+        return
+
+    def eventFilter(self, source, event):  # type: ignore[override]
+        terminal_output = getattr(self, "terminal_output", None)
+        terminal_viewport = terminal_output.viewport() if terminal_output is not None else None
+        if source in {terminal_output, terminal_viewport} and event is not None:
+            if event.type() == QEvent.Type.FocusIn:
+                QTimer.singleShot(0, self._terminal_move_cursor_to_end)
+            elif event.type() in (QEvent.Type.MouseButtonPress, QEvent.Type.MouseButtonDblClick, QEvent.Type.MouseButtonRelease):
+                QTimer.singleShot(0, self._terminal_move_cursor_to_end)
+            elif event.type() == QEvent.Type.KeyPress:
+                return self._handle_terminal_output_keypress(event)
+        return super().eventFilter(source, event)
+
+    def _select_terminal_default_text_if_present(self) -> None:
+        return
+
+    def _normalize_terminal_input_line(self) -> None:
+        edit = getattr(self, "terminal_output", None)
+        if edit is None:
+            return
+        text = edit.toPlainText()
+        prompt_pos = int(getattr(self, "_terminal_prompt_cursor", 0) or 0)
+        if prompt_pos < 0 or prompt_pos > len(text):
+            prompt_pos = len(text)
+        prefix = text[:prompt_pos]
+        suffix = self._terminal_extract_command_suffix(text[prompt_pos:], previous_prefix="", current_prefix="")
+        normalized = prefix + suffix
+        if text == normalized:
+            return
+        cursor = edit.textCursor()
+        cursor_pos = cursor.position()
+        edit.blockSignals(True)
+        edit.setPlainText(normalized)
+        cursor.setPosition(min(max(prompt_pos, cursor_pos), len(normalized)))
+        edit.setTextCursor(cursor)
+        edit.blockSignals(False)
+
+    def start_terminal_session(self) -> None:
+        proc = getattr(self, "terminal_process", None)
+        if proc is None:
+            return
+        if proc.state() != QProcess.ProcessState.NotRunning:
+            return
+        cwd = str(getattr(self, "_terminal_current_cwd", "") or self._resolve_task_cwd("${workspace}"))
+        if os.name == "nt":
+            self._terminal_backend = "powershell" if self._windows_powershell_terminal_supported() else "cmd_runner"
+            if self._terminal_backend == "powershell":
+                proc.setWorkingDirectory(cwd)
+                proc.start("powershell", ["-NoLogo", "-NoProfile", "-Command", "-"])
+        else:
+            self._terminal_backend = "sh"
+            proc.setWorkingDirectory(cwd)
+            proc.start("/bin/sh", ["-i"])
+        _terminal_debug_log(
+            "start session backend=%s cwd=%r proc_state=%s",
+            getattr(self, "_terminal_backend", ""),
+            cwd,
+            proc.state(),
+        )
+        self._terminal_current_cwd = cwd
+        self._terminal_output_partial = ""
+        self._terminal_prompt_active = False
+        self.terminal_output.clear()
+        if os.name == "nt" and str(getattr(self, "_terminal_backend", "")) == "cmd_runner":
+            self._terminal_insert_output_text("[cmd fallback: install pywinpty for a real PowerShell terminal]\n")
+        if str(getattr(self, "_terminal_backend", "")) == "cmd_runner":
+            self._update_terminal_prompt()
+            return
+        try:
+            if os.name == "nt":
+                payload = f'Write-Output "{self._terminal_cwd_marker()}$(Get-Location)"\r\n'
+            else:
+                payload = f'printf "%s%s\\n" "{self._terminal_cwd_marker()}" "$PWD"\n'
+            self._terminal_hidden_echo_fragment = payload.strip()
+            _terminal_debug_log("bootstrap payload=%r", payload)
+            proc.write(payload.encode("utf-8"))
+        except Exception:
+            pass
+
+    def show_terminal_tasks_panel(self) -> None:
+        self._build_terminal_tasks_dock()
+        self._refresh_terminal_tasks_panel()
+        self.start_terminal_session()
+        self.terminal_tasks_dock.show()
+        self.terminal_tasks_dock.raise_()
+        self.terminal_output.setFocus()
+
+    def run_terminal_command_from_panel(self) -> None:
+        command = self._terminal_current_command_text().strip()
+        if not command:
+            _terminal_debug_log("run command skipped empty")
+            return
+        cwd = str(getattr(self, "_terminal_current_cwd", "") or self._resolve_task_cwd("${workspace}"))
+        proc = getattr(self, "terminal_process", None)
+        if proc is None:
+            return
+        _terminal_debug_log(
+            "run command backend=%s cwd=%r command=%r proc_state=%s",
+            getattr(self, "_terminal_backend", ""),
+            cwd,
+            command,
+            proc.state(),
+        )
+        if str(getattr(self, "_terminal_backend", "")) == "cmd_runner":
+            self._run_terminal_command_via_cmd_runner(command, cwd)
+            return
+        if proc.state() == QProcess.ProcessState.NotRunning:
+            self.start_terminal_session()
+        self._terminal_finalize_current_input_line()
+        if os.name == "nt" and str(getattr(self, "_terminal_backend", "")) == "powershell":
+            payload = command + f'\r\nWrite-Output "{self._terminal_cwd_marker()}$(Get-Location)"\r\n'
+        else:
+            payload = command + f'\nprintf "%s%s\\n" "{self._terminal_cwd_marker()}" "$PWD"\n'
+        try:
+            self._terminal_hidden_echo_fragment = payload.strip().splitlines()[-1]
+            _terminal_debug_log("write payload=%r", payload)
+            proc.write(payload.encode("utf-8"))
+        except Exception as exc:
+            _terminal_debug_log("write failed error=%s", exc)
+            QMessageBox.warning(self, "Terminal", f"Could not write to terminal:\n{exc}")
+            return
+        self.show_status_message(f"Sent command to terminal in {cwd}", 2000)
+
+    def _terminal_insert_output_text(self, text: str) -> None:
+        edit = getattr(self, "terminal_output", None)
+        if edit is None or not text:
+            return
+        self._terminal_prompt_active = False
+        cursor = edit.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        cursor.insertText(text)
+        edit.setTextCursor(cursor)
+        edit.ensureCursorVisible()
+        self._terminal_prompt_cursor = min(self._terminal_prompt_cursor, cursor.position())
+
+    def _terminal_ensure_prompt(self) -> None:
+        edit = getattr(self, "terminal_output", None)
+        if edit is None:
+            return
+        prompt = str(getattr(self, "_terminal_prompt_prefix_text", "") or "")
+        if not prompt:
+            return
+        if bool(getattr(self, "_terminal_prompt_active", False)):
+            return
+        cursor = edit.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        text = edit.toPlainText()
+        if text.endswith(prompt):
+            self._terminal_prompt_cursor = len(text)
+            self._terminal_prompt_active = True
+            self._terminal_move_cursor_to_end()
+            return
+        if text and not text.endswith(("\n", "\r")):
+            cursor.insertText("\n")
+        cursor.insertText(prompt)
+        edit.setTextCursor(cursor)
+        edit.ensureCursorVisible()
+        self._terminal_prompt_cursor = cursor.position()
+        self._terminal_prompt_active = True
+        _terminal_debug_log("prompt inserted cursor=%d prompt=%r", self._terminal_prompt_cursor, prompt)
+
+    def _terminal_move_cursor_to_end(self) -> None:
+        edit = getattr(self, "terminal_output", None)
+        if edit is None:
+            return
+        cursor = edit.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        edit.setTextCursor(cursor)
+        edit.ensureCursorVisible()
+
+    def _terminal_current_command_text(self) -> str:
+        edit = getattr(self, "terminal_output", None)
+        if edit is None:
+            return ""
+        text = edit.toPlainText()
+        prompt_pos = int(getattr(self, "_terminal_prompt_cursor", 0) or 0)
+        if prompt_pos < 0 or prompt_pos > len(text):
+            return ""
+        return text[prompt_pos:]
+
+    def _terminal_finalize_current_input_line(self) -> None:
+        edit = getattr(self, "terminal_output", None)
+        if edit is None:
+            return
+        self._terminal_prompt_active = False
+        cursor = edit.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        text = edit.toPlainText()
+        if not text.endswith("\n"):
+            cursor.insertText("\n")
+        edit.setTextCursor(cursor)
+        edit.ensureCursorVisible()
+        self._terminal_prompt_cursor = cursor.position()
+
+    def _handle_terminal_output_keypress(self, event) -> bool:
+        edit = getattr(self, "terminal_output", None)
+        if edit is None:
+            return False
+        cursor = edit.textCursor()
+        prompt_pos = int(getattr(self, "_terminal_prompt_cursor", 0) or 0)
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            command = self._terminal_current_command_text().strip()
+            _terminal_debug_log("enter pressed command=%r", command)
+            if command:
+                self.run_terminal_command_from_panel()
+            return True
+        if event.key() == Qt.Key.Key_Backspace and cursor.position() <= prompt_pos and not cursor.hasSelection():
+            return True
+        if event.key() == Qt.Key.Key_Delete and cursor.position() < prompt_pos and not cursor.hasSelection():
+            return True
+        if event.key() == Qt.Key.Key_Left and cursor.position() <= prompt_pos and not cursor.hasSelection():
+            return True
+        if event.key() == Qt.Key.Key_Home:
+            cursor.setPosition(prompt_pos)
+            edit.setTextCursor(cursor)
+            return True
+        if event.key() in (Qt.Key.Key_Up, Qt.Key.Key_PageUp):
+            self._terminal_move_cursor_to_end()
+            return True
+        if event.matches(QKeySequence.StandardKey.Paste):
+            self._terminal_move_cursor_to_end()
+            return False
+        if cursor.hasSelection():
+            start = cursor.selectionStart()
+            if start < prompt_pos:
+                cursor.setPosition(prompt_pos)
+                cursor.movePosition(QTextCursor.MoveOperation.End, QTextCursor.MoveMode.KeepAnchor)
+                edit.setTextCursor(cursor)
+        elif cursor.position() < prompt_pos:
+            cursor.setPosition(max(prompt_pos, len(edit.toPlainText())))
+            edit.setTextCursor(cursor)
+        return False
+
+    def stop_terminal_command(self) -> None:
+        proc = getattr(self, "terminal_process", None)
+        if proc is None or proc.state() == QProcess.ProcessState.NotRunning:
+            return
+        proc.kill()
+        self.show_status_message("Terminal task stopped.", 2000)
+
+    def restart_terminal_session(self) -> None:
+        self.stop_terminal_command()
+        self.start_terminal_session()
+
+    def _windows_powershell_terminal_supported(self) -> bool:
+        return bool(importlib.util.find_spec("pywinpty") or importlib.util.find_spec("winpty"))
+
+    def _run_terminal_command_via_cmd_runner(self, command: str, cwd: str) -> None:
+        proc = getattr(self, "terminal_process", None)
+        if proc is None:
+            return
+        if proc.state() != QProcess.ProcessState.NotRunning:
+            return
+        trimmed = str(command or "").strip()
+        self._terminal_finalize_current_input_line()
+        lower = trimmed.lower()
+        _terminal_debug_log("cmd runner execute cwd=%r command=%r", cwd, trimmed)
+        if lower == "cls":
+            self.terminal_output.clear()
+            self._terminal_prompt_active = False
+            self._update_terminal_prompt()
+            return
+        if lower == "cd":
+            self._terminal_insert_output_text(cwd + "\n")
+            self._update_terminal_prompt()
+            return
+        if lower.startswith("cd "):
+            target_raw = trimmed[3:].strip()
+            if target_raw.startswith("/d "):
+                target_raw = target_raw[3:].strip()
+            target = target_raw.strip('"')
+            next_cwd = target
+            if not os.path.isabs(next_cwd):
+                next_cwd = os.path.normpath(os.path.join(cwd, next_cwd))
+            if os.path.isdir(next_cwd):
+                self._terminal_current_cwd = next_cwd
+                _terminal_debug_log("cmd runner cwd changed to %r", next_cwd)
+            else:
+                _terminal_debug_log("cmd runner invalid cwd target=%r", target_raw)
+                self._terminal_insert_output_text(f"The system cannot find the path specified: {target_raw}\n")
+            self._update_terminal_prompt()
+            return
+        proc.setWorkingDirectory(cwd)
+        try:
+            self._terminal_hidden_echo_fragment = ""
+            _terminal_debug_log("cmd runner start program=cmd.exe args=%r", ["/Q", "/C", trimmed])
+            proc.start("cmd.exe", ["/Q", "/C", trimmed])
+        except Exception as exc:
+            _terminal_debug_log("cmd runner start failed error=%s", exc)
+            QMessageBox.warning(self, "Terminal", f"Could not run command:\n{exc}")
+
+    def _git_root(self) -> str:
+        workspace_root = str(self.settings.get("workspace_root", "") or "").strip()
+        if not workspace_root:
+            return ""
+        try:
+            cp = subprocess.run(
+                ["git", "-C", workspace_root, "rev-parse", "--show-toplevel"],
+                capture_output=True,
+                text=True,
+                timeout=3.0,
+                check=False,
+            )
+            if cp.returncode == 0:
+                return str(cp.stdout.strip() or workspace_root)
+        except Exception:
+            return ""
+        return ""
+
+    def _run_git_capture(self, args: list[str], *, timeout: float = 5.0) -> tuple[int, str, str]:
+        root = self._git_root()
+        if not root:
+            return 1, "", "No Git workspace selected."
+        try:
+            cp = subprocess.run(
+                ["git", "-C", root, *args],
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                check=False,
+            )
+            return int(cp.returncode), str(cp.stdout or ""), str(cp.stderr or "")
+        except Exception as exc:
+            return 1, "", str(exc)
+
+    def _build_git_dock(self) -> None:
+        if hasattr(self, "git_dock"):
+            return
+        dock = QDockWidget("Git", self)
+        dock.setObjectName("gitDock")
+        dock.setAllowedAreas(Qt.AllDockWidgetAreas)
+        dock.setFeatures(QDockWidget.DockWidgetMovable | QDockWidget.DockWidgetFloatable | QDockWidget.DockWidgetClosable)
+        if hasattr(self, "_install_custom_dock_title_bar"):
+            self._install_custom_dock_title_bar(dock, "Git", "git_dock_title_bar")
+        container = QWidget(dock)
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(6, 6, 6, 6)
+        layout.setSpacing(6)
+        self.git_summary_label = QLabel("No repository detected", container)
+        self.git_summary_label.setObjectName("panelSummaryLabel")
+        self.git_summary_label.setWordWrap(True)
+        self.git_summary_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        commit_row = QHBoxLayout()
+        self.git_commit_message_edit = QLineEdit(container)
+        self.git_commit_message_edit.setObjectName("gitCommitMessageEdit")
+        self.git_commit_message_edit.setPlaceholderText("Commit message")
+        self.git_commit_message_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.git_generate_ai_btn = QPushButton("Generate with AI", container)
+        self._style_panel_action_button(self.git_generate_ai_btn, "ai-sparkles", "Generate commit message with AI")
+        commit_row.addWidget(self.git_commit_message_edit, 1)
+        commit_row.addWidget(self.git_generate_ai_btn)
+        self.git_commit_or_sync_btn = QPushButton("Commit", container)
+        self._style_panel_action_button(self.git_commit_or_sync_btn, "document-save", "Commit or sync repository")
+        self.git_branch_combo = QComboBox(container)
+        self.git_branch_combo.setSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Fixed)
+        self.git_status_list = QListWidget(container)
+        self.git_status_list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.git_status_list.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        actions_row = QHBoxLayout()
+        self.git_refresh_btn = QPushButton("Refresh", container)
+        self.git_diff_btn = QPushButton("Diff", container)
+        self.git_stage_btn = QPushButton("Stage", container)
+        self.git_unstage_btn = QPushButton("Unstage", container)
+        self.git_blame_btn = QPushButton("Blame", container)
+        self.git_history_btn = QPushButton("History", container)
+        for btn in (
+            self.git_refresh_btn,
+            self.git_diff_btn,
+            self.git_stage_btn,
+            self.git_unstage_btn,
+            self.git_blame_btn,
+            self.git_history_btn,
+        ):
+            self._style_panel_action_button(
+                btn,
+                {
+                    self.git_refresh_btn: "sync-horizontal",
+                    self.git_diff_btn: "document-list",
+                    self.git_stage_btn: "document-new",
+                    self.git_unstage_btn: "edit-undo",
+                    self.git_blame_btn: "ai-explain",
+                    self.git_history_btn: "document-open",
+                }[btn],
+                btn.text(),
+            )
+            actions_row.addWidget(btn)
+        layout.addWidget(self.git_summary_label)
+        layout.addLayout(commit_row)
+        layout.addWidget(self.git_commit_or_sync_btn)
+        layout.addWidget(self.git_branch_combo)
+        layout.addWidget(self.git_status_list, 1)
+        layout.addLayout(actions_row)
+        self._apply_panel_surface_theme(container)
+        class _GitDockResizeFilter(QObject):
+            def __init__(self, owner):
+                super().__init__(owner)
+                self._owner = owner
+
+            def eventFilter(self, _watched, event):  # type: ignore[override]
+                if event is not None and event.type() == QEvent.Type.Resize:
+                    try:
+                        self._owner._update_git_dock_compact_mode()
+                    except Exception:
+                        pass
+                return False
+
+        self._git_dock_resize_filter = _GitDockResizeFilter(self)
+        container.installEventFilter(self._git_dock_resize_filter)
+        dock.setWidget(container)
+        self.git_dock = dock
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
+        dock.hide()
+        dock.visibilityChanged.connect(lambda _visible: self._sync_layout_panel_actions())
+        dock.visibilityChanged.connect(lambda _visible: self._update_git_dock_compact_mode())
+        dock.dockLocationChanged.connect(lambda _area: self._update_git_dock_compact_mode())
+        dock.topLevelChanged.connect(lambda _floating: self._update_git_dock_compact_mode())
+        self.git_refresh_btn.clicked.connect(self._refresh_git_dock)
+        self.git_diff_btn.clicked.connect(self.git_show_diff_for_selection)
+        self.git_stage_btn.clicked.connect(self.git_stage_selection)
+        self.git_unstage_btn.clicked.connect(self.git_unstage_selection)
+        self.git_blame_btn.clicked.connect(self.git_show_blame_for_selection)
+        self.git_history_btn.clicked.connect(self.git_show_history_for_selection)
+        self.git_generate_ai_btn.clicked.connect(self.ai_commit_message_generator)
+        self.git_commit_or_sync_btn.clicked.connect(self.git_primary_action)
+        self.git_commit_message_edit.returnPressed.connect(self.git_primary_action)
+        self.git_branch_combo.currentTextChanged.connect(self.git_switch_branch)
+        self._refresh_git_dock()
+
+    def _selected_git_paths(self) -> list[str]:
+        if not hasattr(self, "git_status_list"):
+            return []
+        rows: list[str] = []
+        for item in self.git_status_list.selectedItems():
+            path = str(item.data(Qt.UserRole) or "").strip()
+            if path:
+                rows.append(path)
+        return rows
+
+    def show_git_panel(self) -> None:
+        self._build_git_dock()
+        self._refresh_git_dock()
+        self.git_dock.show()
+        self.git_dock.raise_()
+
+    def _update_git_dock_compact_mode(self) -> None:
+        dock = getattr(self, "git_dock", None)
+        if dock is None:
+            return
+        width = dock.width()
+        secondary_buttons = [
+            getattr(self, "git_refresh_btn", None),
+            getattr(self, "git_diff_btn", None),
+            getattr(self, "git_stage_btn", None),
+            getattr(self, "git_unstage_btn", None),
+            getattr(self, "git_blame_btn", None),
+            getattr(self, "git_history_btn", None),
+        ]
+        top_buttons = [
+            getattr(self, "git_generate_ai_btn", None),
+            getattr(self, "git_commit_or_sync_btn", None),
+        ]
+        all_buttons = [btn for btn in [*top_buttons, *secondary_buttons] if btn is not None]
+        if not all_buttons:
+            return
+        icon_px = max(14, int(self.settings.get("icon_size_px", 18) or 18))
+        button_h = max(28, int(build_tokens_from_settings(self.settings).input_height))
+        medium_compact = width < 520
+        tight_compact = width < 360
+
+        def _apply_button_state(btn: QPushButton, compact: bool) -> None:
+            btn.setIconSize(QSize(icon_px, icon_px))
+            if not hasattr(btn, "_full_text"):
+                setattr(btn, "_full_text", btn.text())
+            full_text = str(getattr(btn, "_full_text", btn.text()) or "")
+            if compact:
+                btn.setText("")
+                btn.setToolTip(full_text or btn.toolTip())
+                btn.setFixedSize(button_h, button_h)
+                btn.setProperty("compactIconOnly", True)
+            else:
+                btn.setText(full_text)
+                btn.setToolTip(btn.toolTip() or full_text)
+                btn.setMinimumHeight(button_h)
+                btn.setMinimumWidth(0)
+                btn.setMaximumHeight(16777215)
+                btn.setMaximumWidth(16777215)
+                btn.setProperty("compactIconOnly", False)
+            style = btn.style()
+            if style is not None:
+                style.unpolish(btn)
+                style.polish(btn)
+
+        for btn in secondary_buttons:
+            if btn is not None:
+                _apply_button_state(btn, medium_compact)
+        if getattr(self, "git_generate_ai_btn", None) is not None:
+            _apply_button_state(self.git_generate_ai_btn, medium_compact)
+        if getattr(self, "git_commit_or_sync_btn", None) is not None:
+            _apply_button_state(self.git_commit_or_sync_btn, tight_compact)
+
+    def _refresh_git_dock(self) -> None:
+        if not hasattr(self, "git_dock"):
+            return
+        root = self._git_root()
+        if not root:
+            self.git_summary_label.setText("No repository detected")
+            self.git_status_list.clear()
+            self.git_branch_combo.clear()
+            self.git_commit_or_sync_btn.setText("Commit")
+            self.git_commit_or_sync_btn.setEnabled(False)
+            return
+        rc, status_out, status_err = self._run_git_capture(["status", "--short", "--branch"], timeout=4.0)
+        if rc != 0:
+            self.git_summary_label.setText(status_err or "Git status failed.")
+            self.git_status_list.clear()
+            self.git_commit_or_sync_btn.setEnabled(False)
+            return
+        lines = status_out.splitlines()
+        summary = lines[0].strip() if lines else root
+        self.git_summary_label.setText(f"{root}\n{summary}")
+        self.git_status_list.clear()
+        for line in lines[1:]:
+            if not line.strip():
+                continue
+            code = line[:2]
+            path = line[3:].strip()
+            item = QListWidgetItem(f"{code} {path}", self.git_status_list)
+            item.setData(Qt.UserRole, path)
+        dirty_count = len([line for line in lines[1:] if line.strip()])
+        ahead = behind = 0
+        ahead_behind_rc, ahead_behind_out, _ahead_behind_err = self._run_git_capture(
+            ["rev-list", "--left-right", "--count", "@{upstream}...HEAD"],
+            timeout=4.0,
+        )
+        if ahead_behind_rc == 0:
+            parts = ahead_behind_out.strip().split()
+            if len(parts) >= 2:
+                behind = int(parts[0] or 0)
+                ahead = int(parts[1] or 0)
+        self._git_has_uncommitted_changes = dirty_count > 0
+        self._git_ahead_count = ahead
+        self._git_behind_count = behind
+        if dirty_count > 0:
+            self.git_commit_or_sync_btn.setText("Commit")
+            self.git_commit_or_sync_btn.setEnabled(True)
+            self.git_commit_or_sync_btn.setIcon(self._svg_icon("document-save"))
+        else:
+            sync_parts: list[str] = []
+            if ahead > 0:
+                sync_parts.append(f"up {ahead}")
+            if behind > 0:
+                sync_parts.append(f"down {behind}")
+            label = "Sync Changes"
+            if sync_parts:
+                label = f"Sync Changes ({', '.join(sync_parts)})"
+            self.git_commit_or_sync_btn.setText(label)
+            self.git_commit_or_sync_btn.setEnabled(bool(sync_parts))
+            self.git_commit_or_sync_btn.setIcon(self._svg_icon("sync-horizontal"))
+        branch_rc, branch_out, _branch_err = self._run_git_capture(["branch", "--all", "--no-color"], timeout=4.0)
+        if branch_rc == 0:
+            current = self.git_branch_combo.currentText()
+            self.git_branch_combo.blockSignals(True)
+            self.git_branch_combo.clear()
+            for raw in branch_out.splitlines():
+                cleaned = raw.replace("*", "").strip()
+                if cleaned:
+                    self.git_branch_combo.addItem(cleaned)
+            match = self.git_branch_combo.findText(current)
+            if match >= 0:
+                self.git_branch_combo.setCurrentIndex(match)
+            self.git_branch_combo.blockSignals(False)
+        self._update_git_dock_compact_mode()
+
+    def git_primary_action(self) -> None:
+        if bool(getattr(self, "_git_has_uncommitted_changes", False)):
+            self.git_commit_dialog()
+            return
+        self.git_sync_changes()
+
+    def git_sync_changes(self) -> None:
+        ahead = int(getattr(self, "_git_ahead_count", 0) or 0)
+        behind = int(getattr(self, "_git_behind_count", 0) or 0)
+        if ahead <= 0 and behind <= 0:
+            self.show_status_message("Repository is already in sync.", 2200)
+            return
+        outputs: list[str] = []
+        if behind > 0:
+            rc, out, err = self._run_git_capture(["pull", "--ff-only"], timeout=20.0)
+            outputs.append(out if rc == 0 else err)
+            if rc != 0:
+                QMessageBox.warning(self, "Git Sync", err or "Pull failed.")
+                self._refresh_git_dock()
+                return
+        if ahead > 0:
+            rc, out, err = self._run_git_capture(["push"], timeout=20.0)
+            outputs.append(out if rc == 0 else err)
+            if rc != 0:
+                QMessageBox.warning(self, "Git Sync", err or "Push failed.")
+                self._refresh_git_dock()
+                return
+        self._refresh_git_dock()
+        self._refresh_workspace_dock()
+        self._show_text_output_dialog("Git Sync", "\n".join(part for part in outputs if part.strip()) or "Sync completed.")
+
+    def _show_text_output_dialog(self, title: str, text: str) -> None:
+        dlg = QDialog(self)
+        dlg.setWindowTitle(title)
+        dlg.resize(920, 620)
+        apply_dialog_theme_from_window(self, dlg)
+        layout = QVBoxLayout(dlg)
+        edit = QTextEdit(dlg)
+        edit.setReadOnly(True)
+        edit.setPlainText(text)
+        layout.addWidget(edit, 1)
+        box = QDialogButtonBox(QDialogButtonBox.Close, Qt.Horizontal, dlg)
+        box.rejected.connect(dlg.reject)
+        box.accepted.connect(dlg.accept)
+        layout.addWidget(box)
+        dlg.exec()
+
+    def git_show_diff_for_selection(self) -> None:
+        paths = self._selected_git_paths()
+        args = ["diff", "--"] + paths if paths else ["diff"]
+        rc, out, err = self._run_git_capture(args, timeout=8.0)
+        self._show_text_output_dialog("Git Diff", out if out.strip() else (err or "No diff output."))
+
+    def git_show_blame_for_selection(self) -> None:
+        paths = self._selected_git_paths()
+        if not paths:
+            QMessageBox.information(self, "Git Blame", "Select a tracked file first.")
+            return
+        rc, out, err = self._run_git_capture(["blame", "--", paths[0]], timeout=10.0)
+        self._show_text_output_dialog("Git Blame", out if rc == 0 else err)
+
+    def git_show_history_for_selection(self) -> None:
+        paths = self._selected_git_paths()
+        args = ["log", "--oneline", "--decorate", "--graph", "--"] + paths if paths else ["log", "--oneline", "--decorate", "--graph", "-20"]
+        rc, out, err = self._run_git_capture(args, timeout=8.0)
+        self._show_text_output_dialog("Git History", out if rc == 0 else err)
+
+    def git_stage_selection(self) -> None:
+        paths = self._selected_git_paths()
+        if not paths:
+            return
+        rc, _out, err = self._run_git_capture(["add", "--", *paths], timeout=8.0)
+        if rc != 0:
+            QMessageBox.warning(self, "Git Stage", err or "Stage failed.")
+            return
+        self._refresh_git_dock()
+        self._refresh_workspace_dock()
+
+    def git_unstage_selection(self) -> None:
+        paths = self._selected_git_paths()
+        if not paths:
+            return
+        rc, _out, err = self._run_git_capture(["restore", "--staged", "--", *paths], timeout=8.0)
+        if rc != 0:
+            QMessageBox.warning(self, "Git Unstage", err or "Unstage failed.")
+            return
+        self._refresh_git_dock()
+        self._refresh_workspace_dock()
+
+    def git_switch_branch(self, branch_name: str) -> None:
+        branch = str(branch_name or "").strip()
+        if not branch or branch.startswith("HEAD detached"):
+            return
+        rc, current_out, _current_err = self._run_git_capture(["branch", "--show-current"])
+        if rc == 0 and branch == current_out.strip():
+            return
+        rc, _out, err = self._run_git_capture(["switch", branch], timeout=12.0)
+        if rc != 0:
+            rc, _out, err = self._run_git_capture(["checkout", branch], timeout=12.0)
+        if rc != 0:
+            QMessageBox.warning(self, "Git Branch", err or "Could not switch branch.")
+            return
+        self._refresh_git_dock()
+        self._refresh_workspace_dock()
+        self.show_status_message(f"Switched branch: {branch}", 2500)
+
+    def git_commit_dialog(self) -> None:
+        seed = self.git_commit_message_edit.text().strip() if hasattr(self, "git_commit_message_edit") else ""
+        message = seed
+        ok = True
+        if not message:
+            message, ok = QInputDialog.getMultiLineText(self, "Git Commit", "Commit message:")
+        if not ok or not str(message).strip():
+            return
+        rc, out, err = self._run_git_capture(["commit", "-m", str(message).strip()], timeout=20.0)
+        if rc != 0:
+            QMessageBox.warning(self, "Git Commit", err or out or "Commit failed.")
+            return
+        if hasattr(self, "git_commit_message_edit"):
+            self.git_commit_message_edit.clear()
+        self._refresh_git_dock()
+        self._refresh_workspace_dock()
+        self._show_text_output_dialog("Git Commit", out or "Commit completed.")
 
     def _build_status_panel_dock(self) -> None:
         if hasattr(self, "status_panel_dock"):
@@ -6811,6 +8081,26 @@ class MiscMixin(
             self.search_results_panel_action.blockSignals(True)
             self.search_results_panel_action.setChecked(self.search_results_dock.isVisible())
             self.search_results_panel_action.blockSignals(False)
+        if hasattr(self, "terminal_panel_action") and hasattr(self, "terminal_tasks_dock"):
+            self.terminal_panel_action.blockSignals(True)
+            self.terminal_panel_action.setChecked(self.terminal_tasks_dock.isVisible())
+            self.terminal_panel_action.blockSignals(False)
+        if hasattr(self, "git_panel_action") and hasattr(self, "git_dock"):
+            self.git_panel_action.blockSignals(True)
+            self.git_panel_action.setChecked(self.git_dock.isVisible())
+            self.git_panel_action.blockSignals(False)
+        if hasattr(self, "problems_panel_action") and hasattr(self, "problems_dock"):
+            self.problems_panel_action.blockSignals(True)
+            self.problems_panel_action.setChecked(self.problems_dock.isVisible())
+            self.problems_panel_action.blockSignals(False)
+        if hasattr(self, "output_panel_action") and hasattr(self, "output_dock"):
+            self.output_panel_action.blockSignals(True)
+            self.output_panel_action.setChecked(self.output_dock.isVisible())
+            self.output_panel_action.blockSignals(False)
+        if hasattr(self, "gitlens_panel_action") and hasattr(self, "gitlens_dock"):
+            self.gitlens_panel_action.blockSignals(True)
+            self.gitlens_panel_action.setChecked(self.gitlens_dock.isVisible())
+            self.gitlens_panel_action.blockSignals(False)
         if hasattr(self, "productivity_hub_panel_action") and hasattr(self, "productivity_hub_dialog"):
             self.productivity_hub_panel_action.blockSignals(True)
             self.productivity_hub_panel_action.setChecked(self.productivity_hub_dialog.isVisible())
@@ -6835,6 +8125,11 @@ class MiscMixin(
             "markdown_preview_dock",
             "explorer_dock",
             "search_results_dock",
+            "terminal_tasks_dock",
+            "git_dock",
+            "problems_dock",
+            "output_dock",
+            "gitlens_dock",
             "minimap_dock",
             "outline_dock",
         )
@@ -6921,6 +8216,11 @@ class MiscMixin(
             "workspace_dock",
             "explorer_dock",
             "search_results_dock",
+            "terminal_tasks_dock",
+            "git_dock",
+            "problems_dock",
+            "output_dock",
+            "gitlens_dock",
             "minimap_dock",
             "outline_dock",
         ):
@@ -7021,6 +8321,20 @@ class MiscMixin(
             return
         self.search_results_dock.setVisible(bool(checked))
 
+    def toggle_terminal_panel(self, checked: bool) -> None:
+        if not hasattr(self, "terminal_tasks_dock"):
+            self._build_terminal_tasks_dock()
+        self.terminal_tasks_dock.setVisible(bool(checked))
+        if checked:
+            self._refresh_terminal_tasks_panel()
+
+    def toggle_git_panel(self, checked: bool) -> None:
+        if not hasattr(self, "git_dock"):
+            self._build_git_dock()
+        self.git_dock.setVisible(bool(checked))
+        if checked:
+            self._refresh_git_dock()
+
     def toggle_productivity_hub_panel(self, checked: bool) -> None:
         if not hasattr(self, "productivity_hub_dialog"):
             return
@@ -7054,6 +8368,11 @@ class MiscMixin(
             "workspace_dock",
             "explorer_dock",
             "search_results_dock",
+            "terminal_tasks_dock",
+            "git_dock",
+            "problems_dock",
+            "output_dock",
+            "gitlens_dock",
             "minimap_dock",
             "outline_dock",
         ):

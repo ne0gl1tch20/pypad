@@ -664,6 +664,24 @@ def build_settings_dialog_qss(tokens: UIThemeTokens) -> str:
         QWidget#settingsPageHost QGroupBox::title {{
             color: {page_text};
         }}
+        QGroupBox#settingsSectionGroup {{
+            background: {page_card_bg};
+            border: 1px solid {tokens.border};
+            border-radius: {tokens.radius_lg}px;
+            margin-top: 10px;
+            padding-top: 8px;
+        }}
+        QGroupBox#settingsSectionGroup::title {{
+            subcontrol-origin: margin;
+            left: 12px;
+            padding: 0 4px;
+            color: {page_text};
+            font-weight: 600;
+        }}
+        QLabel#settingsSectionDesc {{
+            color: {page_text_muted};
+            background: transparent;
+        }}
         #settingsNavList {{
             outline: none;
             padding: {tokens.space_xs}px;

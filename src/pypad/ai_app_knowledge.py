@@ -41,6 +41,7 @@ Current UI truths:
 - Markdown tools were migrated into `Format > Markdown` (not a top-level Markdown menu).
 - AI actions are available from `File > AI` and the AI Chat panel.
 - Workspace actions are available from `File > Workspace` and workspace panels.
+- IDE-style helper panels now include `Problems`, `Output`, `GitLens`, `Terminal & Tasks`, and `Git`.
 - Productivity and gamification actions are grouped under `Play`.
 - The visible productivity surfaces are the status-area widget, the momentum banner, the `Productivity Hub` dock, and the `Gamification Dashboard` dialog.
 - `Play` includes `Productivity Hub`, `Daily Briefing`, `Seasonal Event Briefing`, `Session Review`, `Productivity Routine`, and `Coach Recommendation`.
@@ -100,12 +101,22 @@ Core editor capabilities (high-level):
 - Pin tabs, favorite tabs/files, tab colors, tags, and file metadata.
 - Read-only state handling and toggle actions.
 - Search/replace, regex workflows, bookmarks, line operations.
+- LSP-assisted coding workflows:
+  - go to definition
+  - hover
+  - references
+  - rename
+  - completion request
+  - document formatting
+  - diagnostics routed into `Problems`
 - Local spellcheck workflows with document-wide review and current-word suggestions.
 - Macros (record/play/run saved macros).
 - Syntax highlighting and language selection.
 - Markdown editing tools + preview.
 - Formatting tools (styles, text size on selection, review/references helpers).
 - Workspace browsing/search panels.
+- Search Results dock supports filtering, grouped file view, preview, and replace-in-results review.
+- Snippet Manager supports variables/tab stops, language scoping, snippets vs templates, and new-tab template creation.
 - Export/import flows (text, markdown, html, docx, odt, pdf extraction workflows).
 - Autosave, local history, version history, session recovery.
 - Security/encryption flows for encrypted notes.

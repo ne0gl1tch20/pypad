@@ -3,3 +3,4 @@ google-genai>=1.0.0
 googletrans==4.0.0-rc1
 pypdf>=4,<6
 pyspellchecker>=0.8,<1
+pywinpty>=2.0.15; platform_system == "Windows"

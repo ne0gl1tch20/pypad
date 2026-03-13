@@ -61,6 +61,14 @@ The long-term goals of PyPad include:
 - Settings dialog: `src/pypad/ui/main_window/settings_dialog.py`
 - Update feed metadata: `update.xml`
 
+## Developer Notes
+
+- Scintilla compat contract overview: `docs/scintilla_parity.md`
+- Generated compat command reference: `docs/scintilla_compat_reference.md`
+- Repo surface audit: `python scripts/audit_scintilla_compat.py`
+- Capture compat contract baseline: `python scripts/capture_scintilla_compat_contract.py`
+- Regenerate compat reference docs: `python scripts/generate_scintilla_compat_docs.py`
+
 ## UI Test / Visual Regression Commands
 
 - Fast UI checks:

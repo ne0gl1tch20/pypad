@@ -35,8 +35,8 @@ Name: "ctx_openwith"; Description: "Add 'Open with PyPad' to file context menu";
 Source: "..\dist\run\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "_internal\PySide6\translations\qtwebengine_locales\*.pak,_internal\PySide6\translations\*.qm,_internal\PySide6\qml\*,_internal\PySide6\resources\qtwebengine_devtools_resources.pak,_internal\PySide6\resources\*.debug.pak,_internal\PySide6\resources\*.debug.bin,_internal\PySide6\plugins\platforms\qdirect2d.dll,_internal\PySide6\plugins\platforms\qminimal.dll,_internal\PySide6\plugins\platforms\qoffscreen.dll,_internal\PySide6\plugins\platforminputcontexts\qtvirtualkeyboardplugin.dll,_internal\PySide6\plugins\networkinformation\qnetworklistmanager.dll,_internal\PySide6\Qt6Positioning.dll,_internal\PySide6\QtPositioning.pyd,_internal\PySide6\Qt6Quick*.dll,_internal\PySide6\Qt6Qml*.dll,_internal\PySide6\QtQuick*.pyd,_internal\PySide6\QtQml*.pyd"
 ; Bundle Demo Pack templates so onboarding/help entries always have content after install.
 Source: "..\templates\demo_pack\*"; DestDir: "{app}\templates\demo_pack"; Flags: ignoreversion recursesubdirs createallsubdirs
-; Bundle example plugins so users get plugin templates immediately.
-Source: "..\plugins\*"; DestDir: "{userappdata}\pypad\plugins"; Flags: ignoreversion recursesubdirs createallsubdirs; Excludes: "__pycache__\*"
+; Repo-local plugins are optional during packaging. The current build may ship none,
+; and runtime/plugin onboarding still works via bundled online_plugins/catalog data.
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"

@@ -70,6 +70,7 @@ from pypad.ui.editor.editor_tab import EditorTab, MarkdownPreviewPane
 from pypad.ui.ai.ai_controller import AIController
 from pypad.ui.ai.ai_chat_dock import AIChatDock
 from pypad.ui.theme.asset_paths import resolve_asset_path
+from pypad.ui.theme.theme_tokens import build_main_window_qss, build_tokens_from_settings, resolve_dark_mode_from_settings
 from pypad.ui.system.autosave import AutoSaveRecoveryDialog, AutoSaveStore
 from pypad.ui.system.session_recovery import RecoveryStateStore
 from pypad.ui.system.reminders import ReminderStore, RemindersDialog
@@ -120,8 +121,25 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
             name = f"Demo: {self._demo_display_name(path)}"
             self.templates[name] = text
 
+    def _apply_startup_preview_theme(self) -> None:
+        app = QApplication.instance()
+        tokens = build_tokens_from_settings(self.settings)
+        effective_dark = resolve_dark_mode_from_settings(self.settings)
+        tab_close_icon_name = "tab-close-dark.svg" if effective_dark else "tab-close-light.svg"
+        tab_close_icon_path = resolve_asset_path("icons", tab_close_icon_name) or resolve_asset_path("icons", "tab-close.svg")
+        tab_close_icon_url = tab_close_icon_path.as_posix() if tab_close_icon_path else ""
+        qss = build_main_window_qss(tokens=tokens, tab_close_icon_url=tab_close_icon_url, close_button_visibility_qss="")
+        if app is not None:
+            app.setStyleSheet(qss)
+        else:
+            self.setStyleSheet(qss)
+        self._last_applied_main_qss = qss
+
     def __init__(self) -> None:
         super().__init__()
+        self.setUpdatesEnabled(False)
+        self._startup_ui_ready = False
+        self._startup_first_paint_ready = False
         self._startup_sequence_done = False
         startup_t0 = time.perf_counter()
         startup_stages: list[tuple[str, int]] = []
@@ -378,44 +396,92 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
         self.configure_menu_tooltips()
         self.create_toolbars()
         self.log_event("Info", "[Startup] Toolbars created")
+        try:
+            self._apply_startup_preview_theme()
+            self.log_event("Info", "[Startup] Preview theme applied")
+        except Exception as exc:
+            self.log_event("Error", f"[Startup] preview theme apply failed: {exc!r}")
         if bool(self.settings.get("simple_mode", False)):
             self.toggle_simple_mode(True, persist=False)
         _mark_startup_stage("ui_ready")
+        self._startup_ui_ready = True
+        self.ensurePolished()
+        self.setUpdatesEnabled(True)
         self.log_event("Info", "[Startup] UI ready")
 
         # Finish startup on the next event-loop tick so the main window can appear sooner.
         def _finish_startup_sequence() -> None:
+            deferred_start = time.perf_counter()
+            deferred_marks: list[tuple[str, int]] = []
+
+            def _mark_deferred(name: str) -> None:
+                deferred_marks.append((name, int((time.perf_counter() - deferred_start) * 1000)))
+
             try:
                 self._offer_crash_recovery()
+                _mark_deferred("crash_recovery")
             except Exception as exc:  # noqa: BLE001
                 self.log_event("Error", f"[Startup] crash recovery offer failed: {exc!r}")
             try:
-                self.apply_settings()
+                self.apply_settings(startup_deferred=True)
                 self.log_event("Info", "[Startup] Settings applied")
+                _mark_deferred("apply_settings")
             except Exception as exc:  # noqa: BLE001
                 self.log_event("Error", f"[Startup] apply_settings failed: {exc!r}")
                 traceback_text = traceback.format_exc().strip()
                 self.log_event("Error", traceback_text)
+            if not self._startup_first_paint_ready:
+                self._startup_first_paint_ready = True
+                app = QApplication.instance()
+                startup_ready_cb = app.property("startup_ready_callback") if app is not None else None
+                if callable(startup_ready_cb):
+                    try:
+                        startup_ready_cb(self)
+                    except Exception:
+                        pass
             startup_files, startup_folders = self._collect_startup_items()
             if startup_files or startup_folders:
+                open_items_started = time.perf_counter()
                 self._open_startup_items(startup_files, startup_folders)
+                self.log_event(
+                    "Info",
+                    f"[Startup] _open_startup_items elapsed={int((time.perf_counter() - open_items_started) * 1000)}ms "
+                    f"files={len(startup_files)} folders={len(startup_folders)}",
+                )
+                _mark_deferred("startup_items_opened")
             else:
                 profile_handled = False
                 if hasattr(self, "apply_workspace_profile_on_startup"):
                     try:
+                        profile_started = time.perf_counter()
                         profile_handled = bool(self.apply_workspace_profile_on_startup())
+                        profile_elapsed = int((time.perf_counter() - profile_started) * 1000)
+                        self.log_event(
+                            "Info",
+                            f"[Startup] apply_workspace_profile_on_startup elapsed={profile_elapsed}ms handled={profile_handled}",
+                        )
+                        _mark_deferred("workspace_profile_checked")
                     except Exception as exc:  # noqa: BLE001
                         self.log_event("Error", f"[Startup] workspace profile startup failed: {exc!r}")
                 if not profile_handled:
-                    self.restore_last_session()
+                    restore_started = time.perf_counter()
+                    self.restore_last_session(startup_deferred=True)
+                    self.log_event(
+                        "Info",
+                        f"[Startup] restore_last_session dispatch elapsed={int((time.perf_counter() - restore_started) * 1000)}ms",
+                    )
+                    _mark_deferred("session_restore_dispatched")
             self.log_event("Info", "[Startup] Session restore completed")
             self.update_action_states()
             self.log_event("Info", "Pypad initialized")
             _mark_startup_stage("session_restored")
             startup_total_ms = int((time.perf_counter() - startup_t0) * 1000)
             stage_summary = ", ".join(f"{name}={ms}ms" for name, ms in startup_stages)
+            deferred_summary = ", ".join(f"{name}={ms}ms" for name, ms in deferred_marks)
             print(f"[startup] pypad_init_total={startup_total_ms}ms | {stage_summary}")
             self.log_event("Info", f"Startup timing: total={startup_total_ms}ms; {stage_summary}")
+            if deferred_summary:
+                self.log_event("Info", f"Startup deferred timing: {deferred_summary}")
             if self.settings.get("auto_check_updates", True):
                 QTimer.singleShot(1500, lambda: self.check_for_updates(manual=False))
             QTimer.singleShot(300, self._maybe_show_welcome_tutorial)

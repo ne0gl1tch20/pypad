@@ -4,12 +4,30 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, and this project uses Semantic Versioning.
 
-
 ## [1.8.0] - 2026-03-13
 
 - PyPad is finally being released!!
 
 ### Added
+- Fuller LSP workflow actions and supporting panels:
+  - hover
+  - references
+  - rename
+  - completion request
+  - document formatting
+  - diagnostics refresh into a dedicated `Problems` dock
+- New dock windows integrated into the main shell:
+  - `Problems`
+  - `Output`
+  - `GitLens`
+  - `Terminal & Tasks`
+  - `Git`
+- Snippet Manager upgraded to support:
+  - variables and tab-stop prompts
+  - snippet vs template entries
+  - language scoping
+  - editing and deletion
+  - opening templates in a new tab
 - Local spellcheck support powered by `pyspellchecker` with:
   - `Tools > Spell Check Document...`
   - editor context-menu spelling suggestions for the current word
@@ -40,8 +58,31 @@ The format is based on Keep a Changelog, and this project uses Semantic Versioni
   - seasonal event progress
   - secret trails
   - productivity routines with usage stats
+- Scintilla compat contract expansion:
+  - command metadata registry for `SCI_*` / `SCN_*` symbols with status/category/args/notes
+  - generated compat contract reference outputs:
+    - `docs/scintilla_compat_reference.json`
+    - `docs/scintilla_compat_reference.md`
+  - public compat contract APIs for:
+    - capability reporting
+    - notification contract inspection
+    - notification log snapshots
+    - lexer contract and lexer snapshot inspection
+    - full compat state export/import round-trip
+  - compat-native future-feature shims for:
+    - inline diagnostics
+    - semantic ranges
+    - minimap state
+    - code actions
+  - compat contract baseline capture via `scripts/capture_scintilla_compat_contract.py`
+  - generated/audited compat-first baseline file:
+    - `docs/scintilla_compat_contract_baseline.json`
 
 ### Changed
+- Dock title-bar theming now covers the expanded panel set so newer windows follow the same PyPad chrome and SVG close/undock controls.
+- The `Window` menu now mirrors major dock/panel windows in addition to document tabs, so panel visibility is managed from one place.
+- Search Results dock now includes grouped views and an inline preview pane for better review before opening or replacing.
+- Shared template packs now install into the Snippet Manager library instead of staying as a disconnected helper store.
 - UI presets are now positioned as `Writing`, `Coding`, and `Review` layouts.
 - External file-change handling now offers `Reload from Disk`, `Keep My Changes`, or `Compare` instead of a simple yes/no prompt.
 - AI prompt knowledge assembly now includes token-saving controls:
@@ -66,11 +107,19 @@ The format is based on Keep a Changelog, and this project uses Semantic Versioni
 - Productivity routines now route into built-in actions such as focus sprint, workspace search, command palette, bug hunt, and daily briefing.
 - Routine usage is now tracked so the app can show cadence and history, not just suggestions.
 - New productivity/gamification UI follows existing PyPad token-based dark/light styling instead of one-off colors.
+- Scintilla compatibility is now treated as a compat-first contract instead of a fallback parity layer:
+  - repo audit now validates the app's Scintilla surface against `scintilla_compat`
+  - native `PySide6.Qsci` is now optional reference material, not the source of truth
+  - compat contract docs and baseline files are generated from code instead of inferred manually
+- Startup readiness now shows the main window as soon as the UI shell is built instead of waiting for the full deferred startup sequence, reducing perceived launch latency.
 
 ### Docs
 - Updated project summaries, AI app knowledge, and the welcome demo template to reflect the released Productivity Hub, Play menu, routine tracking, and onboarding flow under the `1.8.0` version line.
+- Added Scintilla compat contract documentation and generated reference outputs describing supported commands, categories, statuses, args, and notes.
 
 ### Fixed
+- Removed an early recursive wrapper mistake while wiring the new terminal/tasks panel entrypoint.
+- New dock windows now participate in layout sync and hidden-window detection instead of behaving like unmanaged side panels.
 - Startup autosave recovery no longer causes the app to quit when the top-level recovery dialog closes before the hidden main window is shown.
 - `Open Selected` recovery flow is now safe during startup by temporarily disabling `quitOnLastWindowClosed` while recovery dialogs are active.
 - Recently closed tab reopening now uses explicit restore handlers instead of brittle inline dialog lambdas.
@@ -80,6 +129,8 @@ The format is based on Keep a Changelog, and this project uses Semantic Versioni
 - Spellcheck suggestion generation now falls back to close dictionary matches when `pyspellchecker` returns no candidates, preventing empty suggestion panes for obvious typos.
 - Custom dock title bars again position window titles, close buttons, and undock buttons correctly after the empty-state UI refactor.
 - Empty-editor start surface no longer renders with off-theme black blocks and now matches PyPad dock/title/button chrome more closely.
+- Scintilla compat audit no longer produces false positives from compat metadata/audit source files when validating repo symbol coverage.
+- Startup timing logs now stop overstating launch readiness by using UI-ready first paint instead of full deferred session restore as the show threshold.
 
 ## [1.7.10-prerelease] - 2026-03-08
 

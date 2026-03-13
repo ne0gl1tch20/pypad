@@ -28,6 +28,7 @@ from urllib.request import urlopen
 from PySide6.QtCore import QSize, QTimer, Qt
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -44,7 +45,10 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
     QSpinBox,
+    QTableWidget,
+    QTableWidgetItem,
     QTextEdit,
     QSplitter,
     QToolBar,
@@ -3393,6 +3397,7 @@ class AdvancedFeaturesController:
         except Exception:
             pass
         self.minimap_dock = MinimapDock(window)
+        window.minimap_dock = self.minimap_dock
         self.minimap_dock.setObjectName("minimapDock")
         self.minimap_dock.setAllowedAreas(Qt.AllDockWidgetAreas)
         if hasattr(window, "_install_custom_dock_title_bar"):
@@ -3404,6 +3409,7 @@ class AdvancedFeaturesController:
         except Exception:
             pass
         self.outline_dock = OutlineDock(window, self._jump_line)
+        window.outline_dock = self.outline_dock
         self.outline_dock.setObjectName("outlineDock")
         self.outline_dock.setAllowedAreas(Qt.AllDockWidgetAreas)
         if hasattr(window, "_install_custom_dock_title_bar"):
@@ -3414,10 +3420,64 @@ class AdvancedFeaturesController:
             window.log_event("Info", "[Startup] Dock created: Outline")
         except Exception:
             pass
+        self.problems_dock = QDockWidget("Problems", window)
+        window.problems_dock = self.problems_dock
+        self.problems_dock.setObjectName("problemsDock")
+        self.problems_dock.setAllowedAreas(Qt.AllDockWidgetAreas)
+        if hasattr(window, "_install_custom_dock_title_bar"):
+            window._install_custom_dock_title_bar(self.problems_dock, "Problems", "problems_dock_title_bar")
+        problems_widget = QWidget(self.problems_dock)
+        problems_layout = QVBoxLayout(problems_widget)
+        problems_layout.setContentsMargins(6, 6, 6, 6)
+        problems_layout.setSpacing(6)
+        self.problems_summary_label = QLabel("No problems reported.", problems_widget)
+        self.problems_summary_label.setWordWrap(True)
+        self.problems_summary_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        self.problems_list = QListWidget(problems_widget)
+        self.problems_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.problems_list.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.problems_list.itemDoubleClicked.connect(self._open_problem_item)
+        problems_layout.addWidget(self.problems_summary_label)
+        problems_layout.addWidget(self.problems_list, 1)
+        self.problems_dock.setWidget(problems_widget)
+        self.problems_dock.hide()
+        window.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.problems_dock)
+        self.problems_dock.visibilityChanged.connect(lambda _visible: self.window._sync_layout_panel_actions())
+        self.output_dock = QDockWidget("Output", window)
+        window.output_dock = self.output_dock
+        self.output_dock.setObjectName("outputDock")
+        self.output_dock.setAllowedAreas(Qt.AllDockWidgetAreas)
+        if hasattr(window, "_install_custom_dock_title_bar"):
+            window._install_custom_dock_title_bar(self.output_dock, "Output", "output_dock_title_bar")
+        self.output_view = QTextEdit(self.output_dock)
+        self.output_view.setReadOnly(True)
+        self.output_view.setAcceptRichText(False)
+        self.output_view.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
+        self.output_view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.output_dock.setWidget(self.output_view)
+        self.output_dock.hide()
+        window.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.output_dock)
+        self.output_dock.visibilityChanged.connect(lambda _visible: self.window._sync_layout_panel_actions())
+        self.gitlens_dock = QDockWidget("GitLens", window)
+        window.gitlens_dock = self.gitlens_dock
+        self.gitlens_dock.setObjectName("gitlensDock")
+        self.gitlens_dock.setAllowedAreas(Qt.AllDockWidgetAreas)
+        if hasattr(window, "_install_custom_dock_title_bar"):
+            window._install_custom_dock_title_bar(self.gitlens_dock, "GitLens", "gitlens_dock_title_bar")
+        self.gitlens_view = QTextEdit(self.gitlens_dock)
+        self.gitlens_view.setReadOnly(True)
+        self.gitlens_view.setAcceptRichText(False)
+        self.gitlens_view.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
+        self.gitlens_view.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.gitlens_dock.setWidget(self.gitlens_view)
+        self.gitlens_dock.hide()
+        window.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.gitlens_dock)
+        self.gitlens_dock.visibilityChanged.connect(lambda _visible: self.window._sync_layout_panel_actions())
         self.collab = CollaborationServer(window)
         self.backup_timer = QTimer(window)
         self.backup_timer.timeout.connect(self.backup_now)
         self.apply_backup_schedule()
+        self._apply_aux_dock_theme()
 
     def collaboration_snapshot(self) -> dict[str, Any]:
         return self.collab.snapshot()
@@ -3439,11 +3499,14 @@ class AdvancedFeaturesController:
             self.minimap_dock.refresh("")
             self.outline_dock.refresh("plain", "")
             self.window._set_breadcrumb_text("-")
+            if hasattr(self, "gitlens_view"):
+                self.gitlens_view.setPlainText("Open a saved file to view blame details.")
             return
         txt = tab.text_edit.get_text()
         self.minimap_dock.refresh(txt, show_line_numbers=not bool(tab.text_edit.is_scintilla))
         lang = self.window._detect_language_for_tab(tab)
         self.outline_dock.refresh(lang, txt)
+        self.refresh_gitlens_for_active_tab()
         line, _ = tab.text_edit.cursor_position()
         self.window._set_breadcrumb_text(f"{tab.current_file or 'Untitled'} > line {line + 1}")
 
@@ -3592,6 +3655,256 @@ class AdvancedFeaturesController:
                 return None
             if msg.get("__eof__"):
                 return None
+        return None
+
+    @staticmethod
+    def _lsp_wait_for_response_collect(
+        *,
+        message_queue: "queue.Queue[dict[str, Any]]",
+        request_id: int,
+        timeout_sec: float,
+    ) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+        notifications: list[dict[str, Any]] = []
+        deadline = time.monotonic() + max(0.1, float(timeout_sec))
+        while time.monotonic() < deadline:
+            remaining = max(0.05, deadline - time.monotonic())
+            try:
+                msg = message_queue.get(timeout=min(0.2, remaining))
+            except queue.Empty:
+                continue
+            if not isinstance(msg, dict):
+                continue
+            if msg.get("id") == request_id:
+                return msg, notifications
+            if msg.get("method"):
+                notifications.append(msg)
+                continue
+            if msg.get("__error__") or msg.get("__eof__"):
+                return None, notifications
+        return None, notifications
+
+    @staticmethod
+    def _lsp_collect_notifications(
+        *,
+        message_queue: "queue.Queue[dict[str, Any]]",
+        timeout_sec: float,
+    ) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        deadline = time.monotonic() + max(0.0, float(timeout_sec))
+        while time.monotonic() < deadline:
+            remaining = max(0.01, deadline - time.monotonic())
+            try:
+                msg = message_queue.get(timeout=min(0.1, remaining))
+            except queue.Empty:
+                break
+            if isinstance(msg, dict) and msg.get("method"):
+                out.append(msg)
+        return out
+
+    @staticmethod
+    def _uri_to_path(uri: str, default_path: str) -> str:
+        target_uri = str(uri or "")
+        if target_uri.startswith("file://"):
+            parsed = urlparse(target_uri)
+            target_path = unquote(parsed.path.lstrip("/")) if parsed.path else default_path
+            if re.match(r"^[A-Za-z]:", target_uri[8:10]):
+                target_path = unquote(target_uri[8:])
+            return str(Path(target_path))
+        return default_path
+
+    def _lsp_open_session(
+        self,
+        *,
+        cmd: list[str],
+        language_id: str,
+        file_path: str,
+        source_text: str,
+    ) -> dict[str, Any] | None:
+        path_obj = Path(file_path)
+        root = str(self.window._workspace_root() or path_obj.parent)
+        uri = path_obj.resolve().as_uri()
+        init_timeout = float(self.window.settings.get("lsp_definition_initialize_timeout_sec", 5.0) or 5.0)
+        try:
+            proc = subprocess.Popen(
+                cmd,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                text=False,
+            )
+            if proc.stdin is None or proc.stdout is None:
+                raise RuntimeError("LSP subprocess missing stdio pipes.")
+            msg_queue: "queue.Queue[dict[str, Any]]" = queue.Queue()
+            stop_reader = threading.Event()
+
+            def _send(payload: dict[str, Any]) -> None:
+                body = json.dumps(payload).encode("utf-8")
+                header = f"Content-Length: {len(body)}\r\n\r\n".encode("ascii")
+                proc.stdin.write(header + body)
+                proc.stdin.flush()
+
+            def _reader_loop() -> None:
+                try:
+                    while not stop_reader.is_set():
+                        header = b""
+                        while b"\r\n\r\n" not in header:
+                            chunk = proc.stdout.read(1)
+                            if not chunk:
+                                msg_queue.put({"__eof__": True})
+                                return
+                            header += chunk
+                        header_text = header.decode("ascii", errors="ignore")
+                        content_length = 0
+                        for ln in header_text.split("\r\n"):
+                            if ln.lower().startswith("content-length:"):
+                                try:
+                                    content_length = int(ln.split(":", 1)[1].strip())
+                                except Exception:
+                                    content_length = 0
+                                break
+                        if content_length <= 0:
+                            continue
+                        payload = proc.stdout.read(content_length)
+                        if not payload:
+                            msg_queue.put({"__eof__": True})
+                            return
+                        try:
+                            message = json.loads(payload.decode("utf-8", errors="replace"))
+                        except Exception:
+                            continue
+                        if isinstance(message, dict):
+                            msg_queue.put(message)
+                except Exception as exc:
+                    msg_queue.put({"__error__": str(exc)})
+
+            reader = threading.Thread(target=_reader_loop, name="pypad-lsp-reader", daemon=True)
+            reader.start()
+            next_id = 1
+            init_id = next_id
+            next_id += 1
+            workspace_uri = Path(root).resolve().as_uri()
+            _send(
+                {
+                    "jsonrpc": "2.0",
+                    "id": init_id,
+                    "method": "initialize",
+                    "params": {
+                        "processId": None,
+                        "rootUri": workspace_uri,
+                        "capabilities": {
+                            "textDocument": {
+                                "hover": {"contentFormat": ["markdown", "plaintext"]},
+                                "completion": {"completionItem": {"snippetSupport": True}},
+                                "publishDiagnostics": {},
+                            }
+                        },
+                        "workspaceFolders": [{"uri": workspace_uri, "name": Path(root).name or "workspace"}],
+                    },
+                }
+            )
+            init_msg = self._lsp_wait_for_response(message_queue=msg_queue, request_id=init_id, timeout_sec=init_timeout)
+            if init_msg is None or init_msg.get("error"):
+                return None
+            _send({"jsonrpc": "2.0", "method": "initialized", "params": {}})
+            _send(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "textDocument/didOpen",
+                    "params": {
+                        "textDocument": {
+                            "uri": uri,
+                            "languageId": language_id,
+                            "version": 1,
+                            "text": source_text,
+                        }
+                    },
+                }
+            )
+            return {
+                "proc": proc,
+                "queue": msg_queue,
+                "stop_reader": stop_reader,
+                "send": _send,
+                "next_id": next_id,
+                "uri": uri,
+                "root": root,
+                "file_path": file_path,
+                "cmd": cmd,
+            }
+        except Exception as exc:
+            self._lsp_log(f"Failed to open LSP session for {' '.join(cmd)}: {exc}", level="Warning")
+            return None
+
+    def _lsp_close_session(self, session: dict[str, Any], *, attempt: int = 0) -> None:
+        proc = session.get("proc")
+        send = session.get("send")
+        try:
+            session.get("stop_reader").set()
+        except Exception:
+            pass
+        if proc is not None and send is not None:
+            try:
+                shutdown_id = 1000000 + int(attempt)
+                send({"jsonrpc": "2.0", "id": shutdown_id, "method": "shutdown", "params": None})
+                send({"jsonrpc": "2.0", "method": "exit", "params": {}})
+            except Exception:
+                pass
+        if proc is not None:
+            try:
+                proc.terminate()
+                proc.wait(timeout=0.5)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+
+    def _lsp_request_with_notifications(
+        self,
+        session: dict[str, Any],
+        *,
+        method: str,
+        params: dict[str, Any],
+        timeout_sec: float,
+    ) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+        request_id = int(session.get("next_id", 1))
+        session["next_id"] = request_id + 1
+        session["send"]({"jsonrpc": "2.0", "id": request_id, "method": method, "params": params})
+        return self._lsp_wait_for_response_collect(
+            message_queue=session["queue"],
+            request_id=request_id,
+            timeout_sec=timeout_sec,
+        )
+
+    def _run_lsp_feature(
+        self,
+        *,
+        language: str,
+        file_path: str,
+        source_text: str,
+        fn,
+    ) -> Any:
+        if not file_path:
+            return None
+        language_id, candidates = self._resolve_lsp_candidates(language=language, file_path=file_path)
+        if not language_id or not candidates:
+            return None
+        retries = max(0, int(self.window.settings.get("lsp_definition_retries", 2) or 2))
+        for cmd in candidates:
+            if not shutil.which(cmd[0]):
+                continue
+            for attempt in range(retries + 1):
+                session = self._lsp_open_session(cmd=cmd, language_id=language_id, file_path=file_path, source_text=source_text)
+                if session is None:
+                    continue
+                try:
+                    result = fn(session)
+                    if result is not None:
+                        return result
+                except Exception as exc:
+                    self._lsp_log(f"LSP feature failed for {' '.join(cmd)}: {exc}", level="Warning")
+                finally:
+                    self._lsp_close_session(session, attempt=attempt)
         return None
 
     def _resolve_definition_with_lsp(
@@ -3846,6 +4159,410 @@ class AdvancedFeaturesController:
                 if any(re.search(p, ln) for p in patterns):
                     return str(path), idx
         return None
+
+    def _append_output_line(self, text: str) -> None:
+        view = getattr(self, "output_view", None)
+        if view is None:
+            return
+        view.append(str(text))
+
+    def _active_lsp_context(self) -> tuple[Any, str, str, int, int] | None:
+        tab = self.window.active_tab()
+        if tab is None or not getattr(tab, "current_file", None):
+            return None
+        file_path = str(tab.current_file or "").strip()
+        if not file_path:
+            return None
+        language = str(self.window._detect_language_for_tab(tab) or "plain").lower()
+        line, col = tab.text_edit.cursor_position()
+        return tab, language, file_path, int(line), int(col)
+
+    def _set_problem_rows(self, rows: list[dict[str, Any]]) -> None:
+        self.problems_list.clear()
+        self.problems_summary_label.setText("No problems reported." if not rows else f"{len(rows)} problem(s) detected.")
+        for row in rows:
+            path = Path(str(row.get("path", "") or ""))
+            line = int(row.get("line", 0) or 0) + 1
+            severity = str(row.get("severity", "info") or "info").upper()
+            message = str(row.get("message", "") or "").strip()
+            item = QListWidgetItem(f"{severity} {path.name}:{line} | {message}", self.problems_list)
+            item.setToolTip(str(path))
+            item.setData(Qt.UserRole, row)
+        if rows:
+            self.problems_dock.show()
+            self.problems_dock.raise_()
+
+    def _apply_aux_dock_theme(self) -> None:
+        tokens = build_tokens_from_settings(self.window.settings)
+        qss = f"""
+        QWidget {{
+            background: {tokens.surface_bg};
+            color: {tokens.text};
+        }}
+        QLabel {{
+            color: {tokens.text};
+            font-weight: 600;
+        }}
+        QListWidget, QTextEdit {{
+            background: {tokens.input_bg};
+            color: {tokens.text};
+            border: 1px solid {tokens.border};
+            border-radius: {tokens.radius_sm}px;
+            padding: 4px 6px;
+        }}
+        """
+        for widget in (getattr(self, "problems_dock", None), getattr(self, "output_view", None), getattr(self, "gitlens_view", None)):
+            if widget is not None:
+                widget.setStyleSheet(qss)
+
+    def _open_problem_item(self, item: QListWidgetItem) -> None:
+        row = item.data(Qt.UserRole)
+        if not isinstance(row, dict):
+            return
+        path = str(row.get("path", "") or "")
+        line = int(row.get("line", 0) or 0)
+        if path:
+            self.window._open_file_path(path)
+        tab = self.window.active_tab()
+        if tab is not None:
+            tab.text_edit.set_cursor_position(max(0, line), 0)
+
+    @staticmethod
+    def _flatten_hover_contents(contents: Any) -> str:
+        if isinstance(contents, str):
+            return contents
+        if isinstance(contents, list):
+            return "\n\n".join(AdvancedFeaturesController._flatten_hover_contents(item) for item in contents if item)
+        if isinstance(contents, dict):
+            if "value" in contents:
+                return str(contents.get("value", "") or "")
+            language = str(contents.get("language", "") or "").strip()
+            value = str(contents.get("value", "") or "")
+            return f"```{language}\n{value}\n```" if language and value else value
+        return ""
+
+    def lsp_hover_current(self) -> None:
+        ctx = self._active_lsp_context()
+        if ctx is None:
+            QMessageBox.information(self.window, "LSP Hover", "Open a saved file first.")
+            return
+        tab, language, file_path, line, col = ctx
+        source_text = tab.text_edit.get_text()
+        request_timeout = float(self.window.settings.get("lsp_definition_request_timeout_sec", 3.0) or 3.0)
+
+        def _run(session: dict[str, Any]) -> str | None:
+            response, _notifications = self._lsp_request_with_notifications(
+                session,
+                method="textDocument/hover",
+                params={
+                    "textDocument": {"uri": session["uri"]},
+                    "position": {"line": line, "character": col},
+                },
+                timeout_sec=request_timeout,
+            )
+            if response is None or response.get("error"):
+                return None
+            result = response.get("result")
+            if not isinstance(result, dict):
+                return None
+            return self._flatten_hover_contents(result.get("contents"))
+
+        hover_text = self._run_lsp_feature(language=language, file_path=file_path, source_text=source_text, fn=_run)
+        if not hover_text:
+            self.window.show_status_message("No hover info returned.", 2500)
+            return
+        self.output_dock.show()
+        self.output_view.setPlainText(hover_text)
+        self.output_dock.raise_()
+
+    def lsp_find_references(self) -> None:
+        ctx = self._active_lsp_context()
+        if ctx is None:
+            QMessageBox.information(self.window, "LSP References", "Open a saved file first.")
+            return
+        tab, language, file_path, line, col = ctx
+        source_text = tab.text_edit.get_text()
+        request_timeout = float(self.window.settings.get("lsp_definition_request_timeout_sec", 3.0) or 3.0)
+
+        def _run(session: dict[str, Any]) -> list[dict[str, Any]] | None:
+            response, _notifications = self._lsp_request_with_notifications(
+                session,
+                method="textDocument/references",
+                params={
+                    "textDocument": {"uri": session["uri"]},
+                    "position": {"line": line, "character": col},
+                    "context": {"includeDeclaration": True},
+                },
+                timeout_sec=request_timeout,
+            )
+            if response is None or response.get("error"):
+                return None
+            result = response.get("result")
+            if not isinstance(result, list):
+                return None
+            rows: list[dict[str, Any]] = []
+            for item in result:
+                if not isinstance(item, dict):
+                    continue
+                uri = str(item.get("uri", "") or session["uri"])
+                rng = item.get("range", {}) if isinstance(item.get("range"), dict) else {}
+                start = rng.get("start", {}) if isinstance(rng, dict) else {}
+                rows.append(
+                    {
+                        "path": self._uri_to_path(uri, file_path),
+                        "line": int(start.get("line", 0) or 0),
+                        "severity": "ref",
+                        "message": "Reference",
+                    }
+                )
+            return rows
+
+        rows = self._run_lsp_feature(language=language, file_path=file_path, source_text=source_text, fn=_run) or []
+        self._set_problem_rows(rows)
+        self.window.show_status_message(f"LSP references: {len(rows)}", 2500)
+
+    def _apply_workspace_edit(self, edit: dict[str, Any]) -> int:
+        changes = edit.get("changes", {})
+        document_changes = edit.get("documentChanges", [])
+        file_edits: dict[str, list[dict[str, Any]]] = {}
+        if isinstance(changes, dict):
+            for uri, rows in changes.items():
+                path = self._uri_to_path(str(uri), "")
+                if path and isinstance(rows, list):
+                    file_edits.setdefault(path, []).extend([row for row in rows if isinstance(row, dict)])
+        if isinstance(document_changes, list):
+            for item in document_changes:
+                if not isinstance(item, dict):
+                    continue
+                text_document = item.get("textDocument", {})
+                edits = item.get("edits", [])
+                if not isinstance(text_document, dict) or not isinstance(edits, list):
+                    continue
+                path = self._uri_to_path(str(text_document.get("uri", "")), "")
+                if path:
+                    file_edits.setdefault(path, []).extend([row for row in edits if isinstance(row, dict)])
+        changed = 0
+        for path, edits in file_edits.items():
+            try:
+                text = Path(path).read_text(encoding="utf-8", errors="replace")
+            except Exception:
+                continue
+            lines = text.splitlines(keepends=True)
+            def _offset(pos: dict[str, Any]) -> int:
+                line = int(pos.get("line", 0) or 0)
+                char = int(pos.get("character", 0) or 0)
+                return sum(len(lines[idx]) for idx in range(min(line, len(lines)))) + char
+            ranges: list[tuple[int, int, str]] = []
+            for edit_row in edits:
+                rng = edit_row.get("range", {})
+                if not isinstance(rng, dict):
+                    continue
+                start = rng.get("start", {}) if isinstance(rng.get("start"), dict) else {}
+                end = rng.get("end", {}) if isinstance(rng.get("end"), dict) else {}
+                ranges.append((_offset(start), _offset(end), str(edit_row.get("newText", "") or "")))
+            ranges.sort(key=lambda row: row[0], reverse=True)
+            updated = text
+            for start_off, end_off, new_text in ranges:
+                updated = updated[:start_off] + new_text + updated[end_off:]
+            Path(path).write_text(updated, encoding="utf-8")
+            if str(getattr(self.window.active_tab(), "current_file", "") or "") == path:
+                active = self.window.active_tab()
+                if active is not None:
+                    active.text_edit.set_text(updated)
+                    active.text_edit.set_modified(True)
+            changed += 1
+        return changed
+
+    def lsp_rename_symbol(self) -> None:
+        ctx = self._active_lsp_context()
+        if ctx is None:
+            QMessageBox.information(self.window, "LSP Rename", "Open a saved file first.")
+            return
+        tab, language, file_path, line, col = ctx
+        new_name, ok = QInputDialog.getText(self.window, "Rename Symbol", "New symbol name:")
+        if not ok or not new_name.strip():
+            return
+        source_text = tab.text_edit.get_text()
+        request_timeout = float(self.window.settings.get("lsp_definition_request_timeout_sec", 3.0) or 3.0)
+
+        def _run(session: dict[str, Any]) -> dict[str, Any] | None:
+            response, _notifications = self._lsp_request_with_notifications(
+                session,
+                method="textDocument/rename",
+                params={
+                    "textDocument": {"uri": session["uri"]},
+                    "position": {"line": line, "character": col},
+                    "newName": new_name.strip(),
+                },
+                timeout_sec=request_timeout,
+            )
+            if response is None or response.get("error"):
+                return None
+            result = response.get("result")
+            return result if isinstance(result, dict) else None
+
+        edit = self._run_lsp_feature(language=language, file_path=file_path, source_text=source_text, fn=_run)
+        if not isinstance(edit, dict):
+            self.window.show_status_message("Rename returned no workspace edit.", 2500)
+            return
+        changed = self._apply_workspace_edit(edit)
+        self.window.show_status_message(f"Renamed symbol across {changed} file(s).", 3000)
+
+    def lsp_show_completion(self) -> None:
+        ctx = self._active_lsp_context()
+        if ctx is None:
+            QMessageBox.information(self.window, "LSP Completion", "Open a saved file first.")
+            return
+        tab, language, file_path, line, col = ctx
+        source_text = tab.text_edit.get_text()
+        request_timeout = float(self.window.settings.get("lsp_definition_request_timeout_sec", 3.0) or 3.0)
+
+        def _run(session: dict[str, Any]) -> list[dict[str, Any]] | None:
+            response, _notifications = self._lsp_request_with_notifications(
+                session,
+                method="textDocument/completion",
+                params={
+                    "textDocument": {"uri": session["uri"]},
+                    "position": {"line": line, "character": col},
+                },
+                timeout_sec=request_timeout,
+            )
+            if response is None or response.get("error"):
+                return None
+            result = response.get("result")
+            if isinstance(result, dict):
+                items = result.get("items", [])
+            else:
+                items = result
+            return [item for item in items if isinstance(item, dict)] if isinstance(items, list) else None
+
+        items = self._run_lsp_feature(language=language, file_path=file_path, source_text=source_text, fn=_run) or []
+        if not items:
+            self.window.show_status_message("No completion items returned.", 2500)
+            return
+        labels = [str(item.get("label", "")) for item in items[:80]]
+        picked, ok = QInputDialog.getItem(self.window, "LSP Completion", "Completion:", labels, 0, False)
+        if not ok or not picked:
+            return
+        item = next((row for row in items if str(row.get("label", "")) == picked), None)
+        if item is None:
+            return
+        insert_text = str(item.get("insertText") or item.get("label") or "")
+        tab.text_edit.insert_text(insert_text)
+
+    def lsp_format_document(self) -> None:
+        ctx = self._active_lsp_context()
+        if ctx is None:
+            QMessageBox.information(self.window, "LSP Format", "Open a saved file first.")
+            return
+        tab, language, file_path, _line, _col = ctx
+        source_text = tab.text_edit.get_text()
+        request_timeout = float(self.window.settings.get("lsp_definition_request_timeout_sec", 3.0) or 3.0)
+
+        def _run(session: dict[str, Any]) -> list[dict[str, Any]] | None:
+            response, _notifications = self._lsp_request_with_notifications(
+                session,
+                method="textDocument/formatting",
+                params={
+                    "textDocument": {"uri": session["uri"]},
+                    "options": {"tabSize": int(self.window.settings.get("tab_width", 4) or 4), "insertSpaces": True},
+                },
+                timeout_sec=request_timeout,
+            )
+            if response is None or response.get("error"):
+                return None
+            result = response.get("result")
+            return [item for item in result if isinstance(item, dict)] if isinstance(result, list) else None
+
+        edits = self._run_lsp_feature(language=language, file_path=file_path, source_text=source_text, fn=_run)
+        if not isinstance(edits, list):
+            self.window.show_status_message("No formatting edits returned.", 2500)
+            return
+        changed = self._apply_workspace_edit({"changes": {Path(file_path).resolve().as_uri(): edits}})
+        self.window.show_status_message(f"Formatted {changed} file(s) with LSP.", 3000)
+
+    def lsp_refresh_diagnostics(self) -> None:
+        ctx = self._active_lsp_context()
+        if ctx is None:
+            QMessageBox.information(self.window, "LSP Diagnostics", "Open a saved file first.")
+            return
+        tab, language, file_path, _line, _col = ctx
+        source_text = tab.text_edit.get_text()
+        request_timeout = float(self.window.settings.get("lsp_definition_request_timeout_sec", 3.0) or 3.0)
+
+        def _run(session: dict[str, Any]) -> list[dict[str, Any]] | None:
+            rows: list[dict[str, Any]] = []
+            response, notifications = self._lsp_request_with_notifications(
+                session,
+                method="textDocument/diagnostic",
+                params={"textDocument": {"uri": session["uri"]}},
+                timeout_sec=request_timeout,
+            )
+            notifications.extend(self._lsp_collect_notifications(message_queue=session["queue"], timeout_sec=0.5))
+            if isinstance(response, dict) and not response.get("error"):
+                result = response.get("result", {})
+                items = result.get("items", []) if isinstance(result, dict) else []
+                for item in items if isinstance(items, list) else []:
+                    if not isinstance(item, dict):
+                        continue
+                    rng = item.get("range", {})
+                    start = rng.get("start", {}) if isinstance(rng, dict) else {}
+                    rows.append(
+                        {
+                            "path": file_path,
+                            "line": int(start.get("line", 0) or 0),
+                            "severity": str(item.get("severity", "info")),
+                            "message": str(item.get("message", "") or ""),
+                        }
+                    )
+            for msg in notifications:
+                if str(msg.get("method", "")) != "textDocument/publishDiagnostics":
+                    continue
+                params = msg.get("params", {})
+                if not isinstance(params, dict):
+                    continue
+                diag_uri = str(params.get("uri", "") or session["uri"])
+                diag_path = self._uri_to_path(diag_uri, file_path)
+                diagnostics = params.get("diagnostics", [])
+                for item in diagnostics if isinstance(diagnostics, list) else []:
+                    if not isinstance(item, dict):
+                        continue
+                    rng = item.get("range", {})
+                    start = rng.get("start", {}) if isinstance(rng, dict) else {}
+                    rows.append(
+                        {
+                            "path": diag_path,
+                            "line": int(start.get("line", 0) or 0),
+                            "severity": str(item.get("severity", "info")),
+                            "message": str(item.get("message", "") or ""),
+                        }
+                    )
+            return rows
+
+        rows = self._run_lsp_feature(language=language, file_path=file_path, source_text=source_text, fn=_run) or []
+        self._set_problem_rows(rows)
+        self._append_output_line(f"LSP diagnostics refreshed: {len(rows)} issue(s)")
+
+    def refresh_gitlens_for_active_tab(self) -> None:
+        tab = self.window.active_tab()
+        if tab is None or not str(tab.current_file or "").strip():
+            self.gitlens_view.setPlainText("Open a saved file to view blame details.")
+            return
+        root = str(self.window._workspace_root() or "").strip()
+        if not root:
+            self.gitlens_view.setPlainText("Set a workspace folder to use GitLens.")
+            return
+        try:
+            cp = subprocess.run(
+                ["git", "-C", root, "blame", "--", str(tab.current_file)],
+                capture_output=True,
+                text=True,
+                timeout=8.0,
+                check=False,
+            )
+            self.gitlens_view.setPlainText(cp.stdout if cp.returncode == 0 else (cp.stderr or "Blame unavailable."))
+        except Exception as exc:
+            self.gitlens_view.setPlainText(f"GitLens unavailable:\n{exc}")
 
     def open_diff(self) -> None:
         tab = self.window.active_tab()
@@ -4109,34 +4826,319 @@ class AdvancedFeaturesController:
         if path:
             Path(path).write_text(text, encoding="utf-8")
 
-    def open_snippets(self) -> None:
-        snippets = self.window.settings.get("snippets", {})
-        if not isinstance(snippets, dict):
-            snippets = {}
-        snippets.setdefault("python_func", "def ${1:name}(${2:args}):\n    ${3:pass}")
-        snippets.setdefault("markdown_task", "- [ ] ${1:task}")
-        self.window.settings["snippets"] = snippets
+    def _default_snippet_library(self) -> list[dict[str, str]]:
+        return [
+            {
+                "name": "python_func",
+                "kind": "snippet",
+                "language": "python",
+                "body": "def ${1:name}(${2:args}):\n    ${3:pass}",
+            },
+            {
+                "name": "markdown_task",
+                "kind": "snippet",
+                "language": "markdown",
+                "body": "- [ ] ${1:task}",
+            },
+            {
+                "name": "workspace_readme",
+                "kind": "template",
+                "language": "markdown",
+                "body": "# ${1:Project Name}\n\n## Overview\n${2:Summary}\n\n## Tasks\n- [ ] ${3:First task}\n",
+            },
+        ]
+
+    def _snippet_library(self) -> list[dict[str, str]]:
+        raw = self.window.settings.get("snippets_library", [])
+        rows: list[dict[str, str]] = []
+        if isinstance(raw, list):
+            for item in raw:
+                if not isinstance(item, dict):
+                    continue
+                name = str(item.get("name", "") or "").strip()
+                body = str(item.get("body", "") or "")
+                if not name or not body:
+                    continue
+                rows.append(
+                    {
+                        "name": name,
+                        "kind": str(item.get("kind", "snippet") or "snippet").strip().lower() or "snippet",
+                        "language": str(item.get("language", "") or "").strip().lower(),
+                        "body": body,
+                    }
+                )
+        legacy = self.window.settings.get("snippets", {})
+        if isinstance(legacy, dict):
+            for name, body in legacy.items():
+                clean_name = str(name or "").strip()
+                clean_body = str(body or "")
+                if not clean_name or not clean_body:
+                    continue
+                if not any(row["name"] == clean_name for row in rows):
+                    rows.append({"name": clean_name, "kind": "snippet", "language": "", "body": clean_body})
+        if not rows:
+            rows = self._default_snippet_library()
+        self.window.settings["snippets_library"] = rows
+        return rows
+
+    def _save_snippet_library(self, rows: list[dict[str, str]]) -> None:
+        cleaned: list[dict[str, str]] = []
+        legacy_snippets: dict[str, str] = {}
+        workspace_templates: dict[str, str] = {}
+        for row in rows:
+            name = str(row.get("name", "") or "").strip()
+            body = str(row.get("body", "") or "")
+            if not name or not body:
+                continue
+            kind = str(row.get("kind", "snippet") or "snippet").strip().lower() or "snippet"
+            language = str(row.get("language", "") or "").strip().lower()
+            payload = {"name": name, "kind": kind, "language": language, "body": body}
+            cleaned.append(payload)
+            if kind == "template":
+                workspace_templates[name] = body
+            else:
+                legacy_snippets[name] = body
+        self.window.settings["snippets_library"] = cleaned
+        self.window.settings["snippets"] = legacy_snippets
+        self.window.settings["workspace_templates"] = workspace_templates
         self.window.save_settings_to_disk()
-        names = sorted(snippets.keys())
-        name, ok = QInputDialog.getItem(self.window, "Snippets", "Choose snippet:", names, 0, False)
-        if not ok or not name:
-            return
-        text = re.sub(r"\$\{\d+:([^}]+)\}", r"\1", str(snippets[name]))
-        text = re.sub(r"\$\{\d+\}", "", text)
+
+    def _expand_snippet_text(self, text: str) -> str:
+        placeholder_re = re.compile(r"\$\{(\d+)(?::([^}]*))?\}")
+        ordered: list[tuple[str, str]] = []
+        seen: set[str] = set()
+        for match in placeholder_re.finditer(str(text or "")):
+            key = str(match.group(1))
+            default = str(match.group(2) or "")
+            if key in seen:
+                continue
+            seen.add(key)
+            ordered.append((key, default))
+        values: dict[str, str] = {}
+        for key, default in sorted(ordered, key=lambda row: int(row[0])):
+            prompt = f"Value for tab stop {key}:"
+            value, ok = QInputDialog.getText(self.window, "Snippet Variables", prompt, text=default)
+            if not ok:
+                raise RuntimeError("cancelled")
+            values[key] = value
+
+        def _replace(match: re.Match[str]) -> str:
+            key = str(match.group(1))
+            default = str(match.group(2) or "")
+            return values.get(key, default)
+
+        expanded = placeholder_re.sub(_replace, str(text or ""))
+        expanded = re.sub(r"\$0", "", expanded)
+        return expanded
+
+    def open_snippets(self) -> None:
+        rows = self._snippet_library()
+        current_language = ""
         tab = self.window.active_tab()
         if tab is not None:
-            tab.text_edit.insert_text(text)
+            current_language = str(self.window._detect_language_for_tab(tab) or "").strip().lower()
+
+        dlg = QDialog(self.window)
+        dlg.setWindowTitle("Snippet Manager")
+        dlg.resize(980, 640)
+        outer = QVBoxLayout(dlg)
+        filter_row = QHBoxLayout()
+        search_edit = QLineEdit(dlg)
+        search_edit.setPlaceholderText("Filter snippets or templates...")
+        search_edit.setClearButtonEnabled(True)
+        kind_combo = QComboBox(dlg)
+        kind_combo.addItems(["All", "snippet", "template"])
+        language_combo = QComboBox(dlg)
+        language_combo.addItems(["Current Language", "Any Language", "python", "markdown", "json", "javascript", "typescript", "plain"])
+        filter_row.addWidget(search_edit, 1)
+        filter_row.addWidget(kind_combo)
+        filter_row.addWidget(language_combo)
+        outer.addLayout(filter_row)
+        splitter = QSplitter(Qt.Horizontal, dlg)
+        list_widget = QListWidget(splitter)
+        editor_host = QWidget(splitter)
+        editor_layout = QFormLayout(editor_host)
+        name_edit = QLineEdit(editor_host)
+        entry_kind_combo = QComboBox(editor_host)
+        entry_kind_combo.addItems(["snippet", "template"])
+        language_edit = QLineEdit(editor_host)
+        language_edit.setPlaceholderText("python, markdown, any")
+        body_edit = QTextEdit(editor_host)
+        body_edit.setAcceptRichText(False)
+        body_edit.setPlaceholderText("Use ${1:name} tab stops and variables.")
+        editor_layout.addRow("Name", name_edit)
+        editor_layout.addRow("Kind", entry_kind_combo)
+        editor_layout.addRow("Language Scope", language_edit)
+        editor_layout.addRow("Body", body_edit)
+        splitter.addWidget(list_widget)
+        splitter.addWidget(editor_host)
+        splitter.setSizes([280, 680])
+        outer.addWidget(splitter, 1)
+        button_row = QHBoxLayout()
+        new_btn = QPushButton("New", dlg)
+        save_btn = QPushButton("Save", dlg)
+        delete_btn = QPushButton("Delete", dlg)
+        insert_btn = QPushButton("Insert", dlg)
+        new_tab_btn = QPushButton("New Tab From Template", dlg)
+        button_row.addWidget(new_btn)
+        button_row.addWidget(save_btn)
+        button_row.addWidget(delete_btn)
+        button_row.addStretch(1)
+        button_row.addWidget(insert_btn)
+        button_row.addWidget(new_tab_btn)
+        outer.addLayout(button_row)
+        close_box = QDialogButtonBox(QDialogButtonBox.Close, Qt.Horizontal, dlg)
+        close_box.rejected.connect(dlg.reject)
+        close_box.accepted.connect(dlg.accept)
+        outer.addWidget(close_box)
+
+        def _matches_language(row: dict[str, str], selected: str) -> bool:
+            scoped = [part.strip().lower() for part in str(row.get("language", "") or "").split(",") if part.strip()]
+            if selected == "Any Language":
+                return True
+            if not scoped:
+                return True
+            if selected == "Current Language":
+                return not current_language or current_language in scoped
+            return selected.lower() in scoped
+
+        def _filtered() -> list[dict[str, str]]:
+            text = search_edit.text().strip().lower()
+            selected_kind = kind_combo.currentText()
+            selected_language = language_combo.currentText()
+            out: list[dict[str, str]] = []
+            for row in rows:
+                if selected_kind != "All" and row.get("kind") != selected_kind:
+                    continue
+                if not _matches_language(row, selected_language):
+                    continue
+                hay = f"{row.get('name', '')}\n{row.get('language', '')}\n{row.get('body', '')}".lower()
+                if text and text not in hay:
+                    continue
+                out.append(row)
+            return out
+
+        def _refresh_list(select_name: str = "") -> None:
+            list_widget.clear()
+            for row in _filtered():
+                label = str(row.get("name", ""))
+                kind = str(row.get("kind", "snippet"))
+                lang = str(row.get("language", "") or "any")
+                item = QListWidgetItem(f"{label} [{kind} | {lang}]", list_widget)
+                item.setData(Qt.UserRole, label)
+                if select_name and label == select_name:
+                    list_widget.setCurrentItem(item)
+            if list_widget.currentRow() < 0 and list_widget.count() > 0:
+                list_widget.setCurrentRow(0)
+
+        def _load_selected() -> None:
+            current = list_widget.currentItem()
+            if current is None:
+                return
+            name = str(current.data(Qt.UserRole) or "")
+            row = next((item for item in rows if item.get("name") == name), None)
+            if row is None:
+                return
+            name_edit.setText(str(row.get("name", "")))
+            entry_kind_combo.setCurrentText(str(row.get("kind", "snippet")))
+            language_edit.setText(str(row.get("language", "")))
+            body_edit.setPlainText(str(row.get("body", "")))
+
+        def _save_current() -> None:
+            name = name_edit.text().strip()
+            body = body_edit.toPlainText()
+            if not name or not body.strip():
+                QMessageBox.information(dlg, "Snippet Manager", "Name and body are required.")
+                return
+            payload = {
+                "name": name,
+                "kind": entry_kind_combo.currentText(),
+                "language": language_edit.text().strip().lower(),
+                "body": body,
+            }
+            existing = next((idx for idx, row in enumerate(rows) if row.get("name") == name), None)
+            if existing is None:
+                rows.append(payload)
+            else:
+                rows[int(existing)] = payload
+            self._save_snippet_library(rows)
+            _refresh_list(select_name=name)
+
+        def _delete_current() -> None:
+            name = name_edit.text().strip()
+            if not name:
+                return
+            kept = [row for row in rows if row.get("name") != name]
+            rows[:] = kept
+            self._save_snippet_library(rows)
+            name_edit.clear()
+            language_edit.clear()
+            body_edit.clear()
+            _refresh_list()
+
+        def _apply_selected(new_tab: bool) -> None:
+            name = name_edit.text().strip()
+            row = next((item for item in rows if item.get("name") == name), None)
+            if row is None:
+                return
+            try:
+                expanded = self._expand_snippet_text(str(row.get("body", "")))
+            except RuntimeError:
+                return
+            active_tab = self.window.active_tab()
+            if new_tab or str(row.get("kind", "snippet")) == "template":
+                new_editor_tab = self.window.add_new_tab(text=expanded, file_path=None, make_current=True)
+                if new_editor_tab is not None:
+                    self.window.show_status_message(f'Template applied: "{name}"', 2500)
+                return
+            if active_tab is None:
+                active_tab = self.window.add_new_tab(text="", file_path=None, make_current=True)
+            if active_tab is not None:
+                active_tab.text_edit.insert_text(expanded)
+                self.window.show_status_message(f'Snippet inserted: "{name}"', 2500)
+
+        list_widget.currentItemChanged.connect(lambda _cur, _prev: _load_selected())
+        search_edit.textChanged.connect(lambda _text: _refresh_list())
+        kind_combo.currentTextChanged.connect(lambda _text: _refresh_list())
+        language_combo.currentTextChanged.connect(lambda _text: _refresh_list())
+        new_btn.clicked.connect(
+            lambda: (
+                name_edit.clear(),
+                entry_kind_combo.setCurrentText("snippet"),
+                language_edit.setText(current_language),
+                body_edit.clear(),
+                body_edit.setFocus(),
+            )
+        )
+        save_btn.clicked.connect(_save_current)
+        delete_btn.clicked.connect(_delete_current)
+        insert_btn.clicked.connect(lambda: _apply_selected(new_tab=False))
+        new_tab_btn.clicked.connect(lambda: _apply_selected(new_tab=True))
+        _refresh_list()
+        dlg.exec()
 
     def ensure_template_packs(self) -> None:
         packs = self.window.settings.get("template_packs", {})
         if not isinstance(packs, dict):
             packs = {}
-        packs.setdefault("notes/meeting", "## Meeting\nDate: ${1:date}\n")
+        packs.setdefault("notes/meeting", "## Meeting\nDate: ${1:date}\nAttendees: ${2:team}\n")
         packs.setdefault("docs/changelog", "## [Unreleased]\n### Added\n- ${1:item}\n")
-        packs.setdefault("code/class", "class ${1:Name}:\n    pass\n")
+        packs.setdefault("code/class", "class ${1:Name}:\n    def __init__(self${2:, args}) -> None:\n        ${3:pass}\n")
         self.window.settings["template_packs"] = packs
-        self.window.save_settings_to_disk()
-        self.window.show_status_message("Template packs are ready.", 2500)
+        library = self._snippet_library()
+        existing_names = {str(row.get("name", "")) for row in library}
+        for name, body in packs.items():
+            label = f"Pack: {name}"
+            if label in existing_names:
+                continue
+            language = ""
+            if name.startswith("code/"):
+                language = "python"
+            elif name.startswith("docs/") or name.startswith("notes/"):
+                language = "markdown"
+            library.append({"name": label, "kind": "template", "language": language, "body": str(body)})
+        self._save_snippet_library(library)
+        self.window.show_status_message("Template packs installed into Snippet Manager.", 2500)
 
     def show_tasks(self) -> None:
         tasks: list[str] = []

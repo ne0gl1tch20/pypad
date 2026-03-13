@@ -216,6 +216,48 @@ class MiscWindowTabsMixin:
                 self.window_menu = None
                 self.window_tabs_separator = None
                 return
+        try:
+            menu.addSeparator()
+        except RuntimeError:
+            return
+        dock_specs = [
+            ("Editor", getattr(self, "editor_dock", None)),
+            ("AI Chat", getattr(self, "ai_chat_dock", None)),
+            ("Markdown Preview", getattr(self, "markdown_preview_dock", None)),
+            ("Explorer", getattr(self, "explorer_dock", None)),
+            ("Search Results", getattr(self, "search_results_dock", None)),
+            ("Terminal & Tasks", getattr(self, "terminal_tasks_dock", None)),
+            ("Git", getattr(self, "git_dock", None)),
+            ("Problems", getattr(self, "problems_dock", None)),
+            ("Output", getattr(self, "output_dock", None)),
+            ("GitLens", getattr(self, "gitlens_dock", None)),
+            ("Minimap", getattr(self, "minimap_dock", None)),
+            ("Symbol Outline", getattr(self, "outline_dock", None)),
+        ]
+        for label, dock in dock_specs:
+            if dock is None:
+                continue
+            action = QAction(f"[Panel] {label}", self)
+            action.setCheckable(True)
+            action.setChecked(bool(dock.isVisible()))
+            try:
+                if hasattr(self, "_svg_icon"):
+                    icon = self._svg_icon("view-fullscreen" if bool(getattr(dock, "isFloating", lambda: False)()) else "document-list")
+                    if icon is not None and not icon.isNull():
+                        action.setIcon(icon)
+            except Exception:
+                pass
+            action.triggered.connect(
+                lambda checked=False, target=dock: (
+                    target.setVisible(bool(checked) or not target.isVisible()),
+                    target.raise_(),
+                    target.activateWindow() if hasattr(target, "activateWindow") else None,
+                )
+            )
+            try:
+                menu.addAction(action)
+            except RuntimeError:
+                return
 
     def show_windows_manager(self) -> None:
         dialog = QDialog(self)

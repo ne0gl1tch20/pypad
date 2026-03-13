@@ -1,0 +1,2872 @@
+{
+  "app_exclusive_symbols": [
+    "SCI_CLEARNOTIFICATIONS",
+    "SCI_ENGINESTATEDIFF",
+    "SCI_ENGINESTATEIMPORT",
+    "SCI_ENGINESTATESNAPSHOT",
+    "SCI_GETENGINECHANNEL",
+    "SCI_GETENGINECHECKSUM",
+    "SCI_GETENGINEGENERATION",
+    "SCI_GETENGINETOGGLE",
+    "SCI_GETENGINEVAR",
+    "SCI_GETLASTNOTIFICATION",
+    "SCI_GETSELECTIONNANCHOR",
+    "SCI_GETSELECTIONNANCHORVIRTUALSPACE",
+    "SCI_GETSELECTIONNCARET",
+    "SCI_GETSELECTIONNCARETVIRTUALSPACE",
+    "SCI_RESETENGINESTATE",
+    "SCI_SETENGINECHANNEL",
+    "SCI_SETENGINETOGGLE",
+    "SCI_SETENGINEVAR",
+    "SCI_SETSELECTIONNANCHOR",
+    "SCI_SETSELECTIONNANCHORVIRTUALSPACE",
+    "SCI_SETSELECTIONNCARET",
+    "SCI_SETSELECTIONNCARETVIRTUALSPACE"
+  ],
+  "commands": {
+    "SCI_ADDSELECTION": {
+      "args": [],
+      "category": "selection",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_ADDSELECTION"
+    },
+    "SCI_ANNOTATIONCLEARALL": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_ANNOTATIONCLEARALL"
+    },
+    "SCI_ANNOTATIONGETTEXT": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_ANNOTATIONGETTEXT"
+    },
+    "SCI_ANNOTATIONSETTEXT": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_ANNOTATIONSETTEXT"
+    },
+    "SCI_APPENDTEXT": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_APPENDTEXT"
+    },
+    "SCI_AUTOCACTIVE": {
+      "args": [],
+      "category": "autocomplete",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_AUTOCACTIVE"
+    },
+    "SCI_AUTOCCANCEL": {
+      "args": [],
+      "category": "autocomplete",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_AUTOCCANCEL"
+    },
+    "SCI_AUTOCGETFILLUPS": {
+      "args": [],
+      "category": "autocomplete",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_AUTOCGETFILLUPS"
+    },
+    "SCI_AUTOCGETSEPARATOR": {
+      "args": [],
+      "category": "autocomplete",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_AUTOCGETSEPARATOR"
+    },
+    "SCI_AUTOCSELECT": {
+      "args": [],
+      "category": "autocomplete",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_AUTOCSELECT"
+    },
+    "SCI_AUTOCSETFILLUPS": {
+      "args": [],
+      "category": "autocomplete",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_AUTOCSETFILLUPS"
+    },
+    "SCI_AUTOCSETSEPARATOR": {
+      "args": [],
+      "category": "autocomplete",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_AUTOCSETSEPARATOR"
+    },
+    "SCI_AUTOCSHOW": {
+      "args": [],
+      "category": "autocomplete",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_AUTOCSHOW"
+    },
+    "SCI_BEGINUNDOACTION": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_BEGINUNDOACTION"
+    },
+    "SCI_BRACEBADLIGHT": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_BRACEBADLIGHT"
+    },
+    "SCI_BRACEHIGHLIGHT": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_BRACEHIGHLIGHT"
+    },
+    "SCI_BRACEMATCH": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_BRACEMATCH"
+    },
+    "SCI_CALLTIPACTIVE": {
+      "args": [],
+      "category": "autocomplete",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_CALLTIPACTIVE"
+    },
+    "SCI_CALLTIPCANCEL": {
+      "args": [],
+      "category": "autocomplete",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_CALLTIPCANCEL"
+    },
+    "SCI_CALLTIPSHOW": {
+      "args": [],
+      "category": "autocomplete",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_CALLTIPSHOW"
+    },
+    "SCI_CANCEL": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_CANCEL"
+    },
+    "SCI_CANREDO": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_CANREDO"
+    },
+    "SCI_CANUNDO": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_CANUNDO"
+    },
+    "SCI_CHARLEFT": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_CHARLEFT"
+    },
+    "SCI_CHARLEFTEXTEND": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_CHARLEFTEXTEND"
+    },
+    "SCI_CHARRIGHT": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_CHARRIGHT"
+    },
+    "SCI_CHARRIGHTEXTEND": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_CHARRIGHTEXTEND"
+    },
+    "SCI_CLEAR": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_CLEAR"
+    },
+    "SCI_CLEARNOTIFICATIONS": {
+      "args": [],
+      "category": "compat-extension",
+      "notes": "Clears the compat notification log and returns the number of entries removed.",
+      "status": "compat-only",
+      "symbol": "SCI_CLEARNOTIFICATIONS"
+    },
+    "SCI_CLEARSELECTIONS": {
+      "args": [],
+      "category": "selection",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_CLEARSELECTIONS"
+    },
+    "SCI_DELETEBACK": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_DELETEBACK"
+    },
+    "SCI_DELETERANGE": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_DELETERANGE"
+    },
+    "SCI_DELLINELEFT": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_DELLINELEFT"
+    },
+    "SCI_DELLINERIGHT": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_DELLINERIGHT"
+    },
+    "SCI_DOCUMENTEND": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_DOCUMENTEND"
+    },
+    "SCI_DOCUMENTENDEXTEND": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_DOCUMENTENDEXTEND"
+    },
+    "SCI_DOCUMENTSTART": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_DOCUMENTSTART"
+    },
+    "SCI_DOCUMENTSTARTEXTEND": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_DOCUMENTSTARTEXTEND"
+    },
+    "SCI_DROPSELECTIONN": {
+      "args": [],
+      "category": "selection",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_DROPSELECTIONN"
+    },
+    "SCI_EMPTYUNDOBUFFER": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_EMPTYUNDOBUFFER"
+    },
+    "SCI_END": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_END"
+    },
+    "SCI_ENDEXTEND": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_ENDEXTEND"
+    },
+    "SCI_ENDUNDOACTION": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_ENDUNDOACTION"
+    },
+    "SCI_ENGINESTATEDIFF": {
+      "args": [
+        "length",
+        "payload",
+        "target"
+      ],
+      "category": "compat-extension",
+      "notes": "Returns aggregate diff counts between current engine state and a prior snapshot.",
+      "status": "compat-only",
+      "symbol": "SCI_ENGINESTATEDIFF"
+    },
+    "SCI_ENGINESTATEIMPORT": {
+      "args": [
+        "length",
+        "payload"
+      ],
+      "category": "compat-extension",
+      "notes": "Imports a prior engine snapshot generated by the compat engine.",
+      "status": "compat-only",
+      "symbol": "SCI_ENGINESTATEIMPORT"
+    },
+    "SCI_ENGINESTATESNAPSHOT": {
+      "args": [
+        "target"
+      ],
+      "category": "compat-extension",
+      "notes": "Serializes app-exclusive engine state for persistence and diffing.",
+      "status": "compat-only",
+      "symbol": "SCI_ENGINESTATESNAPSHOT"
+    },
+    "SCI_FOLDALL": {
+      "args": [],
+      "category": "folding",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_FOLDALL"
+    },
+    "SCI_FOLDGETTEXT": {
+      "args": [],
+      "category": "folding",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_FOLDGETTEXT"
+    },
+    "SCI_FOLDLINE": {
+      "args": [],
+      "category": "folding",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_FOLDLINE"
+    },
+    "SCI_FOLDSETTEXT": {
+      "args": [],
+      "category": "folding",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_FOLDSETTEXT"
+    },
+    "SCI_GETACCESSIBILITY": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETACCESSIBILITY"
+    },
+    "SCI_GETADDITIONALCARETFORE": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETADDITIONALCARETFORE"
+    },
+    "SCI_GETADDITIONALCARETSBLINK": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETADDITIONALCARETSBLINK"
+    },
+    "SCI_GETADDITIONALCARETSVISIBLE": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETADDITIONALCARETSVISIBLE"
+    },
+    "SCI_GETADDITIONALSELALPHA": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETADDITIONALSELALPHA"
+    },
+    "SCI_GETADDITIONALSELBACK": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETADDITIONALSELBACK"
+    },
+    "SCI_GETADDITIONALSELECTIONTYPING": {
+      "args": [],
+      "category": "selection",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETADDITIONALSELECTIONTYPING"
+    },
+    "SCI_GETADDITIONALSELFORE": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETADDITIONALSELFORE"
+    },
+    "SCI_GETANCHOR": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETANCHOR"
+    },
+    "SCI_GETAUTOCANCELATSTART": {
+      "args": [],
+      "category": "autocomplete",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETAUTOCANCELATSTART"
+    },
+    "SCI_GETAUTOCASESENSITIVE": {
+      "args": [],
+      "category": "autocomplete",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETAUTOCASESENSITIVE"
+    },
+    "SCI_GETAUTOCURRENT": {
+      "args": [],
+      "category": "autocomplete",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETAUTOCURRENT"
+    },
+    "SCI_GETAUTODROPRESTOFWORD": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETAUTODROPRESTOFWORD"
+    },
+    "SCI_GETAUTOHIDE": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETAUTOHIDE"
+    },
+    "SCI_GETAUTOMAXHEIGHT": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETAUTOMAXHEIGHT"
+    },
+    "SCI_GETAUTOMAXWIDTH": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETAUTOMAXWIDTH"
+    },
+    "SCI_GETBIDIRECTIONAL": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETBIDIRECTIONAL"
+    },
+    "SCI_GETBRACEBADLIGHT": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETBRACEBADLIGHT"
+    },
+    "SCI_GETBRACEHIGHLIGHT": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETBRACEHIGHLIGHT"
+    },
+    "SCI_GETBUFFEREDDRAW": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETBUFFEREDDRAW"
+    },
+    "SCI_GETCARETFORE": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETCARETFORE"
+    },
+    "SCI_GETCARETLINEBACK": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETCARETLINEBACK"
+    },
+    "SCI_GETCARETLINEFRAME": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETCARETLINEFRAME"
+    },
+    "SCI_GETCARETLINEVISIBLE": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETCARETLINEVISIBLE"
+    },
+    "SCI_GETCARETLINEVISIBLEALWAYS": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETCARETLINEVISIBLEALWAYS"
+    },
+    "SCI_GETCARETPERIOD": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETCARETPERIOD"
+    },
+    "SCI_GETCARETSTICKY": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETCARETSTICKY"
+    },
+    "SCI_GETCARETSTYLE": {
+      "args": [],
+      "category": "styling",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETCARETSTYLE"
+    },
+    "SCI_GETCARETWIDTH": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETCARETWIDTH"
+    },
+    "SCI_GETCHARAT": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETCHARAT"
+    },
+    "SCI_GETCOLUMN": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETCOLUMN"
+    },
+    "SCI_GETCONTROLCHARSYMBOL": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETCONTROLCHARSYMBOL"
+    },
+    "SCI_GETCURLINE": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETCURLINE"
+    },
+    "SCI_GETCURRENTPOS": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETCURRENTPOS"
+    },
+    "SCI_GETEDGECOLOUR": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETEDGECOLOUR"
+    },
+    "SCI_GETEDGECOLUMN": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETEDGECOLUMN"
+    },
+    "SCI_GETEDGEMODE": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETEDGEMODE"
+    },
+    "SCI_GETENDATLASTLINE": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETENDATLASTLINE"
+    },
+    "SCI_GETENGINECHANNEL": {
+      "args": [],
+      "category": "compat-extension",
+      "notes": "",
+      "status": "compat-only",
+      "symbol": "SCI_GETENGINECHANNEL"
+    },
+    "SCI_GETENGINECHECKSUM": {
+      "args": [],
+      "category": "compat-extension",
+      "notes": "",
+      "status": "compat-only",
+      "symbol": "SCI_GETENGINECHECKSUM"
+    },
+    "SCI_GETENGINEGENERATION": {
+      "args": [],
+      "category": "compat-extension",
+      "notes": "",
+      "status": "compat-only",
+      "symbol": "SCI_GETENGINEGENERATION"
+    },
+    "SCI_GETENGINETOGGLE": {
+      "args": [],
+      "category": "compat-extension",
+      "notes": "",
+      "status": "compat-only",
+      "symbol": "SCI_GETENGINETOGGLE"
+    },
+    "SCI_GETENGINEVAR": {
+      "args": [],
+      "category": "compat-extension",
+      "notes": "",
+      "status": "compat-only",
+      "symbol": "SCI_GETENGINEVAR"
+    },
+    "SCI_GETEOLMODE": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETEOLMODE"
+    },
+    "SCI_GETEXTRAASCENT": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETEXTRAASCENT"
+    },
+    "SCI_GETEXTRADESCENT": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETEXTRADESCENT"
+    },
+    "SCI_GETEXTRAFONTFLAG": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETEXTRAFONTFLAG"
+    },
+    "SCI_GETFIRSTVISIBLELINE": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETFIRSTVISIBLELINE"
+    },
+    "SCI_GETFOLDFLAGS": {
+      "args": [],
+      "category": "folding",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETFOLDFLAGS"
+    },
+    "SCI_GETFOLDLEVEL": {
+      "args": [],
+      "category": "folding",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETFOLDLEVEL"
+    },
+    "SCI_GETFOLDPARENT": {
+      "args": [],
+      "category": "folding",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETFOLDPARENT"
+    },
+    "SCI_GETFONTLOCALE": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETFONTLOCALE"
+    },
+    "SCI_GETHOTSPOTACTIVEBACK": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETHOTSPOTACTIVEBACK"
+    },
+    "SCI_GETHOTSPOTACTIVEUNDERLINE": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETHOTSPOTACTIVEUNDERLINE"
+    },
+    "SCI_GETHOTSPOTSINGLELINE": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETHOTSPOTSINGLELINE"
+    },
+    "SCI_GETHSCROLLBAR": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETHSCROLLBAR"
+    },
+    "SCI_GETIDLESTYLING": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETIDLESTYLING"
+    },
+    "SCI_GETINDENT": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETINDENT"
+    },
+    "SCI_GETINDENTATIONGUIDES": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETINDENTATIONGUIDES"
+    },
+    "SCI_GETKEYSUNICODE": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETKEYSUNICODE"
+    },
+    "SCI_GETLASTCHILD": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETLASTCHILD"
+    },
+    "SCI_GETLASTNOTIFICATION": {
+      "args": [
+        "target"
+      ],
+      "category": "compat-extension",
+      "notes": "Returns the most recently emitted notification as JSON.",
+      "status": "compat-only",
+      "symbol": "SCI_GETLASTNOTIFICATION"
+    },
+    "SCI_GETLAYOUTCACHE": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETLAYOUTCACHE"
+    },
+    "SCI_GETLENGTH": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETLENGTH"
+    },
+    "SCI_GETLINE": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETLINE"
+    },
+    "SCI_GETLINECOUNT": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETLINECOUNT"
+    },
+    "SCI_GETLINEENDPOSITION": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETLINEENDPOSITION"
+    },
+    "SCI_GETLINEENDTYPESALLOWED": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETLINEENDTYPESALLOWED"
+    },
+    "SCI_GETLINESTATE": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETLINESTATE"
+    },
+    "SCI_GETLINEVISIBLE": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETLINEVISIBLE"
+    },
+    "SCI_GETMAINSELECTION": {
+      "args": [],
+      "category": "selection",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETMAINSELECTION"
+    },
+    "SCI_GETMAINSELEND": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETMAINSELEND"
+    },
+    "SCI_GETMAINSELSTART": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETMAINSELSTART"
+    },
+    "SCI_GETMARGINLEFT": {
+      "args": [],
+      "category": "margin",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETMARGINLEFT"
+    },
+    "SCI_GETMARGINRIGHT": {
+      "args": [],
+      "category": "margin",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETMARGINRIGHT"
+    },
+    "SCI_GETMAXLINESTATE": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETMAXLINESTATE"
+    },
+    "SCI_GETMODEVENTMASK": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETMODEVENTMASK"
+    },
+    "SCI_GETMODIFY": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETMODIFY"
+    },
+    "SCI_GETMOUSEDWELLTIME": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETMOUSEDWELLTIME"
+    },
+    "SCI_GETMULTIPLESELECTION": {
+      "args": [],
+      "category": "selection",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETMULTIPLESELECTION"
+    },
+    "SCI_GETPASTECONVERTENDINGS": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETPASTECONVERTENDINGS"
+    },
+    "SCI_GETPRINTWRAPMODE": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETPRINTWRAPMODE"
+    },
+    "SCI_GETPUNCTUATIONCHARS": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETPUNCTUATIONCHARS"
+    },
+    "SCI_GETREADONLY": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETREADONLY"
+    },
+    "SCI_GETSCROLLWIDTH": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETSCROLLWIDTH"
+    },
+    "SCI_GETSCROLLWIDTHTRACKING": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETSCROLLWIDTHTRACKING"
+    },
+    "SCI_GETSEARCHFLAGS": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETSEARCHFLAGS"
+    },
+    "SCI_GETSELALPHA": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETSELALPHA"
+    },
+    "SCI_GETSELECTIONEND": {
+      "args": [],
+      "category": "selection",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETSELECTIONEND"
+    },
+    "SCI_GETSELECTIONMODE": {
+      "args": [],
+      "category": "selection",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETSELECTIONMODE"
+    },
+    "SCI_GETSELECTIONNANCHOR": {
+      "args": [],
+      "category": "selection",
+      "notes": "",
+      "status": "compat-only",
+      "symbol": "SCI_GETSELECTIONNANCHOR"
+    },
+    "SCI_GETSELECTIONNANCHORVIRTUALSPACE": {
+      "args": [],
+      "category": "selection",
+      "notes": "",
+      "status": "compat-only",
+      "symbol": "SCI_GETSELECTIONNANCHORVIRTUALSPACE"
+    },
+    "SCI_GETSELECTIONNCARET": {
+      "args": [],
+      "category": "selection",
+      "notes": "",
+      "status": "compat-only",
+      "symbol": "SCI_GETSELECTIONNCARET"
+    },
+    "SCI_GETSELECTIONNCARETVIRTUALSPACE": {
+      "args": [],
+      "category": "selection",
+      "notes": "",
+      "status": "compat-only",
+      "symbol": "SCI_GETSELECTIONNCARETVIRTUALSPACE"
+    },
+    "SCI_GETSELECTIONNEND": {
+      "args": [],
+      "category": "selection",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETSELECTIONNEND"
+    },
+    "SCI_GETSELECTIONNSTART": {
+      "args": [],
+      "category": "selection",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETSELECTIONNSTART"
+    },
+    "SCI_GETSELECTIONS": {
+      "args": [],
+      "category": "selection",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETSELECTIONS"
+    },
+    "SCI_GETSELECTIONSTART": {
+      "args": [],
+      "category": "selection",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETSELECTIONSTART"
+    },
+    "SCI_GETSELEOLFILLED": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETSELEOLFILLED"
+    },
+    "SCI_GETSTATUS": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETSTATUS"
+    },
+    "SCI_GETSTYLEAT": {
+      "args": [],
+      "category": "styling",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETSTYLEAT"
+    },
+    "SCI_GETSTYLEBITS": {
+      "args": [],
+      "category": "styling",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETSTYLEBITS"
+    },
+    "SCI_GETTABWIDTH": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETTABWIDTH"
+    },
+    "SCI_GETTARGETEND": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETTARGETEND"
+    },
+    "SCI_GETTARGETSTART": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETTARGETSTART"
+    },
+    "SCI_GETTARGETTEXT": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETTARGETTEXT"
+    },
+    "SCI_GETTEXT": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETTEXT"
+    },
+    "SCI_GETTEXTLENGTH": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETTEXTLENGTH"
+    },
+    "SCI_GETTEXTRANGE": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETTEXTRANGE"
+    },
+    "SCI_GETTWOPHASEDRAW": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETTWOPHASEDRAW"
+    },
+    "SCI_GETUNDOCOLLECTION": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETUNDOCOLLECTION"
+    },
+    "SCI_GETUSETABS": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETUSETABS"
+    },
+    "SCI_GETVIEWEOL": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETVIEWEOL"
+    },
+    "SCI_GETVIEWWS": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETVIEWWS"
+    },
+    "SCI_GETVIRTUALSPACEOPTIONS": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETVIRTUALSPACEOPTIONS"
+    },
+    "SCI_GETVISIBLEPOLICY": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETVISIBLEPOLICY"
+    },
+    "SCI_GETVSCROLLBAR": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETVSCROLLBAR"
+    },
+    "SCI_GETWHITESPACEBACK": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETWHITESPACEBACK"
+    },
+    "SCI_GETWHITESPACEFORE": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETWHITESPACEFORE"
+    },
+    "SCI_GETWHITESPACESIZE": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETWHITESPACESIZE"
+    },
+    "SCI_GETWORDCHARS": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETWORDCHARS"
+    },
+    "SCI_GETWRAPMODE": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETWRAPMODE"
+    },
+    "SCI_GETWRAPVISUALFLAGS": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETWRAPVISUALFLAGS"
+    },
+    "SCI_GETXCARETPOLICY": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETXCARETPOLICY"
+    },
+    "SCI_GETXOFFSET": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETXOFFSET"
+    },
+    "SCI_GETYCARETPOLICY": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETYCARETPOLICY"
+    },
+    "SCI_GETZOOM": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GETZOOM"
+    },
+    "SCI_GOTOLINE": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GOTOLINE"
+    },
+    "SCI_GOTOPOS": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_GOTOPOS"
+    },
+    "SCI_HIDELINES": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_HIDELINES"
+    },
+    "SCI_HOME": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_HOME"
+    },
+    "SCI_HOMEEXTEND": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_HOMEEXTEND"
+    },
+    "SCI_HOMEWRAP": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_HOMEWRAP"
+    },
+    "SCI_HOMEWRAPEXTEND": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_HOMEWRAPEXTEND"
+    },
+    "SCI_INDICATORCLEARRANGE": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_INDICATORCLEARRANGE"
+    },
+    "SCI_INDICATORFILLRANGE": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_INDICATORFILLRANGE"
+    },
+    "SCI_INDICGETFORE": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_INDICGETFORE"
+    },
+    "SCI_INDICGETSTYLE": {
+      "args": [],
+      "category": "styling",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_INDICGETSTYLE"
+    },
+    "SCI_INDICSETFORE": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_INDICSETFORE"
+    },
+    "SCI_INDICSETSTYLE": {
+      "args": [],
+      "category": "styling",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_INDICSETSTYLE"
+    },
+    "SCI_INSERTTEXT": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_INSERTTEXT"
+    },
+    "SCI_LINECUT": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_LINECUT"
+    },
+    "SCI_LINEDELETE": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_LINEDELETE"
+    },
+    "SCI_LINEDOWN": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_LINEDOWN"
+    },
+    "SCI_LINEDOWNEXTEND": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_LINEDOWNEXTEND"
+    },
+    "SCI_LINEEND": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_LINEEND"
+    },
+    "SCI_LINEENDWRAP": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_LINEENDWRAP"
+    },
+    "SCI_LINEENDWRAPEXTEND": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_LINEENDWRAPEXTEND"
+    },
+    "SCI_LINEFROMPOSITION": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_LINEFROMPOSITION"
+    },
+    "SCI_LINELENGTH": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_LINELENGTH"
+    },
+    "SCI_LINESCROLL": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_LINESCROLL"
+    },
+    "SCI_LINESONSCREEN": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_LINESONSCREEN"
+    },
+    "SCI_LINETRANSPOSE": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_LINETRANSPOSE"
+    },
+    "SCI_LINEUP": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_LINEUP"
+    },
+    "SCI_LINEUPEXTEND": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_LINEUPEXTEND"
+    },
+    "SCI_MARKERADD": {
+      "args": [],
+      "category": "marker",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_MARKERADD"
+    },
+    "SCI_MARKERDEFINE": {
+      "args": [],
+      "category": "marker",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_MARKERDEFINE"
+    },
+    "SCI_MARKERDELETE": {
+      "args": [],
+      "category": "marker",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_MARKERDELETE"
+    },
+    "SCI_MARKERDELETEALL": {
+      "args": [],
+      "category": "marker",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_MARKERDELETEALL"
+    },
+    "SCI_MARKERGET": {
+      "args": [],
+      "category": "marker",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_MARKERGET"
+    },
+    "SCI_MARKERNEXT": {
+      "args": [],
+      "category": "marker",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_MARKERNEXT"
+    },
+    "SCI_MARKERPREVIOUS": {
+      "args": [],
+      "category": "marker",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_MARKERPREVIOUS"
+    },
+    "SCI_MARKERSETBACK": {
+      "args": [],
+      "category": "marker",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_MARKERSETBACK"
+    },
+    "SCI_PAGEDOWN": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_PAGEDOWN"
+    },
+    "SCI_PAGEDOWNEXTEND": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_PAGEDOWNEXTEND"
+    },
+    "SCI_PAGEUP": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_PAGEUP"
+    },
+    "SCI_PAGEUPEXTEND": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_PAGEUPEXTEND"
+    },
+    "SCI_POSITIONAFTER": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_POSITIONAFTER"
+    },
+    "SCI_POSITIONBEFORE": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_POSITIONBEFORE"
+    },
+    "SCI_POSITIONFROMLINE": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_POSITIONFROMLINE"
+    },
+    "SCI_REDO": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_REDO"
+    },
+    "SCI_REPLACESEL": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_REPLACESEL"
+    },
+    "SCI_REPLACETARGET": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_REPLACETARGET"
+    },
+    "SCI_REPLACETARGETMINIMAL": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_REPLACETARGETMINIMAL"
+    },
+    "SCI_REPLACETARGETRE": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_REPLACETARGETRE"
+    },
+    "SCI_RESETENGINESTATE": {
+      "args": [],
+      "category": "compat-extension",
+      "notes": "",
+      "status": "compat-only",
+      "symbol": "SCI_RESETENGINESTATE"
+    },
+    "SCI_ROTATESELECTION": {
+      "args": [],
+      "category": "selection",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_ROTATESELECTION"
+    },
+    "SCI_SEARCHINTARGET": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SEARCHINTARGET"
+    },
+    "SCI_SELECTALL": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SELECTALL"
+    },
+    "SCI_SETACCESSIBILITY": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETACCESSIBILITY"
+    },
+    "SCI_SETADDITIONALCARETFORE": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETADDITIONALCARETFORE"
+    },
+    "SCI_SETADDITIONALCARETSBLINK": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETADDITIONALCARETSBLINK"
+    },
+    "SCI_SETADDITIONALCARETSVISIBLE": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETADDITIONALCARETSVISIBLE"
+    },
+    "SCI_SETADDITIONALSELALPHA": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETADDITIONALSELALPHA"
+    },
+    "SCI_SETADDITIONALSELBACK": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETADDITIONALSELBACK"
+    },
+    "SCI_SETADDITIONALSELECTIONTYPING": {
+      "args": [
+        "value"
+      ],
+      "category": "selection",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETADDITIONALSELECTIONTYPING"
+    },
+    "SCI_SETADDITIONALSELFORE": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETADDITIONALSELFORE"
+    },
+    "SCI_SETAUTOCANCELATSTART": {
+      "args": [
+        "value"
+      ],
+      "category": "autocomplete",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETAUTOCANCELATSTART"
+    },
+    "SCI_SETAUTOCASESENSITIVE": {
+      "args": [
+        "value"
+      ],
+      "category": "autocomplete",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETAUTOCASESENSITIVE"
+    },
+    "SCI_SETAUTOCURRENT": {
+      "args": [
+        "value"
+      ],
+      "category": "autocomplete",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETAUTOCURRENT"
+    },
+    "SCI_SETAUTODROPRESTOFWORD": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETAUTODROPRESTOFWORD"
+    },
+    "SCI_SETAUTOHIDE": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETAUTOHIDE"
+    },
+    "SCI_SETAUTOMAXHEIGHT": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETAUTOMAXHEIGHT"
+    },
+    "SCI_SETAUTOMAXWIDTH": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETAUTOMAXWIDTH"
+    },
+    "SCI_SETBIDIRECTIONAL": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETBIDIRECTIONAL"
+    },
+    "SCI_SETBUFFEREDDRAW": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETBUFFEREDDRAW"
+    },
+    "SCI_SETCARETFORE": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETCARETFORE"
+    },
+    "SCI_SETCARETLINEBACK": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETCARETLINEBACK"
+    },
+    "SCI_SETCARETLINEFRAME": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETCARETLINEFRAME"
+    },
+    "SCI_SETCARETLINEVISIBLE": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETCARETLINEVISIBLE"
+    },
+    "SCI_SETCARETLINEVISIBLEALWAYS": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETCARETLINEVISIBLEALWAYS"
+    },
+    "SCI_SETCARETPERIOD": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETCARETPERIOD"
+    },
+    "SCI_SETCARETSTICKY": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETCARETSTICKY"
+    },
+    "SCI_SETCARETSTYLE": {
+      "args": [
+        "value"
+      ],
+      "category": "styling",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETCARETSTYLE"
+    },
+    "SCI_SETCARETWIDTH": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETCARETWIDTH"
+    },
+    "SCI_SETCONTROLCHARSYMBOL": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETCONTROLCHARSYMBOL"
+    },
+    "SCI_SETEDGECOLOUR": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETEDGECOLOUR"
+    },
+    "SCI_SETEDGECOLUMN": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETEDGECOLUMN"
+    },
+    "SCI_SETEDGEMODE": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETEDGEMODE"
+    },
+    "SCI_SETEMPTYSELECTION": {
+      "args": [
+        "value"
+      ],
+      "category": "selection",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETEMPTYSELECTION"
+    },
+    "SCI_SETENDATLASTLINE": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETENDATLASTLINE"
+    },
+    "SCI_SETENGINECHANNEL": {
+      "args": [
+        "channel",
+        "value"
+      ],
+      "category": "compat-extension",
+      "notes": "",
+      "status": "compat-only",
+      "symbol": "SCI_SETENGINECHANNEL"
+    },
+    "SCI_SETENGINETOGGLE": {
+      "args": [
+        "index",
+        "enabled"
+      ],
+      "category": "compat-extension",
+      "notes": "",
+      "status": "compat-only",
+      "symbol": "SCI_SETENGINETOGGLE"
+    },
+    "SCI_SETENGINEVAR": {
+      "args": [
+        "index",
+        "value"
+      ],
+      "category": "compat-extension",
+      "notes": "",
+      "status": "compat-only",
+      "symbol": "SCI_SETENGINEVAR"
+    },
+    "SCI_SETEOLMODE": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETEOLMODE"
+    },
+    "SCI_SETEXTRAASCENT": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETEXTRAASCENT"
+    },
+    "SCI_SETEXTRADESCENT": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETEXTRADESCENT"
+    },
+    "SCI_SETEXTRAFONTFLAG": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETEXTRAFONTFLAG"
+    },
+    "SCI_SETFIRSTVISIBLELINE": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETFIRSTVISIBLELINE"
+    },
+    "SCI_SETFOCUS": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETFOCUS"
+    },
+    "SCI_SETFOLDFLAGS": {
+      "args": [
+        "value"
+      ],
+      "category": "folding",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETFOLDFLAGS"
+    },
+    "SCI_SETFONTLOCALE": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETFONTLOCALE"
+    },
+    "SCI_SETHOTSPOTACTIVEBACK": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETHOTSPOTACTIVEBACK"
+    },
+    "SCI_SETHOTSPOTACTIVEFORE": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETHOTSPOTACTIVEFORE"
+    },
+    "SCI_SETHOTSPOTACTIVEUNDERLINE": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETHOTSPOTACTIVEUNDERLINE"
+    },
+    "SCI_SETHOTSPOTSINGLELINE": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETHOTSPOTSINGLELINE"
+    },
+    "SCI_SETHSCROLLBAR": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETHSCROLLBAR"
+    },
+    "SCI_SETIDLESTYLING": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETIDLESTYLING"
+    },
+    "SCI_SETINDENT": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETINDENT"
+    },
+    "SCI_SETINDENTATIONGUIDES": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETINDENTATIONGUIDES"
+    },
+    "SCI_SETINDICATORCURRENT": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETINDICATORCURRENT"
+    },
+    "SCI_SETINDICATORVALUE": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETINDICATORVALUE"
+    },
+    "SCI_SETKEYSUNICODE": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETKEYSUNICODE"
+    },
+    "SCI_SETLAYOUTCACHE": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETLAYOUTCACHE"
+    },
+    "SCI_SETLINEENDTYPESALLOWED": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETLINEENDTYPESALLOWED"
+    },
+    "SCI_SETLINESTATE": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETLINESTATE"
+    },
+    "SCI_SETMAINSELECTION": {
+      "args": [
+        "value"
+      ],
+      "category": "selection",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETMAINSELECTION"
+    },
+    "SCI_SETMARGINLEFT": {
+      "args": [
+        "value"
+      ],
+      "category": "margin",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETMARGINLEFT"
+    },
+    "SCI_SETMARGINMASKN": {
+      "args": [
+        "value"
+      ],
+      "category": "margin",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETMARGINMASKN"
+    },
+    "SCI_SETMARGINRIGHT": {
+      "args": [
+        "value"
+      ],
+      "category": "margin",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETMARGINRIGHT"
+    },
+    "SCI_SETMARGINSENSITIVEN": {
+      "args": [
+        "value"
+      ],
+      "category": "margin",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETMARGINSENSITIVEN"
+    },
+    "SCI_SETMARGINTYPEN": {
+      "args": [
+        "value"
+      ],
+      "category": "margin",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETMARGINTYPEN"
+    },
+    "SCI_SETMARGINWIDTHN": {
+      "args": [
+        "value"
+      ],
+      "category": "margin",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETMARGINWIDTHN"
+    },
+    "SCI_SETMODEVENTMASK": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETMODEVENTMASK"
+    },
+    "SCI_SETMOUSEDWELLTIME": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETMOUSEDWELLTIME"
+    },
+    "SCI_SETMULTIPASTE": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETMULTIPASTE"
+    },
+    "SCI_SETMULTIPLESELECTION": {
+      "args": [
+        "value"
+      ],
+      "category": "selection",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETMULTIPLESELECTION"
+    },
+    "SCI_SETPASTECONVERTENDINGS": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETPASTECONVERTENDINGS"
+    },
+    "SCI_SETPRINTWRAPMODE": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETPRINTWRAPMODE"
+    },
+    "SCI_SETPUNCTUATIONCHARS": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETPUNCTUATIONCHARS"
+    },
+    "SCI_SETREADONLY": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETREADONLY"
+    },
+    "SCI_SETSAVEPOINT": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETSAVEPOINT"
+    },
+    "SCI_SETSCROLLWIDTH": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETSCROLLWIDTH"
+    },
+    "SCI_SETSCROLLWIDTHTRACKING": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETSCROLLWIDTHTRACKING"
+    },
+    "SCI_SETSEARCHFLAGS": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETSEARCHFLAGS"
+    },
+    "SCI_SETSEL": {
+      "args": [
+        "value"
+      ],
+      "category": "selection",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETSEL"
+    },
+    "SCI_SETSELALPHA": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETSELALPHA"
+    },
+    "SCI_SETSELBACK": {
+      "args": [
+        "value"
+      ],
+      "category": "selection",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETSELBACK"
+    },
+    "SCI_SETSELECTIONMODE": {
+      "args": [
+        "value"
+      ],
+      "category": "selection",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETSELECTIONMODE"
+    },
+    "SCI_SETSELECTIONNANCHOR": {
+      "args": [
+        "value"
+      ],
+      "category": "selection",
+      "notes": "",
+      "status": "compat-only",
+      "symbol": "SCI_SETSELECTIONNANCHOR"
+    },
+    "SCI_SETSELECTIONNANCHORVIRTUALSPACE": {
+      "args": [
+        "value"
+      ],
+      "category": "selection",
+      "notes": "",
+      "status": "compat-only",
+      "symbol": "SCI_SETSELECTIONNANCHORVIRTUALSPACE"
+    },
+    "SCI_SETSELECTIONNCARET": {
+      "args": [
+        "value"
+      ],
+      "category": "selection",
+      "notes": "",
+      "status": "compat-only",
+      "symbol": "SCI_SETSELECTIONNCARET"
+    },
+    "SCI_SETSELECTIONNCARETVIRTUALSPACE": {
+      "args": [
+        "value"
+      ],
+      "category": "selection",
+      "notes": "",
+      "status": "compat-only",
+      "symbol": "SCI_SETSELECTIONNCARETVIRTUALSPACE"
+    },
+    "SCI_SETSELECTIONNEND": {
+      "args": [
+        "value"
+      ],
+      "category": "selection",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETSELECTIONNEND"
+    },
+    "SCI_SETSELECTIONNSTART": {
+      "args": [
+        "value"
+      ],
+      "category": "selection",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETSELECTIONNSTART"
+    },
+    "SCI_SETSELEOLFILLED": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETSELEOLFILLED"
+    },
+    "SCI_SETSELFORE": {
+      "args": [
+        "value"
+      ],
+      "category": "selection",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETSELFORE"
+    },
+    "SCI_SETSTATUS": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETSTATUS"
+    },
+    "SCI_SETSTYLEBITS": {
+      "args": [
+        "value"
+      ],
+      "category": "styling",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETSTYLEBITS"
+    },
+    "SCI_SETSTYLING": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETSTYLING"
+    },
+    "SCI_SETTABWIDTH": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETTABWIDTH"
+    },
+    "SCI_SETTARGETEND": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETTARGETEND"
+    },
+    "SCI_SETTARGETSTART": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETTARGETSTART"
+    },
+    "SCI_SETTWOPHASEDRAW": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETTWOPHASEDRAW"
+    },
+    "SCI_SETUNDOCOLLECTION": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETUNDOCOLLECTION"
+    },
+    "SCI_SETUSETABS": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETUSETABS"
+    },
+    "SCI_SETVIEWEOL": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETVIEWEOL"
+    },
+    "SCI_SETVIEWWS": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETVIEWWS"
+    },
+    "SCI_SETVIRTUALSPACEOPTIONS": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETVIRTUALSPACEOPTIONS"
+    },
+    "SCI_SETVISIBLEPOLICY": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETVISIBLEPOLICY"
+    },
+    "SCI_SETVSCROLLBAR": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETVSCROLLBAR"
+    },
+    "SCI_SETWHITESPACEBACK": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETWHITESPACEBACK"
+    },
+    "SCI_SETWHITESPACEFORE": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETWHITESPACEFORE"
+    },
+    "SCI_SETWHITESPACESIZE": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETWHITESPACESIZE"
+    },
+    "SCI_SETWORDCHARS": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETWORDCHARS"
+    },
+    "SCI_SETWRAPMODE": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETWRAPMODE"
+    },
+    "SCI_SETWRAPVISUALFLAGS": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETWRAPVISUALFLAGS"
+    },
+    "SCI_SETXCARETPOLICY": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETXCARETPOLICY"
+    },
+    "SCI_SETXOFFSET": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETXOFFSET"
+    },
+    "SCI_SETYCARETPOLICY": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETYCARETPOLICY"
+    },
+    "SCI_SETZOOM": {
+      "args": [
+        "value"
+      ],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SETZOOM"
+    },
+    "SCI_SHOWLINES": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SHOWLINES"
+    },
+    "SCI_STARTSTYLING": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_STARTSTYLING"
+    },
+    "SCI_STYLECLEARALL": {
+      "args": [],
+      "category": "styling",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_STYLECLEARALL"
+    },
+    "SCI_STYLESETBACK": {
+      "args": [],
+      "category": "styling",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_STYLESETBACK"
+    },
+    "SCI_STYLESETBOLD": {
+      "args": [],
+      "category": "styling",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_STYLESETBOLD"
+    },
+    "SCI_STYLESETFORE": {
+      "args": [],
+      "category": "styling",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_STYLESETFORE"
+    },
+    "SCI_STYLESETITALIC": {
+      "args": [],
+      "category": "styling",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_STYLESETITALIC"
+    },
+    "SCI_STYLESETUNDERLINE": {
+      "args": [],
+      "category": "styling",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_STYLESETUNDERLINE"
+    },
+    "SCI_SWAPMAINANCHORCARET": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_SWAPMAINANCHORCARET"
+    },
+    "SCI_TARGETFROMSELECTION": {
+      "args": [],
+      "category": "selection",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_TARGETFROMSELECTION"
+    },
+    "SCI_TARGETWHOLEDOCUMENT": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_TARGETWHOLEDOCUMENT"
+    },
+    "SCI_UNDO": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_UNDO"
+    },
+    "SCI_VCHOME": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_VCHOME"
+    },
+    "SCI_VCHOMEWRAP": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_VCHOMEWRAP"
+    },
+    "SCI_VCHOMEWRAPEXTEND": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_VCHOMEWRAPEXTEND"
+    },
+    "SCI_WORDENDPOSITION": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_WORDENDPOSITION"
+    },
+    "SCI_WORDLEFT": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_WORDLEFT"
+    },
+    "SCI_WORDLEFTEXTEND": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_WORDLEFTEXTEND"
+    },
+    "SCI_WORDRIGHT": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_WORDRIGHT"
+    },
+    "SCI_WORDRIGHTEXTEND": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_WORDRIGHTEXTEND"
+    },
+    "SCI_WORDSTARTPOSITION": {
+      "args": [],
+      "category": "core",
+      "notes": "",
+      "status": "implemented",
+      "symbol": "SCI_WORDSTARTPOSITION"
+    },
+    "SCN_CHARADDED": {
+      "args": [
+        "position",
+        "line",
+        "text",
+        "value",
+        "metadata"
+      ],
+      "category": "notification",
+      "notes": "Emitted before normal key processing for plain text input.",
+      "status": "implemented",
+      "symbol": "SCN_CHARADDED"
+    },
+    "SCN_DWELLEND": {
+      "args": [
+        "position",
+        "line",
+        "metadata"
+      ],
+      "category": "notification",
+      "notes": "Hover dwell end emitted on left click release when a prior dwell exists.",
+      "status": "implemented",
+      "symbol": "SCN_DWELLEND"
+    },
+    "SCN_DWELLSTART": {
+      "args": [
+        "position",
+        "line",
+        "metadata"
+      ],
+      "category": "notification",
+      "notes": "Hover dwell notification emitted after the configured dwell interval.",
+      "status": "implemented",
+      "symbol": "SCN_DWELLSTART"
+    },
+    "SCN_MARGINCLICK": {
+      "args": [
+        "line",
+        "margin",
+        "metadata"
+      ],
+      "category": "notification",
+      "notes": "Metadata distinguishes fold-triggered clicks from sensitive-margin clicks.",
+      "status": "implemented",
+      "symbol": "SCN_MARGINCLICK"
+    },
+    "SCN_MODIFIED": {
+      "args": [
+        "position",
+        "line",
+        "text",
+        "value",
+        "metadata"
+      ],
+      "category": "notification",
+      "notes": "Payload metadata includes seq, reason_flags, tokenized_reasons, range_before, range_after, before_length, and after_length.",
+      "status": "implemented",
+      "symbol": "SCN_MODIFIED"
+    },
+    "SCN_UPDATEUI": {
+      "args": [
+        "position",
+        "line",
+        "metadata"
+      ],
+      "category": "notification",
+      "notes": "Emitted on cursor/selection movement with selection count in metadata.",
+      "status": "implemented",
+      "symbol": "SCN_UPDATEUI"
+    }
+  },
+  "compat_symbol_count": 401,
+  "repo_complete": true
+}

@@ -419,6 +419,23 @@ class SettingsDialog(QDialog):
         self._register_search(category_idx, label, spin)
         return spin
 
+    def _add_settings_section(self, parent_layout: QVBoxLayout, title: str, description: str = "") -> tuple[QGroupBox, QFormLayout]:
+        box = QGroupBox(title, parent_layout.parentWidget())
+        box.setObjectName("settingsSectionGroup")
+        box_layout = QVBoxLayout(box)
+        box_layout.setContentsMargins(12, 10, 12, 12)
+        box_layout.setSpacing(8)
+        if description:
+            desc = QLabel(description, box)
+            desc.setObjectName("settingsSectionDesc")
+            desc.setWordWrap(True)
+            box_layout.addWidget(desc)
+        form = QFormLayout()
+        form.setContentsMargins(0, 0, 0, 0)
+        box_layout.addLayout(form)
+        parent_layout.addWidget(box)
+        return box, form
+
     def _apply_non_stretch_settings_layout(self) -> None:
         for form in self.findChildren(QFormLayout):
             try:
@@ -930,9 +947,16 @@ class SettingsDialog(QDialog):
 
         # AI & Updates
         ai = QWidget(self)
-        ai_layout = QFormLayout(ai)
+        ai_page_layout = QVBoxLayout(ai)
+        ai_page_layout.setContentsMargins(0, 0, 0, 0)
+        ai_page_layout.setSpacing(12)
         idx = self._add_category("AI & Updates", ai)
         self._register_route_aliases(idx, "ai", "ai-updates", "updates", "ai-and-updates")
+        _, ai_layout = self._add_settings_section(
+            ai_page_layout,
+            "AI",
+            "Model selection and prompt construction controls.",
+        )
         self.gemini_api_key_edit = QLineEdit(ai)
         self.gemini_api_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
         ai_layout.addRow("Gemini API key", self.gemini_api_key_edit)
@@ -958,89 +982,104 @@ class SettingsDialog(QDialog):
         self.ai_include_ui_appendix_checkbox = self._add_check(ai_layout, idx, "Always include large UI/action appendix")
         self.ai_user_knowledge_max_chars_spin = self._add_spin(ai_layout, idx, "AI user knowledge max chars", 200, 12000)
         self.ai_selection_preview_chars_spin = self._add_spin(ai_layout, idx, "AI selection preview chars", 80, 5000)
+        _, updates_layout = self._add_settings_section(
+            ai_page_layout,
+            "Updates",
+            "Startup update checks and metadata verification.",
+        )
         self.update_feed_url_edit = QLineEdit(ai)
         self.update_feed_url_edit.setPlaceholderText(DEFAULT_UPDATE_FEED_URL)
         self.update_feed_url_edit.setReadOnly(True)
         self.update_feed_url_edit.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
         self.update_feed_url_edit.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.update_feed_url_edit.setToolTip("Update feed URL is managed by the app and is read-only.")
-        ai_layout.addRow("Update feed URL", self.update_feed_url_edit)
+        updates_layout.addRow("Update feed URL", self.update_feed_url_edit)
         self._register_search(idx, "Update feed URL", self.update_feed_url_edit)
-        self.auto_check_updates_checkbox = self._add_check(ai_layout, idx, "Check updates on startup")
-        self.update_require_signed_checkbox = self._add_check(ai_layout, idx, "Require signed update metadata")
+        self.auto_check_updates_checkbox = self._add_check(updates_layout, idx, "Check updates on startup")
+        self.update_require_signed_checkbox = self._add_check(updates_layout, idx, "Require signed update metadata")
         self.update_signing_key_edit = QLineEdit(ai)
         self.update_signing_key_edit.setEchoMode(QLineEdit.EchoMode.Password)
-        ai_layout.addRow("Update signing key (HMAC)", self.update_signing_key_edit)
+        updates_layout.addRow("Update signing key (HMAC)", self.update_signing_key_edit)
         self._register_search(idx, "Update signing key", self.update_signing_key_edit)
-        self.ai_send_redact_emails_checkbox = self._add_check(ai_layout, idx, "Redact emails before AI send")
-        self.ai_send_redact_paths_checkbox = self._add_check(ai_layout, idx, "Redact file paths before AI send")
-        self.ai_send_redact_tokens_checkbox = self._add_check(ai_layout, idx, "Redact tokens before AI send")
-        self.ai_preview_redacted_prompt_checkbox = self._add_check(ai_layout, idx, "Preview redacted prompt before send")
-        self.ai_key_storage_mode_combo = self._add_combo(ai_layout, idx, "AI key storage mode", ["settings", "env_only"])
-        self.ai_private_mode_checkbox = self._add_check(ai_layout, idx, "Enable AI private mode (disable AI calls)")
-        self.ai_rewrite_approval_checkbox = self._add_check(ai_layout, idx, "Require approval before applying AI rewrite")
+        _, ai_privacy_layout = self._add_settings_section(
+            ai_page_layout,
+            "AI Privacy",
+            "Redaction, review, and local safety controls.",
+        )
+        self.ai_send_redact_emails_checkbox = self._add_check(ai_privacy_layout, idx, "Redact emails before AI send")
+        self.ai_send_redact_paths_checkbox = self._add_check(ai_privacy_layout, idx, "Redact file paths before AI send")
+        self.ai_send_redact_tokens_checkbox = self._add_check(ai_privacy_layout, idx, "Redact tokens before AI send")
+        self.ai_preview_redacted_prompt_checkbox = self._add_check(ai_privacy_layout, idx, "Preview redacted prompt before send")
+        self.ai_key_storage_mode_combo = self._add_combo(ai_privacy_layout, idx, "AI key storage mode", ["settings", "env_only"])
+        self.ai_private_mode_checkbox = self._add_check(ai_privacy_layout, idx, "Enable AI private mode (disable AI calls)")
+        self.ai_rewrite_approval_checkbox = self._add_check(ai_privacy_layout, idx, "Require approval before applying AI rewrite")
         self.ai_apply_review_mode_combo = self._add_combo(
-            ai_layout,
+            ai_privacy_layout,
             idx,
             "AI apply review mode",
             ["always_preview", "direct_insert_only", "legacy_direct_apply"],
         )
-        self.ai_regression_guard_checkbox = self._add_check(ai_layout, idx, "Enable regression guard prompts for AI file edits")
-        self.ai_template_nearby_lines_radius_spin = self._add_spin(ai_layout, idx, "Template nearby lines radius", 0, 200)
+        self.ai_regression_guard_checkbox = self._add_check(ai_privacy_layout, idx, "Enable regression guard prompts for AI file edits")
+        self.ai_template_nearby_lines_radius_spin = self._add_spin(ai_privacy_layout, idx, "Template nearby lines radius", 0, 200)
         self.ai_session_default_include_current_file_auto_checkbox = self._add_check(
-            ai_layout, idx, "Default chat memory: auto include current file"
+            ai_privacy_layout, idx, "Default chat memory: auto include current file"
         )
         self.ai_session_default_include_workspace_snippets_auto_checkbox = self._add_check(
-            ai_layout, idx, "Default chat memory: auto include workspace snippets"
+            ai_privacy_layout, idx, "Default chat memory: auto include workspace snippets"
         )
         self.ai_session_default_strict_citations_only_checkbox = self._add_check(
-            ai_layout, idx, "Default chat memory: strict citations only"
+            ai_privacy_layout, idx, "Default chat memory: strict citations only"
         )
         self.ai_session_default_allow_hidden_apply_commands_checkbox = self._add_check(
-            ai_layout, idx, "Default chat memory: allow hidden apply commands"
+            ai_privacy_layout, idx, "Default chat memory: allow hidden apply commands"
         )
-        self.ai_verbose_logging_checkbox = self._add_check(ai_layout, idx, "Enable AI verbose logging")
+        self.ai_verbose_logging_checkbox = self._add_check(ai_privacy_layout, idx, "Enable AI verbose logging")
         self.ai_cost_rate_spin = QDoubleSpinBox(ai)
         self.ai_cost_rate_spin.setDecimals(6)
         self.ai_cost_rate_spin.setRange(0.0, 10.0)
         self.ai_cost_rate_spin.setSingleStep(0.0001)
-        ai_layout.addRow("Estimated USD per 1k tokens", self.ai_cost_rate_spin)
+        ai_privacy_layout.addRow("Estimated USD per 1k tokens", self.ai_cost_rate_spin)
         self._register_search(idx, "Estimated USD per 1k tokens", self.ai_cost_rate_spin)
-        self.spellcheck_enabled_checkbox = self._add_check(ai_layout, idx, "Enable local spellcheck")
+        _, lang_tools_layout = self._add_settings_section(
+            ai_page_layout,
+            "Language Tools",
+            "Spellcheck and language-server integration.",
+        )
+        self.spellcheck_enabled_checkbox = self._add_check(lang_tools_layout, idx, "Enable local spellcheck")
         self.spellcheck_language_edit = QLineEdit(ai)
         self.spellcheck_language_edit.setPlaceholderText("en")
-        ai_layout.addRow("Spellcheck language", self.spellcheck_language_edit)
+        lang_tools_layout.addRow("Spellcheck language", self.spellcheck_language_edit)
         self._register_search(idx, "Spellcheck language", self.spellcheck_language_edit)
         self.spellcheck_user_dictionary_edit = QLineEdit(ai)
         self.spellcheck_user_dictionary_edit.setPlaceholderText("comma,separated,custom,words")
-        ai_layout.addRow("Spellcheck custom words", self.spellcheck_user_dictionary_edit)
+        lang_tools_layout.addRow("Spellcheck custom words", self.spellcheck_user_dictionary_edit)
         self._register_search(idx, "Spellcheck custom words", self.spellcheck_user_dictionary_edit)
-        self.lsp_definition_enabled_checkbox = self._add_check(ai_layout, idx, "Enable LSP go-to-definition")
+        self.lsp_definition_enabled_checkbox = self._add_check(lang_tools_layout, idx, "Enable LSP go-to-definition")
         self.lsp_init_timeout_spin = QDoubleSpinBox(ai)
         self.lsp_init_timeout_spin.setDecimals(1)
         self.lsp_init_timeout_spin.setRange(0.5, 30.0)
         self.lsp_init_timeout_spin.setSingleStep(0.5)
-        ai_layout.addRow("LSP init timeout (sec)", self.lsp_init_timeout_spin)
+        lang_tools_layout.addRow("LSP init timeout (sec)", self.lsp_init_timeout_spin)
         self._register_search(idx, "LSP init timeout", self.lsp_init_timeout_spin)
         self.lsp_request_timeout_spin = QDoubleSpinBox(ai)
         self.lsp_request_timeout_spin.setDecimals(1)
         self.lsp_request_timeout_spin.setRange(0.5, 30.0)
         self.lsp_request_timeout_spin.setSingleStep(0.5)
-        ai_layout.addRow("LSP request timeout (sec)", self.lsp_request_timeout_spin)
+        lang_tools_layout.addRow("LSP request timeout (sec)", self.lsp_request_timeout_spin)
         self._register_search(idx, "LSP request timeout", self.lsp_request_timeout_spin)
-        self.lsp_retries_spin = self._add_spin(ai_layout, idx, "LSP retries per server", 0, 5)
-        self.lsp_verbose_logging_checkbox = self._add_check(ai_layout, idx, "Enable LSP verbose logging")
+        self.lsp_retries_spin = self._add_spin(lang_tools_layout, idx, "LSP retries per server", 0, 5)
+        self.lsp_verbose_logging_checkbox = self._add_check(lang_tools_layout, idx, "Enable LSP verbose logging")
         self.lsp_python_servers_edit = QLineEdit(ai)
         self.lsp_python_servers_edit.setPlaceholderText("pylsp, pyright-langserver --stdio")
-        ai_layout.addRow("Python LSP server preference", self.lsp_python_servers_edit)
+        lang_tools_layout.addRow("Python LSP server preference", self.lsp_python_servers_edit)
         self._register_search(idx, "Python LSP server preference", self.lsp_python_servers_edit)
         self.lsp_javascript_servers_edit = QLineEdit(ai)
         self.lsp_javascript_servers_edit.setPlaceholderText("typescript-language-server --stdio, vtsls --stdio")
-        ai_layout.addRow("JavaScript LSP server preference", self.lsp_javascript_servers_edit)
+        lang_tools_layout.addRow("JavaScript LSP server preference", self.lsp_javascript_servers_edit)
         self._register_search(idx, "JavaScript LSP server preference", self.lsp_javascript_servers_edit)
         self.lsp_typescript_servers_edit = QLineEdit(ai)
         self.lsp_typescript_servers_edit.setPlaceholderText("typescript-language-server --stdio, vtsls --stdio")
-        ai_layout.addRow("TypeScript LSP server preference", self.lsp_typescript_servers_edit)
+        lang_tools_layout.addRow("TypeScript LSP server preference", self.lsp_typescript_servers_edit)
         self._register_search(idx, "TypeScript LSP server preference", self.lsp_typescript_servers_edit)
         self.lsp_definition_enabled_checkbox.toggled.connect(
             lambda checked: (
@@ -1053,6 +1092,7 @@ class SettingsDialog(QDialog):
                 self.lsp_typescript_servers_edit.setEnabled(bool(checked)),
             )
         )
+        ai_page_layout.addStretch(1)
 
         # Privacy
         privacy = QWidget(self)
@@ -1076,14 +1116,20 @@ class SettingsDialog(QDialog):
         # Backup
         backup = QWidget(self)
         backup_layout = QVBoxLayout(backup)
+        backup_layout.setContentsMargins(0, 0, 0, 0)
+        backup_layout.setSpacing(12)
         idx = self._add_category("Backup & Restore", backup)
         self._register_route_aliases(idx, "backup", "restore", "backup-restore")
+        profile_box = QGroupBox("Profiles", backup)
+        profile_box.setObjectName("settingsSectionGroup")
+        profile_layout = QVBoxLayout(profile_box)
+        profile_layout.setContentsMargins(12, 10, 12, 12)
         backup_buttons = QHBoxLayout()
         self.backup_btn = QPushButton("Backup Settings...", backup)
         self.restore_btn = QPushButton("Restore Settings...", backup)
         backup_buttons.addWidget(self.backup_btn)
         backup_buttons.addWidget(self.restore_btn)
-        backup_layout.addLayout(backup_buttons)
+        profile_layout.addLayout(backup_buttons)
         self.export_settings_profile_btn = QPushButton("Export Profile...", backup)
         self.import_settings_profile_btn = QPushButton("Import Profile...", backup)
         self.edit_settings_json_btn = QPushButton("Edit with settings.json", backup)
@@ -1095,12 +1141,18 @@ class SettingsDialog(QDialog):
         self.backup_output_dir_browse_btn = QPushButton("Browse...", backup_output_row)
         backup_output_layout.addWidget(self.backup_output_dir_edit, 1)
         backup_output_layout.addWidget(self.backup_output_dir_browse_btn)
-        backup_layout.addWidget(QLabel("Backup output folder (optional):", backup))
-        backup_layout.addWidget(backup_output_row)
-        backup_layout.addWidget(self.export_settings_profile_btn)
-        backup_layout.addWidget(self.import_settings_profile_btn)
-        backup_layout.addWidget(self.edit_settings_json_btn)
-        backup_layout.addWidget(self.factory_reset_btn)
+        profile_layout.addWidget(QLabel("Backup output folder (optional):", backup))
+        profile_layout.addWidget(backup_output_row)
+        profile_layout.addWidget(self.export_settings_profile_btn)
+        profile_layout.addWidget(self.import_settings_profile_btn)
+        backup_layout.addWidget(profile_box)
+        maintenance_box = QGroupBox("Maintenance", backup)
+        maintenance_box.setObjectName("settingsSectionGroup")
+        maintenance_layout = QVBoxLayout(maintenance_box)
+        maintenance_layout.setContentsMargins(12, 10, 12, 12)
+        maintenance_layout.addWidget(self.edit_settings_json_btn)
+        maintenance_layout.addWidget(self.factory_reset_btn)
+        backup_layout.addWidget(maintenance_box)
         self._register_search(idx, "Backup Settings", self.backup_btn)
         self._register_search(idx, "Restore Settings", self.restore_btn)
         self._register_search(idx, "Factory Reset", self.factory_reset_btn)
@@ -1116,47 +1168,65 @@ class SettingsDialog(QDialog):
 
         # Advanced
         advanced = QWidget(self)
-        advanced_layout = QFormLayout(advanced)
+        advanced_page_layout = QVBoxLayout(advanced)
+        advanced_page_layout.setContentsMargins(0, 0, 0, 0)
+        advanced_page_layout.setSpacing(12)
         idx = self._add_category("Advanced", advanced)
         self._register_route_aliases(idx, "advanced")
-        self.experimental_checkbox = self._add_check(advanced_layout, idx, "Enable experimental features")
-        self.debug_telemetry_checkbox = self._add_check(advanced_layout, idx, "Enable debug telemetry")
-        self.logging_level_combo = self._add_combo(
-            advanced_layout,
-            idx,
-            "Logging level",
-            ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        _, runtime_layout = self._add_settings_section(
+            advanced_page_layout,
+            "Runtime",
+            "Feature flags and startup behavior.",
         )
-        self.save_debug_logs_checkbox = self._add_check(
-            advanced_layout,
-            idx,
-            "Save debug logs to app data and write crash traceback logs",
-        )
+        self.experimental_checkbox = self._add_check(runtime_layout, idx, "Enable experimental features")
+        self.debug_telemetry_checkbox = self._add_check(runtime_layout, idx, "Enable debug telemetry")
         self.plugin_startup_safe_mode_checkbox = self._add_check(
-            advanced_layout,
+            runtime_layout,
             idx,
             "Plugin startup safe mode (skip loading plugins at startup)",
         )
         self.fast_startup_mode_checkbox = self._add_check(
-            advanced_layout,
+            runtime_layout,
             idx,
             "Fast startup mode (defer non-critical startup tasks)",
         )
         self.defer_plugin_load_checkbox = self._add_check(
-            advanced_layout,
+            runtime_layout,
             idx,
             "Defer plugin loading during startup (faster launch)",
         )
         self.plugin_startup_defer_ms_spin = self._add_spin(
-            advanced_layout,
+            runtime_layout,
             idx,
             "Plugin startup delay (ms)",
             0,
             15000,
         )
+        _, diagnostics_layout = self._add_settings_section(
+            advanced_page_layout,
+            "Diagnostics",
+            "Logging and crash capture controls.",
+        )
+        self.logging_level_combo = self._add_combo(
+            diagnostics_layout,
+            idx,
+            "Logging level",
+            ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        )
+        self.save_debug_logs_checkbox = self._add_check(
+            diagnostics_layout,
+            idx,
+            "Save debug logs to app data and write crash traceback logs",
+        )
+        meta_box = QGroupBox("Metadata", advanced)
+        meta_box.setObjectName("settingsSectionGroup")
+        meta_layout = QFormLayout(meta_box)
+        meta_layout.setContentsMargins(12, 10, 12, 12)
         self.settings_schema_version_label = QLabel("3", advanced)
-        advanced_layout.addRow("Settings schema version", self.settings_schema_version_label)
+        meta_layout.addRow("Settings schema version", self.settings_schema_version_label)
         self._register_search(idx, "Settings schema version", self.settings_schema_version_label)
+        advanced_page_layout.addWidget(meta_box)
+        advanced_page_layout.addStretch(1)
 
         # Notepad++-style granular preferences (extended pages)
         # Built lazily on first N++ scope/route usage to keep initial dialog open fast.

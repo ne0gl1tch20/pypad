@@ -1,4 +1,5 @@
 from .editor import ScintillaCompatEditor
+from .metadata import ScintillaCommandMetadata, load_command_metadata
 from .models import (
     ColumnBlock,
     FoldRegion,
@@ -24,4 +25,6 @@ __all__ = [
     "CompatLexerProtocol",
     "ScintillaEngineState",
     "ScintillaNotification",
+    "ScintillaCommandMetadata",
+    "load_command_metadata",
 ]

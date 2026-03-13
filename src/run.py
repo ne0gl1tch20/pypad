@@ -407,7 +407,10 @@ if __name__ == "__main__":
 
             def _poll() -> None:
                 try:
-                    ready = bool(getattr(window, "_startup_sequence_done", True))
+                    ready = bool(
+                        getattr(window, "_startup_first_paint_ready", False)
+                        or getattr(window, "_startup_sequence_done", True)
+                    )
                 except Exception:
                     ready = True
                 if ready or waited["ms"] >= max_wait_ms:

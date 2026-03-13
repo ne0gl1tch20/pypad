@@ -15,6 +15,11 @@
 - Latest release notes already live in `CHANGELOG.md` and `update.xml`
 
 ## Current Focus (Completed)
+- IDE workflow expansion:
+  - fuller LSP feature path around the existing definition support
+  - new dock windows for Problems, Output, GitLens, Terminal & Tasks, and Git
+  - stronger search-results review UX
+  - richer snippet manager with variable/tab-stop prompts and template flows
 - visible gamification shell:
   - status-area XP and quest widget
   - momentum banner
@@ -70,6 +75,7 @@
 - daily guidance is layered into the normal app shell rather than buried in one dialog
 
 ## Key Files (Most Relevant Now)
+- `src/pypad/ui/features/advanced_features.py`
 - `src/pypad/ui/features/gamification_system.py`
 - `src/pypad/ui/features/gamification_widgets.py`
 - `src/pypad/ui/features/gamification_dashboard_dialog.py`
@@ -84,6 +90,8 @@
 - `tests/test_ui_theme_tokens.py` passes
 - `tests/test_productivity_hardening.py` passes
 - compile checks for the recent gamification/productivity modules pass
+- compile checks for the new LSP/dock/snippet changes pass
+- targeted `pytest` verification for docs/knowledge could not run here because `pytest` is not installed in the current shell environment
 
 ## Next Easy Resume Points
 1. Add broader UI smoke coverage for Productivity Hub and dashboard tabs.

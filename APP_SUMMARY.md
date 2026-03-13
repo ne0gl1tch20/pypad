@@ -8,6 +8,10 @@ Release target: `1.8.1-prerelease`
 Pypad is a PySide6 desktop editor that combines note-taking, coding and markdown workflows, workspace tooling, AI-assisted editing, and a visible productivity/gamification layer. The app uses a token-based dark/light theme system across the main window, dialogs, docks, and newer feature surfaces.
 
 Current release focus:
+- IDE-style workflow expansion:
+  - fuller LSP actions for hover, references, rename, completion, formatting, and diagnostics
+  - dedicated dock windows for Problems, Output, GitLens, Terminal & Tasks, and Git
+  - stronger search-results review UX and a richer snippet/template manager
 - visible gamification shell in the main window:
   - compact XP and quest widget in the status area
   - momentum banner with one-click next-move routing
@@ -30,6 +34,7 @@ Current release focus:
 - QScintilla-like editor experience in PySide6-only environments
 - Markdown formatting tools and live preview
 - Workspace files/search dialogs and search result navigation
+- LSP-assisted code navigation/edit workflows with dedicated output/problem surfaces
 - Autosave, crash recovery, and version history with diff preview
 - Per-note encryption (`.encnote`) and app privacy lock options
 - AI chat dock, AI inline edits, workspace citation workflows, and diff/apply previews
@@ -50,6 +55,7 @@ Implemented:
   - Quick Open / Go to Anything
   - AI Chat dock and AI edit preview dialogs
   - Debug Logs and updater dialogs
+  - Search Results, Problems, Output, GitLens, Terminal & Tasks, and Git docks
 - productivity/gamification surfaces:
   - status widget
   - momentum banner

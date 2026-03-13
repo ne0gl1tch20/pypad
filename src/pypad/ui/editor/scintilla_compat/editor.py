@@ -21,6 +21,7 @@ from .models import (
     LexerWindow,
 )
 from .extra_state_handlers import handle_extra_state_command
+from .metadata import load_command_metadata
 from .movement_edit_handlers import handle_movement_edit_command
 from .selection_undo_handlers import handle_selection_undo_command
 
@@ -67,6 +68,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
     SC_SEL_RECTANGLE = 1
     SC_FOLDACTION_CONTRACT = 0
     SC_FOLDACTION_EXPAND = 1
+    SC_WRAPVISUALFLAG_END = 1
     INDIC_PLAIN = 0
     INDIC_SQUIGGLE = 1
     INDIC_TT = 2
@@ -1093,6 +1095,212 @@ class ScintillaCompatEditor(QPlainTextEdit):
         self._lexer_dirty_window = LexerWindow(start=0, end=len(self.toPlainText()), prev_state=0)
         self._rebuild_lexer_ranges()
         self._refresh_extra_selections()
+
+    def get_capabilities(self) -> dict[str, object]:
+        return {
+            "contract_version": 1,
+            "scintilla_compat": True,
+            "multi_selection": True,
+            "column_mode": True,
+            "folding": True,
+            "markers": True,
+            "margins": True,
+            "notifications": True,
+            "notification_log": True,
+            "serialization": True,
+            "lexer_incremental": bool(self._lexer and hasattr(self._lexer, "lex_incremental")),
+            "background_overlays": True,
+            "hotspots": True,
+            "indicators": True,
+            "future_shims": {
+                "inline_diagnostics": True,
+                "semantic_ranges": True,
+                "minimap": True,
+                "code_actions": True,
+            },
+        }
+
+    def get_command_metadata(self) -> dict[str, dict[str, object]]:
+        return {name: meta.to_dict() for name, meta in load_command_metadata().items()}
+
+    def get_notification_contract(self) -> dict[str, dict[str, object]]:
+        return {
+            self.SCN_MODIFIED: {
+                "required_keys": ("code", "position", "line", "text", "value", "metadata"),
+                "metadata_keys": ("op", "seq", "reason_flags", "tokenized_reasons", "range_before", "range_after", "before_length", "after_length"),
+            },
+            self.SCN_UPDATEUI: {
+                "required_keys": ("code", "position", "line", "text", "value", "metadata"),
+                "metadata_keys": ("selections",),
+            },
+            self.SCN_MARGINCLICK: {
+                "required_keys": ("code", "position", "line", "text", "value", "metadata"),
+                "metadata_keys": ("folded", "sensitive"),
+            },
+            self.SCN_DWELLSTART: {
+                "required_keys": ("code", "position", "line", "text", "value", "metadata"),
+                "metadata_keys": (),
+            },
+            self.SCN_DWELLEND: {
+                "required_keys": ("code", "position", "line", "text", "value", "metadata"),
+                "metadata_keys": (),
+            },
+            self.SCN_CHARADDED: {
+                "required_keys": ("code", "position", "line", "text", "value", "metadata"),
+                "metadata_keys": (),
+            },
+        }
+
+    def get_notification_log_snapshot(self) -> list[dict[str, object]]:
+        return [
+            {
+                "code": item.code,
+                "position": item.position,
+                "line": item.line,
+                "text": item.text,
+                "value": item.value,
+                "metadata": dict(item.metadata or {}),
+            }
+            for item in self._notification_log
+        ]
+
+    def get_lexer_contract(self) -> dict[str, object]:
+        return {
+            "active": self._lexer is not None,
+            "language": self._detect_lexer_language(self._lexer) if self._lexer is not None else "plain",
+            "incremental": bool(self._lexer and hasattr(self._lexer, "lex_incremental")),
+            "dirty_window": {
+                "start": int(self._lexer_dirty_window.start),
+                "end": int(self._lexer_dirty_window.end),
+                "prev_state": int(self._lexer_dirty_window.prev_state),
+            },
+            "line_states": dict(self._lexer_line_states),
+        }
+
+    def get_lexer_snapshot(self) -> dict[str, object]:
+        return {
+            "language": self._detect_lexer_language(self._lexer) if self._lexer is not None else "plain",
+            "ranges": [tuple(int(v) for v in item) for item in self._lexer_ranges],
+            "fold_regions": {
+                int(line): {"start": int(region.start), "end": int(region.end), "level": int(region.level)}
+                for line, region in self._fold_regions.items()
+            },
+            "line_states": dict(self._lexer_line_states),
+        }
+
+    def export_compat_state(self) -> dict[str, object]:
+        return {
+            "text": self.toPlainText(),
+            "cursor_position": int(self.textCursor().position()),
+            "selection_ranges": [
+                {
+                    "anchor": int(sel.anchor),
+                    "caret": int(sel.caret),
+                    "virtual_space_anchor": int(sel.virtual_space_anchor),
+                    "virtual_space_caret": int(sel.virtual_space_caret),
+                }
+                for sel in self._selection_ranges
+            ],
+            "collapsed_headers": sorted(int(v) for v in self._collapsed_headers),
+            "hidden_lines": sorted(int(v) for v in self._hidden_lines),
+            "fold_hidden_lines": sorted(int(v) for v in self._fold_hidden_lines),
+            "markers": {int(k): sorted(int(v) for v in values) for k, values in self._markers.items()},
+            "marker_symbols": {int(k): int(v) for k, v in self._marker_symbols.items()},
+            "annotations": {int(k): str(v) for k, v in self._annotations.items()},
+            "indicator_ranges": {
+                int(k): [
+                    {"start": int(seg.start), "end": int(seg.end), "payload": str(seg.payload), "value": int(seg.value)}
+                    for seg in values
+                ]
+                for k, values in self._indicator_ranges.items()
+            },
+            "hotspots": [{"start": int(h.start), "end": int(h.end), "payload": str(h.payload)} for h in self._hotspot_ranges],
+            "background_overlays": {
+                str(channel): [(int(lo), int(hi), str(color.name())) for lo, hi, color in values]
+                for channel, values in self._background_overlays.items()
+            },
+            "viewport": {"first_visible_line": int(self._virtual_first_visible_line), "x_offset": int(self._x_offset)},
+            "engine_state": json.loads(self._engine_snapshot()),
+        }
+
+    def import_compat_state(self, state: dict[str, object]) -> int:
+        if not isinstance(state, dict):
+            return 0
+        self.setPlainText(str(state.get("text", "")))
+        cursor = self.textCursor()
+        cursor.setPosition(max(0, min(int(state.get("cursor_position", 0)), len(self.toPlainText()))))
+        self.setTextCursor(cursor)
+        self._selection_ranges = [
+            MultiSelectionRange(
+                anchor=int(item.get("anchor", 0)),
+                caret=int(item.get("caret", 0)),
+                virtual_space_anchor=int(item.get("virtual_space_anchor", 0)),
+                virtual_space_caret=int(item.get("virtual_space_caret", 0)),
+            )
+            for item in state.get("selection_ranges", [])
+            if isinstance(item, dict)
+        ] or [MultiSelectionRange(anchor=int(cursor.position()), caret=int(cursor.position()))]
+        self._collapsed_headers = {int(v) for v in state.get("collapsed_headers", [])}
+        self._hidden_lines = {int(v) for v in state.get("hidden_lines", [])}
+        self._fold_hidden_lines = {int(v) for v in state.get("fold_hidden_lines", [])}
+        self._markers = {int(k): {int(v) for v in values} for k, values in dict(state.get("markers", {})).items()}
+        self._marker_symbols = {int(k): int(v) for k, v in dict(state.get("marker_symbols", {})).items()}
+        self._annotations = {int(k): str(v) for k, v in dict(state.get("annotations", {})).items()}
+        self._indicator_ranges = {
+            int(k): [
+                IndicatorRange(start=int(seg.get("start", 0)), end=int(seg.get("end", 0)), payload=str(seg.get("payload", "")), value=int(seg.get("value", 0)))
+                for seg in values
+                if isinstance(seg, dict)
+            ]
+            for k, values in dict(state.get("indicator_ranges", {})).items()
+        }
+        self._hotspot_ranges = [
+            HotspotRange(start=int(seg.get("start", 0)), end=int(seg.get("end", 0)), payload=str(seg.get("payload", "")))
+            for seg in state.get("hotspots", [])
+            if isinstance(seg, dict)
+        ]
+        self._background_overlays = {
+            str(channel): [
+                (int(lo), int(hi), QColor(str(color)))
+                for lo, hi, color in values
+            ]
+            for channel, values in dict(state.get("background_overlays", {})).items()
+        }
+        viewport = dict(state.get("viewport", {}))
+        self._virtual_first_visible_line = int(viewport.get("first_visible_line", self._virtual_first_visible_line))
+        self._x_offset = int(viewport.get("x_offset", self._x_offset))
+        engine_state = state.get("engine_state")
+        if isinstance(engine_state, dict):
+            self._engine_import_snapshot(json.dumps(engine_state, separators=(",", ":"), sort_keys=True))
+        self._apply_selection_ranges_to_editor()
+        self._refresh_visibility()
+        self._refresh_extra_selections()
+        self.viewport().update()
+        self._margin.update()
+        return 1
+
+    def set_inline_diagnostics(self, diagnostics: list[dict[str, object]]) -> None:
+        overlays: list[tuple[int, int, QColor | str]] = []
+        for item in diagnostics:
+            if not isinstance(item, dict):
+                continue
+            overlays.append((int(item.get("start", 0)), int(item.get("end", 0)), str(item.get("color", "#b94a48"))))
+        self.set_background_overlays("inline_diagnostics", overlays)
+
+    def set_semantic_ranges(self, ranges: list[dict[str, object]]) -> None:
+        self._lexer_ranges = [
+            (int(item.get("start", 0)), int(item.get("end", 0)), int(item.get("style", 0)))
+            for item in ranges
+            if isinstance(item, dict) and int(item.get("end", 0)) > int(item.get("start", 0))
+        ]
+        self._ensure_default_styles()
+        self._refresh_extra_selections()
+
+    def set_minimap_enabled(self, enabled: bool) -> None:
+        self._engine_state.channels[62] = 1 if enabled else 0
+
+    def set_code_actions(self, actions: list[dict[str, object]]) -> None:
+        self._engine_state.channels[63] = len([item for item in actions if isinstance(item, dict)])
 
     def set_column_mode(self, value: bool) -> None:
         self._column_mode = bool(value)

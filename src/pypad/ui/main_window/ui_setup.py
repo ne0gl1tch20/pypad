@@ -107,12 +107,16 @@ class _StandardDockTitleBar(QWidget):
         super().__init__(dock)
         self.setObjectName("pypadDockTitleBar")
         self._dock = dock
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 4, 6, 4)
-        layout.setSpacing(6)
+        self.layout = QHBoxLayout(self)
+        self.layout.setContentsMargins(8, 4, 6, 4)
+        self.layout.setSpacing(6)
         self.label = QLabel(title, self)
         self.label.setObjectName("pypadDockTitleLabel")
         self.label.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+        self.right_tools = QWidget(self)
+        self.right_tools_layout = QHBoxLayout(self.right_tools)
+        self.right_tools_layout.setContentsMargins(0, 0, 0, 0)
+        self.right_tools_layout.setSpacing(6)
         self.float_btn = QToolButton(self)
         self.close_btn = QToolButton(self)
         for btn in (self.float_btn, self.close_btn):
@@ -123,15 +127,24 @@ class _StandardDockTitleBar(QWidget):
         self.close_btn.setToolTip("Close")
         self.float_btn.clicked.connect(self._toggle_floating)
         self.close_btn.clicked.connect(getattr(self._dock, "close"))
-        layout.addWidget(self.label, 1)
-        layout.addStretch(0)
-        layout.addWidget(self.float_btn, 0, Qt.AlignmentFlag.AlignVCenter)
-        layout.addWidget(self.close_btn, 0, Qt.AlignmentFlag.AlignVCenter)
+        self.layout.addWidget(self.label, 1)
+        self.layout.addWidget(self.right_tools, 0, Qt.AlignmentFlag.AlignVCenter)
+        self.layout.addWidget(self.float_btn, 0, Qt.AlignmentFlag.AlignVCenter)
+        self.layout.addWidget(self.close_btn, 0, Qt.AlignmentFlag.AlignVCenter)
         self.setMinimumHeight(28)
+
+    def add_right_widget(self, widget: QWidget) -> None:
+        self.right_tools_layout.addWidget(widget, 0, Qt.AlignmentFlag.AlignVCenter)
 
     def _toggle_floating(self) -> None:
         if hasattr(self._dock, "setFloating") and hasattr(self._dock, "isFloating"):
             self._dock.setFloating(not self._dock.isFloating())
+        host = self.window()
+        if host is not None and hasattr(host, "_refresh_window_menu_entries"):
+            try:
+                host._refresh_window_menu_entries()
+            except Exception:
+                pass
 
 
 class _EmptyTabsRecentFileRow(QFrame):
@@ -243,10 +256,16 @@ class UiSetupMixin:
             }}
         """
         for attr_name in (
+            "workspace_dock_title_bar",
             "editor_dock_title_bar",
             "markdown_preview_dock_title_bar",
             "explorer_dock_title_bar",
             "search_results_dock_title_bar",
+            "terminal_tasks_dock_title_bar",
+            "git_dock_title_bar",
+            "problems_dock_title_bar",
+            "output_dock_title_bar",
+            "gitlens_dock_title_bar",
             "minimap_dock_title_bar",
             "outline_dock_title_bar",
         ):
@@ -1899,6 +1918,11 @@ class UiSetupMixin:
             self._apply_scintilla_modes(tab)
         if hasattr(self, "_sync_symbol_actions"):
             self._sync_symbol_actions(tab)
+        if hasattr(self, "advanced_features"):
+            try:
+                self.advanced_features.refresh_views()
+            except Exception:
+                pass
         if hasattr(self, "_notify_large_file_mode"):
             self._notify_large_file_mode(tab)
         if hasattr(self, "_sync_gamification_tab_snapshot"):
@@ -2636,6 +2660,16 @@ class UiSetupMixin:
             self.explorer_panel_action.setEnabled(True)
         if hasattr(self, "search_results_panel_action"):
             self.search_results_panel_action.setEnabled(True)
+        if hasattr(self, "terminal_panel_action"):
+            self.terminal_panel_action.setEnabled(True)
+        if hasattr(self, "git_panel_action"):
+            self.git_panel_action.setEnabled(True)
+        if hasattr(self, "problems_panel_action"):
+            self.problems_panel_action.setEnabled(True)
+        if hasattr(self, "output_panel_action"):
+            self.output_panel_action.setEnabled(True)
+        if hasattr(self, "gitlens_panel_action"):
+            self.gitlens_panel_action.setEnabled(True)
         if hasattr(self, "productivity_hub_panel_action"):
             self.productivity_hub_panel_action.setEnabled(True)
         if hasattr(self, "editor_panel_action"):
@@ -2775,12 +2809,20 @@ class UiSetupMixin:
         self.minimap_action.setEnabled(has_tab)
         self.symbol_outline_action.setEnabled(has_tab)
         self.goto_definition_action.setEnabled(has_tab)
+        self.lsp_hover_action.setEnabled(has_tab and bool(tab and tab.current_file))
+        self.lsp_references_action.setEnabled(has_tab and bool(tab and tab.current_file))
+        self.lsp_rename_action.setEnabled(has_tab and bool(tab and tab.current_file) and not is_read_only)
+        self.lsp_completion_action.setEnabled(has_tab and bool(tab and tab.current_file) and not is_read_only)
+        self.lsp_format_action.setEnabled(has_tab and bool(tab and tab.current_file) and not is_read_only)
+        self.lsp_diagnostics_action.setEnabled(has_tab and bool(tab and tab.current_file))
         self.side_by_side_diff_action.setEnabled(has_tab)
         self.three_way_merge_action.setEnabled(True)
         self.apply_patch_file_action.setEnabled(has_tab and not is_read_only)
         self.load_full_large_file_action.setEnabled(has_tab and bool(tab and getattr(tab, "partial_large_preview", False)))
         self.snippet_engine_action.setEnabled(has_tab and not is_read_only)
         self.template_packs_action.setEnabled(True)
+        self.terminal_tasks_action.setEnabled(True)
+        self.git_panel_action_open.setEnabled(True)
         self.task_workflow_action.setEnabled(True)
         self.plugin_manager_action.setEnabled(True)
         self.online_plugins_action.setEnabled(True)
@@ -3098,6 +3140,12 @@ class UiSetupMixin:
         self.search_results_panel_action = QAction("Search Results Panel", self)
         self.search_results_panel_action.setCheckable(True)
         self.search_results_panel_action.triggered.connect(self.toggle_search_results_panel)
+        self.terminal_panel_action = QAction("Terminal & Tasks Panel", self)
+        self.terminal_panel_action.setCheckable(True)
+        self.terminal_panel_action.triggered.connect(self.toggle_terminal_panel)
+        self.git_panel_action = QAction("Git Panel", self)
+        self.git_panel_action.setCheckable(True)
+        self.git_panel_action.triggered.connect(self.toggle_git_panel)
         self.productivity_hub_panel_action = QAction("Productivity Hub Window", self)
         self.productivity_hub_panel_action.setCheckable(True)
         self.productivity_hub_panel_action.triggered.connect(self.toggle_productivity_hub_panel)
@@ -4023,9 +4071,30 @@ class UiSetupMixin:
         self.symbol_outline_action = QAction("Symbol Outline", self)
         self.symbol_outline_action.setCheckable(True)
         self.symbol_outline_action.triggered.connect(self.toggle_symbol_outline_panel)
+        self.problems_panel_action = QAction("Problems Panel", self)
+        self.problems_panel_action.setCheckable(True)
+        self.problems_panel_action.triggered.connect(lambda checked: getattr(self, "problems_dock", None) and self.problems_dock.setVisible(bool(checked)))
+        self.output_panel_action = QAction("Output Panel", self)
+        self.output_panel_action.setCheckable(True)
+        self.output_panel_action.triggered.connect(lambda checked: getattr(self, "output_dock", None) and self.output_dock.setVisible(bool(checked)))
+        self.gitlens_panel_action = QAction("GitLens Panel", self)
+        self.gitlens_panel_action.setCheckable(True)
+        self.gitlens_panel_action.triggered.connect(lambda checked: getattr(self, "gitlens_dock", None) and self.gitlens_dock.setVisible(bool(checked)))
         self.goto_definition_action = QAction("Go To Definition", self)
         self.goto_definition_action.setShortcut(QKeySequence("F12"))
         self.goto_definition_action.triggered.connect(self.goto_definition_basic)
+        self.lsp_hover_action = QAction("LSP Hover", self)
+        self.lsp_hover_action.triggered.connect(self.lsp_hover_current)
+        self.lsp_references_action = QAction("Find References", self)
+        self.lsp_references_action.triggered.connect(self.lsp_find_references)
+        self.lsp_rename_action = QAction("Rename Symbol", self)
+        self.lsp_rename_action.triggered.connect(self.lsp_rename_symbol)
+        self.lsp_completion_action = QAction("Request Completion", self)
+        self.lsp_completion_action.triggered.connect(self.lsp_show_completion)
+        self.lsp_format_action = QAction("Format Document (LSP)", self)
+        self.lsp_format_action.triggered.connect(self.lsp_format_document)
+        self.lsp_diagnostics_action = QAction("Refresh Problems (LSP)", self)
+        self.lsp_diagnostics_action.triggered.connect(self.lsp_refresh_diagnostics)
 
         self.side_by_side_diff_action = QAction("Side-by-side Diff...", self)
         self.side_by_side_diff_action.triggered.connect(self.open_side_by_side_diff)
@@ -4041,6 +4110,10 @@ class UiSetupMixin:
         self.snippet_engine_action.triggered.connect(self.open_snippet_engine)
         self.template_packs_action = QAction("Install Shared Template Packs", self)
         self.template_packs_action.triggered.connect(self.install_template_packs)
+        self.terminal_tasks_action = QAction("Terminal & Tasks...", self)
+        self.terminal_tasks_action.triggered.connect(self.show_terminal_tasks_panel)
+        self.git_panel_action_open = QAction("Git Workspace...", self)
+        self.git_panel_action_open.triggered.connect(self.show_git_workspace_panel)
 
         self.task_workflow_action = QAction("Task Workflow...", self)
         self.task_workflow_action.triggered.connect(self.show_task_workflow_panel)
@@ -4824,6 +4897,11 @@ class UiSetupMixin:
         project_panels_menu.addSeparator()
         project_panels_menu.addAction(self.explorer_panel_action)
         project_panels_menu.addAction(self.search_results_panel_action)
+        project_panels_menu.addAction(self.terminal_panel_action)
+        project_panels_menu.addAction(self.git_panel_action)
+        project_panels_menu.addAction(self.problems_panel_action)
+        project_panels_menu.addAction(self.output_panel_action)
+        project_panels_menu.addAction(self.gitlens_panel_action)
         project_panels_menu.addAction(self.productivity_hub_panel_action)
         project_panels_menu.addAction(self.editor_panel_action)
         view_advanced_menu.addAction(self.define_language_action)
@@ -4893,6 +4971,13 @@ class UiSetupMixin:
 
         self.tools_menu = menu_bar.addMenu("&Tools")
         self.tools_menu.addAction(self.goto_definition_action)
+        self.tools_menu.addAction(self.lsp_hover_action)
+        self.tools_menu.addAction(self.lsp_references_action)
+        self.tools_menu.addAction(self.lsp_rename_action)
+        self.tools_menu.addAction(self.lsp_completion_action)
+        self.tools_menu.addAction(self.lsp_format_action)
+        self.tools_menu.addAction(self.lsp_diagnostics_action)
+        self.tools_menu.addSeparator()
         self.tools_menu.addAction(self.spell_check_document_action)
         self.tools_menu.addAction(self.side_by_side_diff_action)
         self.tools_menu.addAction(self.three_way_merge_action)
@@ -4901,6 +4986,8 @@ class UiSetupMixin:
         self.tools_menu.addSeparator()
         self.tools_menu.addAction(self.snippet_engine_action)
         self.tools_menu.addAction(self.template_packs_action)
+        self.tools_menu.addAction(self.terminal_tasks_action)
+        self.tools_menu.addAction(self.git_panel_action_open)
         self.tools_menu.addSeparator()
         self.tools_menu.addAction(self.task_workflow_action)
         self.tools_menu.addSeparator()
