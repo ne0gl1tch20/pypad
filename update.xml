@@ -1,10 +1,11 @@
 ﻿<?xml version="1.0" encoding="UTF-8"?>
 <updates>
   <item>
-    <title>PyPad 1.8.1-prerelease</title>
-    <version>1.8.1</version>
+    <title>PyPad 1.8.0 Released</title>
+    <version>1.8.0</version>
     <pubDate>2026-03-13</pubDate>
     <description>
+      - Important: PyPad 1.8.0 is now officially released.
       - Added a visible gamification shell with status widgets, momentum banner, and reward toasts.
       - Expanded the Productivity Hub with daily briefing, session review, milestones, secret trails, routines, and routine history.
       - Companion guidance now routes users into practical next actions like focus sprint, workspace sweep, and planning loop.
@@ -13,8 +14,7 @@
     </description>
     <sha256>0000000000000000000000000000000000000000000000000000000000000000</sha256>
     <enclosure
-      url="https://github.com/ne0gl1tch20/pypad/releases/download/1.8.1/PyPad-Setup-1.8.1-prerelease.exe"
+      url="https://github.com/ne0gl1tch20/pypad/releases/download/1.8.0/PyPad-Setup-1.8.0.exe"
       type="application/octet-stream" />
   </item>
 </updates>
-

@@ -5,7 +5,7 @@ Pypad is a PySide6 desktop text editor focused on fast note-taking and power-use
 
 ## Project Status
 
-PyPad is currently in **pre-release** and under active development.
+PyPad is currently released and under active development.
 Some features are experimental and may change as the editor evolves.
 
 Development happens during my free time, so updates may be irregular.

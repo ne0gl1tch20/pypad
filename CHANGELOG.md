@@ -5,9 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on Keep a Changelog, and this project uses Semantic Versioning.
 
 
-## [1.8.1-prerelease] - 2026-03-13
+## [1.8.0] - 2026-03-13
+
+- PyPad is finally being released!!
 
 ### Added
+- Local spellcheck support powered by `pyspellchecker` with:
+  - `Tools > Spell Check Document...`
+  - editor context-menu spelling suggestions for the current word
+  - spellcheck language/custom dictionary settings in `Settings > Preferences > AI & Updates`
+- Reopen closed tab support with:
+  - `Ctrl+Shift+T`
+  - `File > Close > Recently Closed Tabs...`
+  - persisted recently-closed tab history with text/metadata restore
+- New discoverability surfaces:
+  - stronger empty-tab start surface with quick actions, recent files, and templates
+  - `Help > What Can I Do Here?`
+- New status-bar/status-panel selection stats item showing live word/character/line counts
 - Visible gamification shell across the main window:
   - compact XP/streak widget in the status area
   - momentum banner with one-click next-move routing
@@ -26,31 +40,6 @@ The format is based on Keep a Changelog, and this project uses Semantic Versioni
   - seasonal event progress
   - secret trails
   - productivity routines with usage stats
-
-### Changed
-- Gamification and productivity systems now share one continuous state model instead of separate passive UI fragments.
-- Productivity routines now route into built-in actions such as focus sprint, workspace search, command palette, bug hunt, and daily briefing.
-- Routine usage is now tracked so the app can show cadence and history, not just suggestions.
-- New productivity/gamification UI follows existing PyPad token-based dark/light styling instead of one-off colors.
-
-### Docs
-- Updated project summaries, AI app knowledge, and the welcome demo template to reflect the current Productivity Hub, Play menu, routine tracking, and onboarding flow without changing the app version line.
-
-## [1.8.0-prerelease] - 2026-03-13
-
-### Added
-- Local spellcheck support powered by `pyspellchecker` with:
-  - `Tools > Spell Check Document...`
-  - editor context-menu spelling suggestions for the current word
-  - spellcheck language/custom dictionary settings in `Settings > Preferences > AI & Updates`
-- Reopen closed tab support with:
-  - `Ctrl+Shift+T`
-  - `File > Close > Recently Closed Tabs...`
-  - persisted recently-closed tab history with text/metadata restore
-- New discoverability surfaces:
-  - stronger empty-tab start surface with quick actions, recent files, and templates
-  - `Help > What Can I Do Here?`
-- New status-bar/status-panel selection stats item showing live word/character/line counts
 
 ### Changed
 - UI presets are now positioned as `Writing`, `Coding`, and `Review` layouts.
@@ -73,6 +62,13 @@ The format is based on Keep a Changelog, and this project uses Semantic Versioni
 - Empty-editor recent files now use dedicated filename/subtitle rows rather than single-line path buttons for better readability.
 - Empty-editor start content now lives inside a themed scroll area so quick actions, recents, and templates remain reachable in smaller window sizes.
 - Markdown preview dock now opens with a more readable width and rebalances against the editor instead of staying stuck in an overly narrow stretched column.
+- Gamification and productivity systems now share one continuous state model instead of separate passive UI fragments.
+- Productivity routines now route into built-in actions such as focus sprint, workspace search, command palette, bug hunt, and daily briefing.
+- Routine usage is now tracked so the app can show cadence and history, not just suggestions.
+- New productivity/gamification UI follows existing PyPad token-based dark/light styling instead of one-off colors.
+
+### Docs
+- Updated project summaries, AI app knowledge, and the welcome demo template to reflect the released Productivity Hub, Play menu, routine tracking, and onboarding flow under the `1.8.0` version line.
 
 ### Fixed
 - Startup autosave recovery no longer causes the app to quit when the top-level recovery dialog closes before the hidden main window is shown.
