@@ -1,3 +1,8 @@
+"""Describe Scintilla-related profile values that shape editor compatibility behavior and defaults.
+
+This module belongs to the application settings layer that resolves defaults, storage paths, and preference migrations. It helps explain how `pypad.app_settings` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 
 import re
@@ -10,6 +15,7 @@ STYLE_THEMES: tuple[str, ...] = ("default", "high_contrast", "solarized_light")
 
 
 def _normalize_hex(value: Any) -> str | None:
+    """Internal helper for `_normalize_hex`."""
     text = str(value or "").strip()
     if not text:
         return None
@@ -21,6 +27,7 @@ def _normalize_hex(value: Any) -> str | None:
 
 
 def _sanitize_style_overrides(raw: Any) -> dict[str, dict[str, str]]:
+    """Internal helper for `_sanitize_style_overrides`."""
     out: dict[str, dict[str, str]] = {}
     if not isinstance(raw, dict):
         return out
@@ -43,6 +50,7 @@ def _sanitize_style_overrides(raw: Any) -> dict[str, dict[str, str]]:
 
 @dataclass(slots=True)
 class ScintillaProfile:
+    """Class that implements the `ScintillaProfile` runtime behavior."""
     wrap_mode: str = "word"
     auto_completion_mode: str = "all"
     auto_completion_threshold: int = 1
@@ -72,6 +80,7 @@ class ScintillaProfile:
 
     @classmethod
     def from_settings(cls, settings: dict[str, Any]) -> "ScintillaProfile":
+        """Execute the `from_settings` workflow."""
         s = settings if isinstance(settings, dict) else {}
         return cls(
             wrap_mode=str(s.get("scintilla_wrap_mode", "word") or "word"),
@@ -103,6 +112,7 @@ class ScintillaProfile:
         ).sanitized()
 
     def sanitized(self) -> "ScintillaProfile":
+        """Execute the `sanitized` workflow."""
         mode = self.wrap_mode.strip().lower()
         if mode not in {"word", "none"}:
             mode = "word"
@@ -145,6 +155,7 @@ class ScintillaProfile:
         )
 
     def apply_to_settings(self, settings: dict[str, Any]) -> None:
+        """Apply the changes or settings handled by `apply_to_settings`."""
         s = settings if isinstance(settings, dict) else {}
         clean = self.sanitized()
         s["scintilla_wrap_mode"] = clean.wrap_mode
@@ -177,6 +188,7 @@ class ScintillaProfile:
         s["scintilla_style_overrides"] = dict(clean.style_overrides)
 
     def to_json_dict(self) -> dict[str, Any]:
+        """Execute the `to_json_dict` workflow."""
         clean = self.sanitized()
         return {
             "wrap_mode": clean.wrap_mode,
@@ -209,6 +221,7 @@ class ScintillaProfile:
 
     @classmethod
     def from_json_dict(cls, payload: dict[str, Any]) -> "ScintillaProfile":
+        """Execute the `from_json_dict` workflow."""
         p = payload if isinstance(payload, dict) else {}
         return cls(
             wrap_mode=str(p.get("wrap_mode", "word") or "word"),

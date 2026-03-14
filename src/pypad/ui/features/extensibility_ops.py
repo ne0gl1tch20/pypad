@@ -1,3 +1,8 @@
+"""Provide extensibility and plugin-related operations exposed through the user interface.
+
+This module belongs to the optional productivity and feature UI layer. It helps explain how `pypad.ui.features` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -19,6 +24,7 @@ ALWAYS_BLOCKED_CALLS = {"eval", "exec", "__import__", "compile"}
 
 @dataclass(frozen=True)
 class DiscoverableAction:
+    """Class that implements the `DiscoverableAction` runtime behavior."""
     action_id: str
     label: str
     section: str
@@ -27,14 +33,17 @@ class DiscoverableAction:
 
 
 def _clean_action_text(text: str) -> str:
+    """Internal helper for `_clean_action_text`."""
     return str(text or "").replace("&", "").strip()
 
 
 def _seq_to_text(seq: QKeySequence) -> str:
+    """Internal helper for `_seq_to_text`."""
     return seq.toString(QKeySequence.SequenceFormat.NativeText).strip()
 
 
 def _action_shortcut_text(action: QAction) -> str:
+    """Internal helper for `_action_shortcut_text`."""
     seqs = [_seq_to_text(x) for x in action.shortcuts() if not x.isEmpty()]
     if not seqs:
         fallback = action.shortcut()
@@ -44,6 +53,7 @@ def _action_shortcut_text(action: QAction) -> str:
 
 
 def _walk_menu(menu: QMenu, parent_path: str, sink: dict[int, str]) -> None:
+    """Internal helper for `_walk_menu`."""
     title = _clean_action_text(menu.title())
     path = f"{parent_path} > {title}" if parent_path and title else (title or parent_path)
     for action in menu.actions():
@@ -57,6 +67,7 @@ def _walk_menu(menu: QMenu, parent_path: str, sink: dict[int, str]) -> None:
 
 
 def discover_window_actions(window: Any) -> list[DiscoverableAction]:
+    """Execute the `discover_window_actions` workflow."""
     attr_name_by_action_id: dict[int, str] = {}
     for name, value in vars(window).items():
         if isinstance(value, QAction):
@@ -119,6 +130,7 @@ def assess_plugin_security(
     plugin_id: str,
     permissions: set[str],
 ) -> list[str]:
+    """Execute the `assess_plugin_security` workflow."""
     issues: list[str] = []
     try:
         root_resolved = plugin_root.resolve()

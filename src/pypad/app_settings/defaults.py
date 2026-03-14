@@ -1,3 +1,8 @@
+"""Collect default configuration values that seed new settings files and fill missing preference keys.
+
+This module belongs to the application settings layer that resolves defaults, storage paths, and preference migrations. It helps explain how `pypad.app_settings` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 
 from .notepadpp_prefs import NPP_PREF_DEFAULTS
@@ -6,6 +11,7 @@ DEFAULT_UPDATE_FEED_URL = "https://raw.githubusercontent.com/ne0gl1tch20/pypad/r
 
 
 def build_default_settings(*, default_style: str, font_family: str, font_size: int) -> dict:
+    """Build and return the value produced by `build_default_settings`."""
     settings = {
         "settings_schema_version": 3,
         "app_style": default_style,

@@ -1,3 +1,8 @@
+"""Support document review workflows such as comparisons, analysis, and review-oriented annotations.
+
+This module belongs to the document authoring, fidelity, and review UI layer. It helps explain how `pypad.ui.document` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 
 import re
@@ -17,6 +22,7 @@ _COMMENT_LINE_RE = re.compile(r"^- ([A-Za-z0-9_-]+) \| ([^|]*) \| ([^|]*) \| (.*
 
 @dataclass
 class TrackedChange:
+    """Structured representation of one tracked insertion or deletion marker in document text."""
     change_id: str
     kind: str
     meta: str
@@ -27,6 +33,7 @@ class TrackedChange:
 
 @dataclass
 class CommentEntry:
+    """Structured representation of one anchored review comment in document text."""
     comment_id: str
     author: str
     timestamp: str
@@ -37,14 +44,17 @@ class CommentEntry:
 
 
 def _ts() -> str:
+    """Return a normalized UTC timestamp string used in review metadata."""
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
 
 
 def _change_id() -> str:
+    """Return a short unique identifier for tracked changes and comments."""
     return uuid.uuid4().hex[:10]
 
 
 def _scan_changes(text: str) -> list[TrackedChange]:
+    """Parse all tracked insertions and deletions from the document text."""
     out: list[TrackedChange] = []
     for match in _INS_RE.finditer(text):
         out.append(
@@ -73,10 +83,12 @@ def _scan_changes(text: str) -> list[TrackedChange]:
 
 
 def has_tracked_changes(text: str) -> bool:
+    """Return whether the document currently contains tracked-change markers."""
     return bool(_INS_RE.search(text) or _DEL_RE.search(text))
 
 
 def insert_tracked_insertion(text: str, index: int, content: str, author: str) -> tuple[str, str]:
+    """Insert a tracked insertion marker at the requested index and return its id."""
     token_id = _change_id()
     meta = f"{author.strip() or 'author'}@{_ts()}"
     wrapped = f"[[INS:{token_id}|{meta}]]{content}[[/INS:{token_id}]]"
@@ -90,6 +102,7 @@ def mark_tracked_deletion(
     end: int,
     author: str,
 ) -> tuple[str, str] | None:
+    """Wrap a selected text span in a tracked deletion marker."""
     lo = max(0, min(int(start), int(end)))
     hi = max(0, max(int(start), int(end)))
     if lo >= hi:
@@ -102,6 +115,7 @@ def mark_tracked_deletion(
 
 
 def next_change_span(text: str, cursor_index: int) -> tuple[int, int, str, str] | None:
+    """Find the next tracked change span at or after the given cursor index."""
     idx = max(0, int(cursor_index))
     changes = _scan_changes(text)
     for change in changes:
@@ -114,6 +128,7 @@ def next_change_span(text: str, cursor_index: int) -> tuple[int, int, str, str] 
 
 
 def _change_at_cursor(text: str, cursor_index: int) -> TrackedChange | None:
+    """Return the tracked change at the cursor, or the next one after it."""
     idx = max(0, int(cursor_index))
     changes = _scan_changes(text)
     for change in changes:
@@ -131,6 +146,7 @@ def accept_or_reject_change_at_cursor(
     *,
     accept: bool,
 ) -> tuple[str, bool, str]:
+    """Accept or reject the tracked change nearest the cursor position."""
     change = _change_at_cursor(text, cursor_index)
     if change is None:
         return text, False, ""
@@ -143,6 +159,7 @@ def accept_or_reject_change_at_cursor(
 
 
 def accept_all_changes(text: str) -> tuple[str, int]:
+    """Accept every tracked change in the document and report how many were removed."""
     count = len(_scan_changes(text))
     if count <= 0:
         return text, 0
@@ -152,6 +169,7 @@ def accept_all_changes(text: str) -> tuple[str, int]:
 
 
 def reject_all_changes(text: str) -> tuple[str, int]:
+    """Reject every tracked change in the document and report how many were removed."""
     count = len(_scan_changes(text))
     if count <= 0:
         return text, 0
@@ -161,6 +179,7 @@ def reject_all_changes(text: str) -> tuple[str, int]:
 
 
 def _parse_comments_index(text: str) -> dict[str, tuple[str, str, str]]:
+    """Parse the serialized comments index block into a dictionary keyed by comment id."""
     match = _COMMENTS_BLOCK_RE.search(text)
     if not match:
         return {}
@@ -174,6 +193,7 @@ def _parse_comments_index(text: str) -> dict[str, tuple[str, str, str]]:
 
 
 def _replace_comments_index(text: str, index: dict[str, tuple[str, str, str]]) -> str:
+    """Rewrite the serialized comments index block from the supplied comment metadata."""
     if not index:
         return _COMMENTS_BLOCK_RE.sub("", text).rstrip() + ("\n" if text.endswith("\n") else "")
     lines = ["<!-- COMMENTS START -->"]
@@ -190,6 +210,7 @@ def _replace_comments_index(text: str, index: dict[str, tuple[str, str, str]]) -
 
 
 def add_comment(text: str, start: int, end: int, comment: str, author: str) -> tuple[str, str] | None:
+    """Create a review comment anchored to a text span and update the comments index."""
     lo = max(0, min(int(start), int(end)))
     hi = max(0, max(int(start), int(end)))
     if lo >= hi:
@@ -206,6 +227,7 @@ def add_comment(text: str, start: int, end: int, comment: str, author: str) -> t
 
 
 def list_comments(text: str) -> list[CommentEntry]:
+    """List review comments together with their anchor positions and previews."""
     index = _parse_comments_index(text)
     out: list[CommentEntry] = []
     for match in _CMT_ANCHOR_RE.finditer(text):
@@ -230,6 +252,7 @@ def list_comments(text: str) -> list[CommentEntry]:
 
 
 def remove_comment(text: str, comment_id: str) -> tuple[str, bool]:
+    """Remove one comment anchor and its metadata entry from the document."""
     cid = str(comment_id or "").strip()
     if not cid:
         return text, False
@@ -243,6 +266,7 @@ def remove_comment(text: str, comment_id: str) -> tuple[str, bool]:
 
 
 def extract_heading_targets(text: str) -> list[tuple[str, str]]:
+    """Extract heading titles and generated slugs for cross-reference targets."""
     out: list[tuple[str, str]] = []
     for line in text.splitlines():
         match = re.match(r"^\s{0,3}(#{1,6})\s+(.+?)\s*$", line)
@@ -257,11 +281,13 @@ def extract_heading_targets(text: str) -> list[tuple[str, str]]:
 
 
 def insert_cross_reference(text: str, index: int, title: str, slug: str) -> str:
+    """Insert a Markdown link to a heading target at the requested index."""
     idx = max(0, min(len(text), int(index)))
     return text[:idx] + f"[{title}](#{slug})" + text[idx:]
 
 
 def _next_note_number(text: str, *, endnote: bool) -> int:
+    """Compute the next available footnote or endnote number in the document."""
     prefix = "e" if endnote else ""
     marker_re = re.compile(rf"\[\^{prefix}(\d+)\]")
     def_re = re.compile(rf"(?m)^\[\^{prefix}(\d+)\]:")
@@ -278,6 +304,7 @@ def insert_note(
     *,
     endnote: bool,
 ) -> tuple[str, str]:
+    """Insert a footnote or endnote marker plus a matching definition block."""
     cleaned = " ".join(str(note_body or "").strip().split())
     if not cleaned:
         cleaned = "note"

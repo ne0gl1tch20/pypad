@@ -1,3 +1,8 @@
+"""Provide helper logic for wiring settings-dialog controls into the main-window runtime state.
+
+This module belongs to the main-window orchestration layer that ties together menus, actions, state, and dialogs. It helps explain how `pypad.ui.main_window` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 
 import re
@@ -31,6 +36,7 @@ from pypad.app_settings.defaults import DEFAULT_UPDATE_FEED_URL
 
 
 def _normalize_hex_color(value: str) -> str | None:
+    """Internal helper for `_normalize_hex_color`."""
     text = str(value or "").strip()
     if not text:
         return None
@@ -44,7 +50,9 @@ def _normalize_hex_color(value: str) -> str | None:
 
 
 class SettingsDialog(QDialog):
+    """Dialog class that implements the `SettingsDialog` workflow."""
     def __init__(self, parent: Notepad, settings: dict) -> None:
+        """Initialize the `misc_settings_dialog` state for this instance."""
         super().__init__(parent)
         self.setWindowTitle("Settings")
         self.resize(500, 500)
@@ -325,12 +333,14 @@ class SettingsDialog(QDialog):
 
     @staticmethod
     def _normalized_or_default(value: str, fallback: str) -> str:
+        """Internal helper for `_normalized_or_default`."""
         normalized = _normalize_hex_color(value)
         if normalized is not None:
             return normalized
         return fallback
 
     def _build_color_picker_row(self, button_text: str, initial_hex: str, allow_empty: bool) -> tuple[QLabel, QWidget]:
+        """Internal helper for `_build_color_picker_row`."""
         holder = QWidget(self)
         row_layout = QHBoxLayout(holder)
         row_layout.setContentsMargins(0, 0, 0, 0)
@@ -341,6 +351,7 @@ class SettingsDialog(QDialog):
         clear_button.setVisible(allow_empty)
 
         def apply_value(hex_value: str) -> None:
+            """Apply the changes or settings handled by `apply_value`."""
             if hex_value:
                 value_label.setText(hex_value)
                 value_label.setStyleSheet(f"background-color: {hex_value}; border: 1px solid #888; padding: 2px;")
@@ -349,6 +360,7 @@ class SettingsDialog(QDialog):
                 value_label.setStyleSheet("")
 
         def pick_color() -> None:
+            """Execute the `pick_color` workflow."""
             initial = value_label.text() if value_label.text() != "(auto)" else "#ffffff"
             color = QColorDialog.getColor(QColor(initial), self, "Select Color")
             if color.isValid():
@@ -365,12 +377,14 @@ class SettingsDialog(QDialog):
 
     @staticmethod
     def _label_color_value(label: QLabel) -> str:
+        """Internal helper for `_label_color_value`."""
         value = label.text().strip()
         if value == "(auto)":
             return ""
         return value
 
     def get_settings(self) -> dict:
+        """Return the value produced by `get_settings`."""
         s = dict(self._settings)
         s["app_style"] = self.app_style_combo.currentText()
         s["dark_mode"] = self.dark_checkbox.isChecked()
@@ -412,6 +426,7 @@ class SettingsDialog(QDialog):
         return s
 
     def backup_settings(self) -> None:
+        """Execute the `backup_settings` workflow."""
         import json
 
         path, _ = QFileDialog.getSaveFileName(
@@ -429,6 +444,7 @@ class SettingsDialog(QDialog):
             QMessageBox.critical(self, "Backup Failed", f"Could not save settings:\n{e}")
 
     def restore_settings(self) -> None:
+        """Execute the `restore_settings` workflow."""
         import json
 
         path, _ = QFileDialog.getOpenFileName(
@@ -519,6 +535,7 @@ class SettingsDialog(QDialog):
         self.auto_check_updates_checkbox.setChecked(self._settings.get("auto_check_updates", True))
 
     def reset_to_defaults_and_close(self) -> None:
+        """Execute the `reset_to_defaults_and_close` workflow."""
         confirm = QMessageBox.question(
             self,
             "Reset Settings",

@@ -1,3 +1,5 @@
+"""Generate the Scintilla compatibility reference files consumed by the docs."""
+
 from __future__ import annotations
 
 import json
@@ -15,6 +17,8 @@ from pypad.ui.editor.scintilla_compat.metadata import load_command_metadata
 
 
 def main() -> int:
+    """Regenerate the JSON and Markdown reference outputs from live metadata."""
+
     report = build_audit_report(ROOT)
     metadata = load_command_metadata()
     json_path = ROOT / "docs" / "scintilla_compat_reference.json"

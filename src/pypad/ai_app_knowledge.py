@@ -1,3 +1,8 @@
+"""Define built-in application knowledge that AI features can cite when answering questions about the editor.
+
+This module belongs to the top-level Pypad application package. It helps explain how `pypad` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 
 import ast
@@ -247,10 +252,12 @@ Safety / reliability guidance:
 
 
 def _strip_qt_mnemonic(label: str) -> str:
+    """Internal helper for `_strip_qt_mnemonic`."""
     return str(label or "").replace("&&", "&").replace("&", "").strip()
 
 
 def _extract_text_from_ast_expr(node: ast.AST) -> str | None:
+    """Internal helper for `_extract_text_from_ast_expr`."""
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return node.value
     if isinstance(node, ast.Call):
@@ -262,6 +269,7 @@ def _extract_text_from_ast_expr(node: ast.AST) -> str | None:
 
 
 def _extract_text_from_call_args(call_node: ast.Call) -> str:
+    """Internal helper for `_extract_text_from_call_args`."""
     for arg in call_node.args:
         text = _extract_text_from_ast_expr(arg)
         if text:
@@ -273,6 +281,7 @@ def _extract_text_from_call_args(call_node: ast.Call) -> str:
 
 @lru_cache(maxsize=1)
 def _generate_ui_setup_appendix() -> str:
+    """Internal helper for `_generate_ui_setup_appendix`."""
     try:
         ui_setup_path = Path(__file__).resolve().parent / "ui" / "main_window" / "ui_setup.py"
         source = ui_setup_path.read_text(encoding="utf-8", errors="replace")
@@ -343,6 +352,7 @@ def _generate_ui_setup_appendix() -> str:
 
 
 def get_default_ai_app_knowledge(*, include_ui_appendix: bool = True) -> str:
+    """Return the value produced by `get_default_ai_app_knowledge`."""
     if include_ui_appendix:
         return _BASE_AI_APP_KNOWLEDGE + _generate_ui_setup_appendix()
     return _BASE_AI_APP_KNOWLEDGE
@@ -357,6 +367,7 @@ def resolve_ai_app_knowledge(
     include_ui_appendix: bool = True,
     user_knowledge_char_limit: int | None = None,
 ) -> str:
+    """Execute the `resolve_ai_app_knowledge` workflow."""
     custom = str(override_text or "").strip()
     if user_knowledge_char_limit is not None and int(user_knowledge_char_limit) > 0:
         limit = max(200, int(user_knowledge_char_limit))

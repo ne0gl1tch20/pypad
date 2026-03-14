@@ -1,3 +1,8 @@
+"""Implement the command palette UI used to discover and trigger actions from the keyboard.
+
+This module belongs to the editor widget and text-manipulation UI layer. It helps explain how `pypad.ui.editor` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -18,6 +23,7 @@ from PySide6.QtWidgets import (
 
 @dataclass(frozen=True)
 class PaletteItem:
+    """Class that implements the `PaletteItem` runtime behavior."""
     label: str
     section: str
     action: QAction
@@ -26,6 +32,7 @@ class PaletteItem:
 
 
 def _score(query: str, candidate: str) -> int:
+    """Internal helper for `_score`."""
     if not query:
         return 0
     q = query.lower().strip()
@@ -43,7 +50,9 @@ def _score(query: str, candidate: str) -> int:
 
 
 class CommandPaletteDialog(QDialog):
+    """Dialog class that implements the `CommandPaletteDialog` workflow."""
     def __init__(self, parent, items: list[PaletteItem], *, initial_query: str = "") -> None:
+        """Initialize the `command_palette` state for this instance."""
         super().__init__(parent)
         self.setWindowTitle("Command Palette")
         self.resize(560, 440)
@@ -81,6 +90,7 @@ class CommandPaletteDialog(QDialog):
         self.search_edit.setFocus()
 
     def _refresh_list(self) -> None:
+        """Internal helper for `_refresh_list`."""
         query = self.search_edit.text().strip()
         self.list_widget.clear()
         scored: list[tuple[int, PaletteItem]] = []
@@ -100,6 +110,7 @@ class CommandPaletteDialog(QDialog):
             self.list_widget.setCurrentRow(0)
 
     def _accept_selected(self) -> None:
+        """Internal helper for `_accept_selected`."""
         item = self.list_widget.currentItem()
         if item is None:
             self.reject()

@@ -1,3 +1,5 @@
+"""Capture the current Scintilla compatibility contract baseline for regression checks."""
+
 from __future__ import annotations
 
 import sys
@@ -13,6 +15,8 @@ from pypad.ui.editor.scintilla_compat.audit import save_contract_baseline
 
 
 def main() -> int:
+    """Write the contract baseline file and print its path for calling tooling."""
+
     path = save_contract_baseline(ROOT)
     print(path)
     return 0

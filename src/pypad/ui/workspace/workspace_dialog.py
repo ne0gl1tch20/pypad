@@ -1,3 +1,8 @@
+"""Implement dialogs used to browse, configure, or manage workspaces and project views.
+
+This module belongs to the workspace browsing and project workflow UI layer. It helps explain how `pypad.ui.workspace` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -17,7 +22,9 @@ from pypad.ui.theme.theme_tokens import build_dialog_theme_qss_from_tokens, buil
 
 
 class WorkspaceFilesDialog(QDialog):
+    """Dialog that lists indexed workspace files and lets the user open one."""
     def __init__(self, parent, workspace_root: str, files: list[str]) -> None:
+        """Build the workspace file picker dialog from the current file list."""
         super().__init__(parent)
         self.setWindowTitle(f"Workspace Files - {workspace_root}")
         self.resize(760, 460)
@@ -44,11 +51,13 @@ class WorkspaceFilesDialog(QDialog):
         self._apply_theme_from_parent()
 
     def _apply_theme_from_parent(self) -> None:
+        """Apply workspace dialog styling derived from the parent window's theme settings."""
         settings = getattr(self.parent(), "settings", {}) if self.parent() is not None else {}
         tokens = build_tokens_from_settings(settings if isinstance(settings, dict) else {})
         self.setStyleSheet(build_dialog_theme_qss_from_tokens(tokens) + "\n" + build_workspace_dialog_qss(tokens))
 
     def _open_selected(self) -> None:
+        """Accept the dialog using the currently selected file path."""
         item = self.list_widget.currentItem()
         if item is None:
             return
@@ -57,18 +66,22 @@ class WorkspaceFilesDialog(QDialog):
 
     @property
     def selected_path(self) -> str | None:
+        """Return the file path chosen when the dialog was accepted."""
         return self._selected_path
 
 
 @dataclass
 class WorkspaceSearchResult:
+    """Single workspace search hit containing file, line number, and preview text."""
     path: str
     line_no: int
     line_text: str
 
 
 class WorkspaceSearchDialog(QDialog):
+    """Dialog that presents workspace search results with a preview and open action."""
     def __init__(self, parent, query: str, results: list[WorkspaceSearchResult]) -> None:
+        """Build the workspace search results dialog for one completed query."""
         super().__init__(parent)
         self.setWindowTitle(f'Workspace Search - "{query}"')
         self.resize(900, 520)
@@ -109,17 +122,20 @@ class WorkspaceSearchDialog(QDialog):
         self._apply_theme_from_parent()
 
     def _apply_theme_from_parent(self) -> None:
+        """Apply workspace dialog styling derived from the parent window's theme settings."""
         settings = getattr(self.parent(), "settings", {}) if self.parent() is not None else {}
         tokens = build_tokens_from_settings(settings if isinstance(settings, dict) else {})
         self.setStyleSheet(build_dialog_theme_qss_from_tokens(tokens) + "\n" + build_workspace_dialog_qss(tokens))
 
     def _update_preview(self, current: QListWidgetItem | None, _prev: QListWidgetItem | None) -> None:
+        """Refresh the preview pane for the currently selected search result."""
         if current is None:
             self.preview.clear()
             return
         self.preview.setPlainText(current.data(Qt.UserRole + 1) or "")
 
     def _open_selected(self) -> None:
+        """Accept the dialog using the currently selected search result."""
         item = self.list_widget.currentItem()
         if item is None:
             return
@@ -129,9 +145,11 @@ class WorkspaceSearchDialog(QDialog):
 
     @property
     def selected_path(self) -> str | None:
+        """Return the file path chosen when the dialog was accepted."""
         return self._selected_path
 
     @property
     def selected_line(self) -> int:
+        """Return the 1-based line number chosen when the dialog was accepted."""
         return max(1, int(self._selected_line))
 

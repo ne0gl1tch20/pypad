@@ -1,3 +1,8 @@
+"""Present tutorial and onboarding content that explains the application to new users.
+
+This module belongs to the optional productivity and feature UI layer. It helps explain how `pypad.ui.features` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 
 from PySide6.QtCore import QEasingCurve, QPropertyAnimation
@@ -14,7 +19,9 @@ from pypad.ui.theme.theme_tokens import build_dialog_theme_qss_from_tokens, buil
 
 
 class InteractiveTutorialDialog(QDialog):
+    """Dialog class that implements the `InteractiveTutorialDialog` workflow."""
     def __init__(self, parent: QWidget | None = None) -> None:
+        """Initialize the `tutorial_dialog` state for this instance."""
         super().__init__(parent)
         self.setWindowTitle("Welcome Tutorial")
         self.resize(700, 420)
@@ -65,6 +72,7 @@ class InteractiveTutorialDialog(QDialog):
 
     @staticmethod
     def _normalize_hex(value: str, fallback: str) -> str:
+        """Internal helper for `_normalize_hex`."""
         text = (value or "").strip()
         if not text:
             return fallback
@@ -77,17 +85,20 @@ class InteractiveTutorialDialog(QDialog):
         return text
 
     def _apply_theme_from_parent(self) -> None:
+        """Internal helper for `_apply_theme_from_parent`."""
         parent = self.parent()
         settings = getattr(parent, "settings", {}) if parent is not None else {}
         tokens = build_tokens_from_settings(settings if isinstance(settings, dict) else {})
         self.setStyleSheet(build_dialog_theme_qss_from_tokens(tokens) + "\n" + build_tutorial_dialog_qss(tokens))
 
     def _animate_swap(self, callback) -> None:
+        """Internal helper for `_animate_swap`."""
         self.anim.stop()
         self.anim.setStartValue(1.0)
         self.anim.setEndValue(0.0)
 
         def after_fade_out() -> None:
+            """Execute the `after_fade_out` workflow."""
             callback()
             self.anim.finished.disconnect(after_fade_out)
             self.anim.setStartValue(0.0)
@@ -98,7 +109,9 @@ class InteractiveTutorialDialog(QDialog):
         self.anim.start()
 
     def _render(self, *, animate: bool = True) -> None:
+        """Internal helper for `_render`."""
         def apply() -> None:
+            """Execute the `apply` workflow."""
             title, body = self._steps[self._index]
             self.title_label.setText(title)
             self.body_label.setText(body)
@@ -112,12 +125,14 @@ class InteractiveTutorialDialog(QDialog):
             self.opacity.setOpacity(1.0)
 
     def _next_step(self) -> None:
+        """Internal helper for `_next_step`."""
         if self._index >= len(self._steps) - 1:
             return
         self._index += 1
         self._render(animate=True)
 
     def _prev_step(self) -> None:
+        """Internal helper for `_prev_step`."""
         if self._index <= 0:
             return
         self._index -= 1

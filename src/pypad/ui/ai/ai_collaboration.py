@@ -1,3 +1,8 @@
+"""Define collaboration helpers that connect AI-generated output with editor and workspace actions.
+
+This module belongs to the AI-assisted editing and collaboration UI layer. It helps explain how `pypad.ui.ai` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -7,6 +12,7 @@ import re
 
 @dataclass(frozen=True)
 class CitationSnippet:
+    """Class that implements the `CitationSnippet` runtime behavior."""
     path: str
     excerpt: str
     score: int
@@ -17,11 +23,13 @@ FENCE_RE = re.compile(r"^\s*```[\w-]*\s*|\s*```\s*$", re.MULTILINE)
 
 
 def strip_model_fences(text: str) -> str:
+    """Execute the `strip_model_fences` workflow."""
     cleaned = FENCE_RE.sub("", text or "").strip()
     return cleaned.strip()
 
 
 def paragraph_bounds(text: str, cursor_index: int) -> tuple[int, int]:
+    """Execute the `paragraph_bounds` workflow."""
     if not text:
         return 0, 0
     idx = max(0, min(len(text), int(cursor_index)))
@@ -39,10 +47,12 @@ def paragraph_bounds(text: str, cursor_index: int) -> tuple[int, int]:
 
 
 def _keywords(question: str) -> set[str]:
+    """Internal helper for `_keywords`."""
     return {w.lower() for w in WORD_RE.findall(question or "") if len(w) >= 3}
 
 
 def _line_score(line: str, keys: set[str]) -> int:
+    """Internal helper for `_line_score`."""
     if not line.strip():
         return 0
     lowered = line.lower()
@@ -54,6 +64,7 @@ def _line_score(line: str, keys: set[str]) -> int:
 
 
 def _safe_read_text(path: Path) -> str:
+    """Internal helper for `_safe_read_text`."""
     try:
         raw = path.read_text(encoding="utf-8")
     except Exception:
@@ -74,6 +85,7 @@ def build_workspace_citation_snippets(
     max_lines_per_file: int = 60,
     max_total_chars: int = 24000,
 ) -> list[CitationSnippet]:
+    """Build and return the value produced by `build_workspace_citation_snippets`."""
     keys = _keywords(question)
     scored: list[CitationSnippet] = []
     for raw_path in file_paths:
@@ -131,6 +143,7 @@ def build_workspace_citation_snippets(
 
 
 def build_project_qa_prompt(question: str, snippets: list[CitationSnippet]) -> str:
+    """Build and return the value produced by `build_project_qa_prompt`."""
     sections: list[str] = []
     for snip in snippets:
         sections.append(f"FILE: {snip.path}\n{snip.excerpt}")
@@ -145,6 +158,7 @@ def build_project_qa_prompt(question: str, snippets: list[CitationSnippet]) -> s
 
 
 def build_collab_presence_text(snapshot: dict) -> str:
+    """Build and return the value produced by `build_collab_presence_text`."""
     running = bool(snapshot.get("running", False))
     if not running:
         return "Collaboration server is not running."
@@ -164,6 +178,7 @@ def build_collab_presence_text(snapshot: dict) -> str:
 
 
 def build_ai_conflict_merge_prompt(local_text: str, shared_text: str) -> str:
+    """Build and return the value produced by `build_ai_conflict_merge_prompt`."""
     return (
         "Merge the two document versions into one coherent result. "
         "Preserve intent from both where possible. Prefer the most recent and specific details. "
@@ -176,6 +191,7 @@ def build_ai_conflict_merge_prompt(local_text: str, shared_text: str) -> str:
 
 
 def build_conflict_markers(local_text: str, shared_text: str) -> str:
+    """Build and return the value produced by `build_conflict_markers`."""
     if local_text == shared_text:
         return local_text
     return (

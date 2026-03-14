@@ -1,3 +1,8 @@
+"""Read and translate Notepad++ preference data so compatible behaviors can be imported into Pypad.
+
+This module belongs to the application settings layer that resolves defaults, storage paths, and preference migrations. It helps explain how `pypad.app_settings` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -240,12 +245,14 @@ NPP_PREF_DEFAULTS: dict[str, Any] = {
 
 @dataclass(frozen=True)
 class _BoolKey:
+    """Class that implements the `_BoolKey` runtime behavior."""
     key: str
     default: bool
 
 
 @dataclass(frozen=True)
 class _IntKey:
+    """Class that implements the `_IntKey` runtime behavior."""
     key: str
     default: int
     min_value: int
@@ -254,12 +261,14 @@ class _IntKey:
 
 @dataclass(frozen=True)
 class _EnumKey:
+    """Class that implements the `_EnumKey` runtime behavior."""
     key: str
     default: str
     allowed: set[str]
 
 
 def _coerce_bool(value: Any, default: bool) -> bool:
+    """Internal helper for `_coerce_bool`."""
     if isinstance(value, bool):
         return value
     if isinstance(value, (int, float)):
@@ -274,6 +283,7 @@ def _coerce_bool(value: Any, default: bool) -> bool:
 
 
 def _coerce_int(value: Any, default: int, min_value: int, max_value: int) -> int:
+    """Internal helper for `_coerce_int`."""
     try:
         num = int(value)
     except Exception:
@@ -282,11 +292,13 @@ def _coerce_int(value: Any, default: int, min_value: int, max_value: int) -> int
 
 
 def _coerce_enum(value: Any, default: str, allowed: set[str]) -> str:
+    """Internal helper for `_coerce_enum`."""
     text = str(value or "").strip()
     return text if text in allowed else default
 
 
 def _coerce_hex(value: Any, default: str = "") -> str:
+    """Internal helper for `_coerce_hex`."""
     text = str(value or "").strip()
     if not text:
         return default
@@ -300,6 +312,7 @@ def _coerce_hex(value: Any, default: str = "") -> str:
 
 
 def _coerce_string_list(value: Any) -> list[str]:
+    """Internal helper for `_coerce_string_list`."""
     if not isinstance(value, list):
         return []
     out: list[str] = []
@@ -316,6 +329,7 @@ def _coerce_string_list(value: Any) -> list[str]:
 
 
 def _coerce_indent_overrides(value: Any) -> dict[str, dict[str, Any]]:
+    """Internal helper for `_coerce_indent_overrides`."""
     if not isinstance(value, dict):
         return {}
     cleaned: dict[str, dict[str, Any]] = {}
@@ -388,6 +402,7 @@ _ENUM_KEYS = [
 
 
 def coerce_notepadpp_prefs(settings: dict) -> dict:
+    """Execute the `coerce_notepadpp_prefs` workflow."""
     current = dict(settings)
     for key, default in NPP_PREF_DEFAULTS.items():
         current.setdefault(key, default)

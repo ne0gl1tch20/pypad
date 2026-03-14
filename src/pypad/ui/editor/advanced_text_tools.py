@@ -1,3 +1,8 @@
+"""Provide higher-level text editing helpers that build on the editor widget for power-user operations.
+
+This module belongs to the editor widget and text-manipulation UI layer. It helps explain how `pypad.ui.editor` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 
 import re
@@ -6,6 +11,7 @@ from dataclasses import dataclass
 
 @dataclass
 class LineRef:
+    """Class that implements the `LineRef` runtime behavior."""
     kind: str
     line_no: int
     style_id: int | None
@@ -14,6 +20,7 @@ class LineRef:
 
 @dataclass
 class RegexFilterResult:
+    """Class that implements the `RegexFilterResult` runtime behavior."""
     total_matches: int
     filtered_matches: int
     preview_lines: list[str]
@@ -21,6 +28,7 @@ class RegexFilterResult:
 
 
 def _line_span(source: str, start: int, end: int) -> tuple[int, int, str]:
+    """Internal helper for `_line_span`."""
     line_start = source.rfind("\n", 0, start)
     line_start = 0 if line_start < 0 else line_start + 1
     line_end = source.find("\n", end)
@@ -37,6 +45,7 @@ def build_line_refs(
     include_bookmarks: bool = True,
     include_marks: bool = True,
 ) -> list[LineRef]:
+    """Build and return the value produced by `build_line_refs`."""
     lines = source_text.splitlines()
     out: list[LineRef] = []
     if include_bookmarks:
@@ -58,6 +67,7 @@ def build_line_refs(
 
 
 def export_line_refs_text(rows: list[LineRef]) -> str:
+    """Execute the `export_line_refs_text` workflow."""
     lines: list[str] = ["Line | Kind | Style | Text", "---- | ---- | ----- | ----"]
     for row in rows:
         style = "" if row.style_id is None else str(row.style_id)
@@ -75,6 +85,7 @@ def compute_regex_filtered_replacement(
     exclude_pattern: str = "",
     max_preview_rows: int = 200,
 ) -> RegexFilterResult:
+    """Execute the `compute_regex_filtered_replacement` workflow."""
     rx = re.compile(pattern, flags)
     include_rx = re.compile(include_pattern, flags) if include_pattern.strip() else None
     exclude_rx = re.compile(exclude_pattern, flags) if exclude_pattern.strip() else None

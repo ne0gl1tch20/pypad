@@ -1,3 +1,8 @@
+"""Construct the main-window interface, create widgets, and wire the initial UI layout.
+
+This module belongs to the main-window orchestration layer that ties together menus, actions, state, and dialogs. It helps explain how `pypad.ui.main_window` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 import getpass
 import base64
@@ -103,7 +108,9 @@ from .notepadpp_pref_runtime import (
 
 
 class _StandardDockTitleBar(QWidget):
+    """Reusable custom dock title bar with float and close controls."""
     def __init__(self, dock: QWidget, title: str) -> None:
+        """Build the title-bar chrome used by dock widgets across the main window."""
         super().__init__(dock)
         self.setObjectName("pypadDockTitleBar")
         self._dock = dock
@@ -134,9 +141,11 @@ class _StandardDockTitleBar(QWidget):
         self.setMinimumHeight(28)
 
     def add_right_widget(self, widget: QWidget) -> None:
+        """Append an extra widget to the right-side tool area of the title bar."""
         self.right_tools_layout.addWidget(widget, 0, Qt.AlignmentFlag.AlignVCenter)
 
     def _toggle_floating(self) -> None:
+        """Toggle the dock between docked and floating states and refresh related menus."""
         if hasattr(self._dock, "setFloating") and hasattr(self._dock, "isFloating"):
             self._dock.setFloating(not self._dock.isFloating())
         host = self.window()
@@ -148,9 +157,11 @@ class _StandardDockTitleBar(QWidget):
 
 
 class _EmptyTabsRecentFileRow(QFrame):
+    """Clickable row shown on the empty-state screen for reopening a recent file."""
     clicked = Signal(str)
 
     def __init__(self, owner: "UISetupMixin", path: str, parent: QWidget | None = None) -> None:
+        """Build one recent-file entry for the empty-tabs landing page."""
         super().__init__(parent)
         self._path = str(path or "").strip()
         self.setObjectName("emptyTabsRecentRow")
@@ -182,11 +193,13 @@ class _EmptyTabsRecentFileRow(QFrame):
         layout.addLayout(text_col, 1)
 
     def mousePressEvent(self, event) -> None:
+        """Execute the `mousePressEvent` workflow."""
         if event.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit(self._path)
         super().mousePressEvent(event)
 
     def keyPressEvent(self, event) -> None:
+        """Execute the `keyPressEvent` workflow."""
         if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
             self.clicked.emit(self._path)
             event.accept()
@@ -194,6 +207,7 @@ class _EmptyTabsRecentFileRow(QFrame):
         super().keyPressEvent(event)
 
 class UiSetupMixin:
+    """Main-window UI assembly layer for tabs, actions, menus, toolbars, and shared widgets."""
     if TYPE_CHECKING:
         # Cross-mixin attributes injected by Notepad/window composition.
         settings: dict[str, Any]
@@ -204,29 +218,48 @@ class UiSetupMixin:
         windows_by_id: dict[int, Any]
 
         # Cross-mixin methods resolved at runtime via multiple inheritance.
-        def _clear_tab_autosave(self, tab: EditorTab) -> None: ...
-        def file_save_tab(self, tab: EditorTab) -> bool: ...
-        def file_save_as(self) -> bool: ...
-        def _refresh_file_watcher(self) -> None: ...
-        def _notify_large_file_mode(self, tab: EditorTab) -> None: ...
-        def _get_debug_logs_file_path(self) -> Path: ...
-        def _get_crash_logs_file_path(self) -> Path: ...
-        def __getattr__(self, name: str) -> Any: ...
+        def _clear_tab_autosave(self, tab: EditorTab) -> None:
+            """Describe the autosave cleanup hook supplied by the file-operation mixin."""
+            ...
+        def file_save_tab(self, tab: EditorTab) -> bool:
+            """Describe the tab-save hook supplied by the file-operation mixin."""
+            ...
+        def file_save_as(self) -> bool:
+            """Describe the Save As action supplied by the file-operation mixin."""
+            ...
+        def _refresh_file_watcher(self) -> None:
+            """Describe the file-watcher refresh hook supplied by sibling mixins."""
+            ...
+        def _notify_large_file_mode(self, tab: EditorTab) -> None:
+            """Describe the large-file notification hook supplied by file handling code."""
+            ...
+        def _get_debug_logs_file_path(self) -> Path:
+            """Describe the debug-log path helper supplied by miscellaneous window logic."""
+            ...
+        def _get_crash_logs_file_path(self) -> Path:
+            """Describe the crash-log path helper supplied by miscellaneous window logic."""
+            ...
+        def __getattr__(self, name: str) -> Any:
+            """Satisfy static type checkers for attributes provided by sibling mixins."""
+            ...
 
     @staticmethod
     def _normalize_log_event_level(level: str) -> str:
+        """Normalize log-level aliases into the canonical names used by the logger."""
         text = str(level or "").strip().upper()
         aliases = {"WARN": "WARNING", "ERR": "ERROR"}
         return aliases.get(text, text or "INFO")
 
 
     def _install_custom_dock_title_bar(self, dock: QWidget, title: str, attr_name: str) -> None:
+        """Attach the shared custom title bar widget to a dock and retain a reference."""
         bar = _StandardDockTitleBar(dock, title)
         if hasattr(dock, "setTitleBarWidget"):
             dock.setTitleBarWidget(bar)
         setattr(self, attr_name, bar)
 
     def _apply_custom_dock_title_bars_theme(self) -> None:
+        """Theme all registered custom dock title bars using the current token set."""
         tokens = build_tokens_from_settings(self.settings)
         title_qss = f"""
             QWidget#pypadDockTitleBar {{
@@ -281,6 +314,7 @@ class UiSetupMixin:
                 bar.close_btn.setIcon(close_icon)
 
     def _apply_search_panel_theme(self) -> None:
+        """Apply token-based styling to the inline search toolbar when it exists."""
         toolbar = getattr(self, "search_toolbar", None)
         if toolbar is None:
             return
@@ -338,10 +372,12 @@ class UiSetupMixin:
             """
         )
     def _active_logging_level(self) -> str:
+        """Internal helper for `_active_logging_level`."""
         settings = getattr(self, "settings", {}) or {}
         return normalize_log_level_name(settings.get("logging_level", "INFO"))
 
     def apply_logging_preferences(self) -> None:
+        """Reconfigure application logging from the current settings state."""
         try:
             level_name = configure_app_logging(self._active_logging_level())
         except Exception:
@@ -352,6 +388,7 @@ class UiSetupMixin:
 
     @staticmethod
     def _force_svg_monochrome(svg_text: str, color_hex: str) -> str:
+        """Rewrite SVG fill/stroke colors so icons can inherit a single runtime color."""
         # Recolor explicit stroke/fill values (except "none"), style declarations, and currentColor.
         text = re.sub(
             r'\b(stroke|fill)\b\s*=\s*["\'](?!none\b)[^"\']*["\']',
@@ -369,6 +406,7 @@ class UiSetupMixin:
 
     # ---------- UI setup ----------
     def _build_empty_tabs_widget(self) -> QWidget:
+        """Create the empty-state landing page shown when no document tabs are open."""
         scroll = QScrollArea(self)
         scroll.setObjectName("emptyTabsScroll")
         scroll.setWidgetResizable(True)
@@ -459,6 +497,7 @@ class UiSetupMixin:
         return scroll
 
     def _configure_empty_tabs_button(self, button: QPushButton, icon_name: str, *, accent: bool = False) -> None:
+        """Internal helper for `_configure_empty_tabs_button`."""
         settings = getattr(self, "settings", {})
         tokens = build_tokens_from_settings(settings if isinstance(settings, dict) else {})
         button.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -471,6 +510,7 @@ class UiSetupMixin:
         button.setObjectName("emptyTabsPrimaryButton" if accent else "emptyTabsSecondaryButton")
 
     def _refresh_empty_tabs_button_icons(self) -> None:
+        """Internal helper for `_refresh_empty_tabs_button_icons`."""
         settings = getattr(self, "settings", {})
         tokens = build_tokens_from_settings(settings if isinstance(settings, dict) else {})
         for button_name in (
@@ -493,6 +533,7 @@ class UiSetupMixin:
             button.setIcon(self._svg_icon_colored(icon_name, size=18, color=icon_color))
 
     def _apply_empty_tabs_widget_style(self) -> None:
+        """Internal helper for `_apply_empty_tabs_widget_style`."""
         holder = getattr(self, "empty_tabs_widget", None)
         if holder is None:
             return
@@ -633,6 +674,7 @@ class UiSetupMixin:
         )
 
     def _refresh_empty_tabs_widget(self) -> None:
+        """Rebuild the empty-state recent-file list and related call-to-action widgets."""
         container = getattr(self, "empty_recent_container", None)
         layout = getattr(self, "empty_recent_layout", None)
         if container is None or layout is None:
@@ -661,6 +703,7 @@ class UiSetupMixin:
             workspace_btn.setText("Open Workspace" if not workspace_root else f"Workspace: {Path(workspace_root).name}")
 
     def _sync_tab_empty_state(self) -> None:
+        """Switch between the tab widget and empty-state view based on whether tabs exist."""
         if not hasattr(self, "central_stack") or not hasattr(self, "empty_tabs_widget"):
             return
         self._refresh_empty_tabs_widget()
@@ -670,11 +713,13 @@ class UiSetupMixin:
             self.central_stack.setCurrentWidget(self.tab_widget)
 
     def active_tab(self) -> EditorTab | None:
+        """Execute the `active_tab` workflow."""
         widget = self.tab_widget.currentWidget()
         return widget if isinstance(widget, EditorTab) else None
 
     @property
     def text_edit(self):
+        """Execute the `text_edit` workflow."""
         tab = self.active_tab()
         if tab is None:
             raise RuntimeError("No active tab")
@@ -682,6 +727,7 @@ class UiSetupMixin:
 
     @property
     def markdown_preview(self):
+        """Execute the `markdown_preview` workflow."""
         pane = getattr(self, "markdown_preview_pane", None)
         if pane is None:
             raise RuntimeError("Markdown preview pane unavailable")
@@ -689,6 +735,7 @@ class UiSetupMixin:
 
     @property
     def editor_splitter(self) -> QSplitter:
+        """Execute the `editor_splitter` workflow."""
         tab = self.active_tab()
         if tab is None:
             raise RuntimeError("No active tab")
@@ -696,38 +743,45 @@ class UiSetupMixin:
 
     @property
     def current_file(self) -> str | None:
+        """Execute the `current_file` workflow."""
         tab = self.active_tab()
         return tab.current_file if tab is not None else None
 
     @current_file.setter
     def current_file(self, value: str | None) -> None:
+        """Execute the `current_file` workflow."""
         tab = self.active_tab()
         if tab is not None:
             tab.current_file = value
 
     @property
     def zoom_steps(self) -> int:
+        """Execute the `zoom_steps` workflow."""
         tab = self.active_tab()
         return tab.zoom_steps if tab is not None else 0
 
     @zoom_steps.setter
     def zoom_steps(self, value: int) -> None:
+        """Execute the `zoom_steps` workflow."""
         tab = self.active_tab()
         if tab is not None:
             tab.zoom_steps = value
 
     @property
     def markdown_mode_enabled(self) -> bool:
+        """Execute the `markdown_mode_enabled` workflow."""
         tab = self.active_tab()
         return tab.markdown_mode_enabled if tab is not None else False
 
     @markdown_mode_enabled.setter
     def markdown_mode_enabled(self, value: bool) -> None:
+        """Execute the `markdown_mode_enabled` workflow."""
         tab = self.active_tab()
         if tab is not None:
             tab.markdown_mode_enabled = value
 
     def _tab_display_name(self, tab: EditorTab) -> str:
+        """Internal helper for `_tab_display_name`."""
         base = Path(tab.current_file).name if tab.current_file else "Untitled"
         prefix = ""
         if tab.encryption_enabled:
@@ -738,6 +792,7 @@ class UiSetupMixin:
 
     @staticmethod
     def _format_log_line(level: str, message: str) -> str:
+        """Internal helper for `_format_log_line`."""
         now = datetime.now()
         timestamp = now.strftime("%H:%M:%S.%f")[:-3]
         date = f"{now.month}/{now.day}/{now.year}"
@@ -745,6 +800,7 @@ class UiSetupMixin:
         return f"[{level_title}] [{timestamp} {date}] {message}"
 
     def log_event(self, level: str, message: str) -> None:
+        """Record a normalized log entry into memory, files, and the debug dialog if present."""
         normalized_level = self._normalize_log_event_level(level)
         try:
             if get_level_number(normalized_level) < get_level_number(self._active_logging_level()):
@@ -766,6 +822,7 @@ class UiSetupMixin:
 
     @staticmethod
     def _append_line_to_log_file(path: Path, line: str) -> None:
+        """Internal helper for `_append_line_to_log_file`."""
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             with open(path, "a", encoding="utf-8") as handle:
@@ -775,6 +832,7 @@ class UiSetupMixin:
             pass
 
     def save_crash_traceback(self, traceback_text: str) -> None:
+        """Save data handled by `save_crash_traceback`."""
         if not bool(self.settings.get("save_debug_logs_to_appdata", False)):
             return
         header = self._format_log_line("Error", "Unhandled traceback captured")
@@ -783,6 +841,7 @@ class UiSetupMixin:
             self._append_line_to_log_file(self._get_crash_logs_file_path(), line)
 
     def clear_debug_logs(self) -> None:
+        """Execute the `clear_debug_logs` workflow."""
         self.debug_logs.clear()
         clear_console_log_lines()
         if self.debug_logs_dialog is not None:
@@ -790,6 +849,7 @@ class UiSetupMixin:
         self.log_event("Info", "Debug logs cleared")
 
     def _combined_debug_log_lines(self) -> list[str]:
+        """Internal helper for `_combined_debug_log_lines`."""
         app_lines = list(self.debug_logs)
         console_lines = get_console_log_lines()
         if not console_lines:
@@ -803,6 +863,7 @@ class UiSetupMixin:
         return lines
 
     def show_debug_logs(self) -> None:
+        """Execute the `show_debug_logs` workflow."""
         if self.debug_logs_dialog is None:
             self.debug_logs_dialog = DebugLogsDialog(self)
             self.debug_logs_dialog.clear_button.clicked.disconnect()
@@ -815,10 +876,12 @@ class UiSetupMixin:
 
     @staticmethod
     def _on_off(value: bool) -> str:
+        """Internal helper for `_on_off`."""
         return "ON" if bool(value) else "OFF"
 
     @staticmethod
     def _debug_target_path() -> Path:
+        """Internal helper for `_debug_target_path`."""
         if getattr(sys, "frozen", False):
             return Path(sys.executable).resolve()
         try:
@@ -827,6 +890,7 @@ class UiSetupMixin:
             return Path(__file__).resolve()
 
     def _windows_display_adapters(self) -> list[tuple[str, str]]:
+        """Internal helper for `_windows_display_adapters`."""
         if os.name != "nt":
             return []
         command = (
@@ -863,6 +927,7 @@ class UiSetupMixin:
         return out
 
     def _installed_plugins_for_debug(self) -> list[str]:
+        """Internal helper for `_installed_plugins_for_debug`."""
         host = getattr(getattr(self, "advanced_features", None), "plugin_host", None)
         if host is None:
             return []
@@ -888,6 +953,7 @@ class UiSetupMixin:
         return sorted(set(lines), key=str.lower)
 
     def build_debug_info_text(self) -> str:
+        """Assemble a diagnostic summary of runtime, platform, files, and plugin state."""
         app_bits = "64-bit" if sys.maxsize > 2**32 else "32-bit"
         app_mode = "frozen" if getattr(sys, "frozen", False) else "development"
         version_path = resolve_asset_path("version.txt")
@@ -1006,6 +1072,7 @@ class UiSetupMixin:
         return "\n".join(lines)
 
     def show_debug_info(self) -> None:
+        """Execute the `show_debug_info` workflow."""
         text = self.build_debug_info_text()
         dialog = QDialog(self)
         dialog.setWindowTitle("Debug Info")
@@ -1028,6 +1095,7 @@ class UiSetupMixin:
 
     @staticmethod
     def _default_style_name() -> str:
+        """Internal helper for `_default_style_name`."""
         available = {name.lower(): name for name in QStyleFactory.keys()}
         for candidate in ("windows", "windowsvista", "windows 11", "windows11"):
             if candidate in available:
@@ -1038,6 +1106,7 @@ class UiSetupMixin:
 
     @staticmethod
     def _build_default_settings() -> dict:
+        """Return the application's default settings payload used for new profiles and resets."""
         return build_default_settings(
             default_style=UiSetupMixin._default_style_name(),
             font_family=QApplication.font().family(),
@@ -1046,11 +1115,13 @@ class UiSetupMixin:
 
     @staticmethod
     def _settings_protection_key() -> bytes:
+        """Internal helper for `_settings_protection_key`."""
         machine = f"{os.environ.get('COMPUTERNAME', '')}|{os.environ.get('USERNAME', '')}|{Path.home()}"
         return hashlib.sha256(machine.encode("utf-8")).digest()
 
     @staticmethod
     def _protect_settings_secret(value: str) -> str:
+        """Internal helper for `_protect_settings_secret`."""
         raw = value.encode("utf-8")
         key = UiSetupMixin._settings_protection_key()
         stream = bytes(key[i % len(key)] for i in range(len(raw)))
@@ -1059,6 +1130,7 @@ class UiSetupMixin:
 
     @staticmethod
     def _unprotect_settings_secret(value: str) -> str:
+        """Internal helper for `_unprotect_settings_secret`."""
         if not value:
             return ""
         try:
@@ -1071,6 +1143,7 @@ class UiSetupMixin:
             return ""
 
     def _tab_icon_for(self, tab: EditorTab) -> QIcon:
+        """Internal helper for `_tab_icon_for`."""
         fallback = self._standard_style_icon("SP_FileIcon")
         base_icon = self._file_icon_for_tab(tab, fallback)
 
@@ -1090,6 +1163,7 @@ class UiSetupMixin:
         return QIcon(base_pixmap)
 
     def _file_icon_for_tab(self, tab: EditorTab, fallback: QIcon) -> QIcon:
+        """Internal helper for `_file_icon_for_tab`."""
         if tab.markdown_mode_enabled:
             markdown_icon = self._svg_icon_colored("file-markdown", size=18)
             if not markdown_icon.isNull():
@@ -1170,9 +1244,11 @@ class UiSetupMixin:
         return QIcon.fromTheme(theme_name, fallback)
 
     def _svg_icon(self, name: str) -> QIcon:
+        """Resolve and theme an SVG icon from the asset bundle."""
         return self._svg_icon_colored(name, size=18)
 
     def _standard_style_icon(self, enum_name: str) -> QIcon:
+        """Internal helper for `_standard_style_icon`."""
         style = self.style()
         enum_value = getattr(QStyle, enum_name, None)
         if enum_value is None:
@@ -1180,6 +1256,7 @@ class UiSetupMixin:
         return style.standardIcon(enum_value)
 
     def _svg_icon_colored(self, name: str, size: int = 18, color: str | QColor | None = None) -> QIcon:
+        """Internal helper for `_svg_icon_colored`."""
         icon_path = resolve_asset_path("icons", f"{name}.svg")
         if icon_path is None:
             return QIcon()
@@ -1209,6 +1286,7 @@ class UiSetupMixin:
         return QIcon(pixmap)
 
     def _refresh_tab_title(self, tab: EditorTab) -> None:
+        """Recompute the visible tab title, icon, and decorations for one editor tab."""
         index = self.tab_widget.indexOf(tab)
         if index < 0:
             return
@@ -1227,6 +1305,7 @@ class UiSetupMixin:
             self._refresh_window_menu_entries()
 
     def _sync_tab_modified_state_with_current_file(self, tab: EditorTab | None) -> None:
+        """Internal helper for `_sync_tab_modified_state_with_current_file`."""
         if tab is None:
             return
         path = str(getattr(tab, "current_file", "") or "").strip()
@@ -1265,6 +1344,7 @@ class UiSetupMixin:
             self.update_status_bar()
 
     def _connect_tab_signals(self, tab: EditorTab) -> None:
+        """Wire editor-tab signals into main-window handlers for status, history, and actions."""
         if hasattr(self, "_sync_gamification_tab_snapshot"):
             self._sync_gamification_tab_snapshot(tab)
         tab.text_edit.modificationChanged.connect(self._on_modification_changed)
@@ -1287,6 +1367,7 @@ class UiSetupMixin:
             )
 
     def _disconnect_tab_signals(self, tab: EditorTab) -> None:
+        """Internal helper for `_disconnect_tab_signals`."""
         try:
             tab.text_edit.modificationChanged.disconnect(self._on_modification_changed)
         except (TypeError, RuntimeError):
@@ -1341,6 +1422,7 @@ class UiSetupMixin:
                 pass
 
     def _tab_for_editor(self, editor) -> EditorTab | None:
+        """Internal helper for `_tab_for_editor`."""
         for index in range(self.tab_widget.count()):
             tab = self.tab_widget.widget(index)
             if not isinstance(tab, EditorTab):
@@ -1350,6 +1432,7 @@ class UiSetupMixin:
         return None
 
     def _emit_plugin_event(self, event_name: str, tab: EditorTab | None = None, **extra) -> None:
+        """Internal helper for `_emit_plugin_event`."""
         host = getattr(getattr(self, "advanced_features", None), "plugin_host", None)
         if host is None:
             return
@@ -1362,6 +1445,7 @@ class UiSetupMixin:
         host.emit_event(event_name, **payload)
 
     def _handle_text_changed(self) -> None:
+        """React to editor text changes by updating status, history, and deferred UI work."""
         sender = self.sender()
         tab = None
         if sender is not None:
@@ -1384,6 +1468,7 @@ class UiSetupMixin:
         self._emit_plugin_event("change", tab=tab)
 
     def _schedule_deferred_editor_refresh(self) -> None:
+        """Internal helper for `_schedule_deferred_editor_refresh`."""
         timer = getattr(self, "_editor_refresh_timer", None)
         if timer is None:
             self.update_status_bar()
@@ -1392,6 +1477,7 @@ class UiSetupMixin:
         timer.start()
 
     def _schedule_deferred_gamification_refresh(self) -> None:
+        """Internal helper for `_schedule_deferred_gamification_refresh`."""
         timer = getattr(self, "_gamification_refresh_timer", None)
         if timer is None:
             if hasattr(self, "_gamification_on_text_changed"):
@@ -1401,6 +1487,7 @@ class UiSetupMixin:
         timer.start()
 
     def _handle_selection_changed(self) -> None:
+        """Internal helper for `_handle_selection_changed`."""
         sender = self.sender()
         tab = None
         if sender is not None:
@@ -1412,6 +1499,7 @@ class UiSetupMixin:
         self._emit_plugin_event("selection_changed", tab=tab)
 
     def _handle_scintilla_notification(self, payload: dict) -> None:
+        """Internal helper for `_handle_scintilla_notification`."""
         sender = self.sender()
         tab = None
         if sender is not None:
@@ -1429,6 +1517,7 @@ class UiSetupMixin:
         )
 
     def _seed_version_history(self, tab: EditorTab, label: str = "Opened") -> None:
+        """Internal helper for `_seed_version_history`."""
         if tab.large_file:
             return
         tab.version_history.max_entries = int(self.settings.get("version_history_max_entries", 50))
@@ -1440,6 +1529,7 @@ class UiSetupMixin:
             self._persist_tab_local_history(tab)
 
     def _maybe_snapshot_version(self, tab: EditorTab) -> None:
+        """Internal helper for `_maybe_snapshot_version`."""
         if tab.large_file:
             return
         if not self.settings.get("version_history_enabled", True):
@@ -1454,6 +1544,7 @@ class UiSetupMixin:
                 self._persist_tab_local_history(tab)
 
     def _detect_language_for_tab(self, tab: EditorTab) -> str:
+        """Internal helper for `_detect_language_for_tab`."""
         mode = str(self.settings.get("syntax_highlighting_mode", "Auto"))
         if tab.syntax_language_override:
             return tab.syntax_language_override
@@ -1478,6 +1569,7 @@ class UiSetupMixin:
         return "plain"
 
     def _apply_syntax_highlighting(self, tab: EditorTab) -> None:
+        """Apply the effective syntax-highlighting mode and theme for a tab."""
         if not self.settings.get("syntax_highlighting_enabled", True):
             if tab.syntax_highlighter is not None:
                 tab.syntax_highlighter.set_language("plain")
@@ -1512,6 +1604,7 @@ class UiSetupMixin:
             tab.syntax_highlighter.set_language(language)
 
     def _apply_focus_mode(self, enabled: bool) -> None:
+        """Internal helper for `_apply_focus_mode`."""
         hide_menu = bool(self.settings.get("focus_hide_menu", True))
         hide_toolbar = bool(self.settings.get("focus_hide_toolbar", True))
         hide_status = bool(self.settings.get("focus_hide_status", False))
@@ -1536,6 +1629,7 @@ class UiSetupMixin:
             self.focus_mode_action.blockSignals(False)
 
     def _sync_language_picker(self, tab: EditorTab) -> None:
+        """Internal helper for `_sync_language_picker`."""
         if not hasattr(self, "syntax_combo"):
             return
         if tab.syntax_language_override:
@@ -1551,6 +1645,7 @@ class UiSetupMixin:
             self.syntax_combo.blockSignals(False)
 
     def _set_active_tab_language(self, label: str) -> None:
+        """Internal helper for `_set_active_tab_language`."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -1562,10 +1657,12 @@ class UiSetupMixin:
         self._apply_syntax_highlighting(tab)
 
     def toggle_focus_mode(self, checked: bool) -> None:
+        """Toggle the state controlled by `toggle_focus_mode`."""
         self._apply_focus_mode(checked)
         self.log_event("Info", f"Focus mode {'enabled' if checked else 'disabled'}")
 
     def show_version_history(self) -> None:
+        """Execute the `show_version_history` workflow."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -1578,6 +1675,7 @@ class UiSetupMixin:
                 self.update_status_bar()
 
     def show_local_history_timeline(self) -> None:
+        """Execute the `show_local_history_timeline` workflow."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -1590,6 +1688,7 @@ class UiSetupMixin:
                 self.update_status_bar()
 
     def show_reminders(self) -> None:
+        """Execute the `show_reminders` workflow."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -1599,6 +1698,7 @@ class UiSetupMixin:
         dlg.exec()
 
     def _check_reminders(self) -> None:
+        """Internal helper for `_check_reminders`."""
         if not self.settings.get("reminders_enabled", True):
             return
         now = datetime.now()
@@ -1622,6 +1722,7 @@ class UiSetupMixin:
             self.reminders_store.save()
 
     def toggle_task_item(self) -> None:
+        """Toggle the state controlled by `toggle_task_item`."""
         if not self.settings.get("checklist_toggle_enabled", True):
             return
         tab = self.active_tab()
@@ -1643,6 +1744,7 @@ class UiSetupMixin:
         tab.text_edit.replace_line(line=tab.text_edit.cursor_position()[0], text=prefix + new_line)
 
     def eventFilter(self, source, event) -> bool:  # type: ignore[override]
+        """Execute the `eventFilter` workflow."""
         if source is getattr(self, "main_toolbar", None) and event.type() in {
             QEvent.Type.Resize,
             QEvent.Type.Show,
@@ -1691,11 +1793,13 @@ class UiSetupMixin:
         return QMainWindow.eventFilter(cast(QMainWindow, self), source, event)
 
     def _schedule_main_toolbar_overflow_update(self) -> None:
+        """Internal helper for `_schedule_main_toolbar_overflow_update`."""
         if getattr(self, "_main_toolbar_overflow_update_scheduled", False):
             return
         self._main_toolbar_overflow_update_scheduled = True
 
         def _run_update() -> None:
+            """Internal helper for `_run_update`."""
             self._main_toolbar_overflow_update_scheduled = False
             if getattr(self, "_main_toolbar_overflow_menu_open", False):
                 self._main_toolbar_overflow_update_pending = True
@@ -1707,14 +1811,17 @@ class UiSetupMixin:
         QTimer.singleShot(40, _run_update)
 
     def _on_main_toolbar_overflow_menu_show(self) -> None:
+        """Internal helper for `_on_main_toolbar_overflow_menu_show`."""
         self._main_toolbar_overflow_menu_open = True
 
     def _on_main_toolbar_overflow_menu_hide(self) -> None:
+        """Internal helper for `_on_main_toolbar_overflow_menu_hide`."""
         self._main_toolbar_overflow_menu_open = False
         if getattr(self, "_main_toolbar_overflow_update_pending", False):
             self._schedule_main_toolbar_overflow_update()
 
     def _position_main_toolbar_overflow_button(self) -> None:
+        """Internal helper for `_position_main_toolbar_overflow_button`."""
         toolbar = getattr(self, "main_toolbar", None)
         button = getattr(self, "main_toolbar_overflow_button", None)
         if toolbar is None or button is None or not button.isVisible():
@@ -1729,6 +1836,7 @@ class UiSetupMixin:
         button.raise_()
 
     def _extract_tab_for_transfer(self, index: int) -> EditorTab | None:
+        """Internal helper for `_extract_tab_for_transfer`."""
         widget = self.tab_widget.widget(index)
         if not isinstance(widget, EditorTab):
             return None
@@ -1740,6 +1848,7 @@ class UiSetupMixin:
         return widget
 
     def _insert_existing_tab(self, tab: EditorTab, insert_index: int = -1, make_current: bool = True) -> int:
+        """Internal helper for `_insert_existing_tab`."""
         tab.setParent(self.tab_widget)
         self._connect_tab_signals(tab)
         target_index = insert_index if insert_index >= 0 else self.tab_widget.count()
@@ -1755,6 +1864,7 @@ class UiSetupMixin:
 
     @staticmethod
     def _parse_tab_transfer_payload(raw_payload: bytes) -> tuple[int, int] | None:
+        """Internal helper for `_parse_tab_transfer_payload`."""
         payload = raw_payload.decode("ascii", errors="ignore")
         parts = payload.split(":")
         if len(parts) != 2:
@@ -1765,6 +1875,7 @@ class UiSetupMixin:
             return None
 
     def receive_external_tab(self, source_window_id: int, source_index: int, insert_index: int) -> bool:
+        """Execute the `receive_external_tab` workflow."""
         source_window = type(self).windows_by_id.get(source_window_id)
         if source_window is None or source_window is self:
             return False
@@ -1780,6 +1891,7 @@ class UiSetupMixin:
         return True
 
     def add_new_tab(self, text: str = "", file_path: str | None = None, make_current: bool = True) -> EditorTab:
+        """Create, initialize, and optionally select a new editor tab."""
         tab = EditorTab(self)
         profile = ScintillaProfile.from_settings(self.settings)
         tokens = build_tokens_from_settings(self.settings)
@@ -1860,6 +1972,7 @@ class UiSetupMixin:
         return tab
 
     def on_tab_changed(self, _index: int) -> None:
+        """Synchronize UI state when the active editor tab changes."""
         tab = self.active_tab()
         if tab is None:
             if hasattr(self, "md_toggle_preview_action"):
@@ -1953,6 +2066,7 @@ class UiSetupMixin:
         self._emit_plugin_event("tab_changed", tab=tab)
 
     def close_tab(self, index: int) -> None:
+        """Close a tab after prompting for unsaved changes and preserving reopen metadata."""
         widget = self.tab_widget.widget(index)
         if not isinstance(widget, EditorTab):
             return
@@ -1992,6 +2106,7 @@ class UiSetupMixin:
         self.log_event("Info", "Tab closed")
 
     def detach_tab_to_window(self, index: int, global_pos: QPoint) -> None:
+        """Move an existing tab into a new top-level window at the requested screen position."""
         if self.tab_widget.count() <= 1:
             return
         moving_tab = self._extract_tab_for_transfer(index)
@@ -2027,6 +2142,7 @@ class UiSetupMixin:
         self.log_event("Info", "Detached window created")
 
     def dragEnterEvent(self, event) -> None:  # type: ignore[override]
+        """Execute the `dragEnterEvent` workflow."""
         if event.mimeData().hasFormat(DetachableTabBar._tab_mime_type):
             event.acceptProposedAction()
             return
@@ -2036,6 +2152,7 @@ class UiSetupMixin:
         QMainWindow.dragEnterEvent(cast(QMainWindow, self), event)
 
     def dragMoveEvent(self, event) -> None:  # type: ignore[override]
+        """Execute the `dragMoveEvent` workflow."""
         if event.mimeData().hasFormat(DetachableTabBar._tab_mime_type):
             event.acceptProposedAction()
             return
@@ -2045,6 +2162,7 @@ class UiSetupMixin:
         QMainWindow.dragMoveEvent(cast(QMainWindow, self), event)
 
     def dropEvent(self, event) -> None:  # type: ignore[override]
+        """Execute the `dropEvent` workflow."""
         if event.mimeData().hasUrls():
             local_paths = [
                 url.toLocalFile()
@@ -2073,6 +2191,7 @@ class UiSetupMixin:
         event.ignore()
 
     def maybe_save_tab(self, tab: EditorTab) -> bool:
+        """Prompt the user to save one tab when it has unsaved changes."""
         if not tab.text_edit.is_modified():
             return True
         tab_name = self._tab_display_name(tab)
@@ -2094,9 +2213,11 @@ class UiSetupMixin:
 
     @staticmethod
     def _action_label(text: str) -> str:
+        """Internal helper for `_action_label`."""
         return text.replace("&", "").replace("...", "").strip()
 
     def configure_action_tooltips(self) -> None:
+        """Apply richer labels and shortcuts to actions so menus and toolbars are self-describing."""
         action_tips = {
             "New": "Create a new tab",
             "Open": "Open a file",
@@ -2373,6 +2494,7 @@ class UiSetupMixin:
         QApplication.clipboard().dataChanged.connect(self._capture_clipboard_history)
 
     def _connect_action_debug_tracing(self) -> None:
+        """Internal helper for `_connect_action_debug_tracing`."""
         for attr_name, action in vars(self).items():
             if not attr_name.endswith("_action") or not isinstance(action, QAction):
                 continue
@@ -2397,6 +2519,7 @@ class UiSetupMixin:
                 continue
 
     def configure_menu_tooltips(self) -> None:
+        """Execute the `configure_menu_tooltips` workflow."""
         menu_tips = {
             "File": "Create, open, save, and close files",
             "Edit": "Undo and clipboard tools",
@@ -2437,6 +2560,7 @@ class UiSetupMixin:
                 continue
 
     def _refresh_search_engine_action_labels(self) -> None:
+        """Internal helper for `_refresh_search_engine_action_labels`."""
         provider = search_engine_display_name(getattr(self, "settings", {}) or {})
         provider_text = provider.replace("&", "&&")
         if hasattr(self, "search_selection_web_action"):
@@ -2445,12 +2569,14 @@ class UiSetupMixin:
             self.search_bing_action.setText(f"Search with &{provider_text}")
 
     def _demo_template_names(self) -> list[str]:
+        """Internal helper for `_demo_template_names`."""
         templates = getattr(self, "templates", {})
         if not isinstance(templates, dict):
             return []
         return sorted(str(name) for name in templates.keys() if str(name).startswith("Demo: "))
 
     def update_action_states(self, *_args) -> None:
+        """Enable, disable, and check actions based on the active tab and current app state."""
         if not hasattr(self, "save_action"):
             return
         self._refresh_search_engine_action_labels()
@@ -2930,6 +3056,7 @@ class UiSetupMixin:
             action.setEnabled(has_tab and not is_large_file)
 
     def create_actions(self: Any) -> None:
+        """Create the QAction objects that drive menus, shortcuts, and toolbars."""
         # File actions
         self.new_action = QAction("&New", self)
         self.new_action.setShortcut(QKeySequence(QKeySequence.StandardKey.New))
@@ -4192,6 +4319,7 @@ class UiSetupMixin:
             self._capture_default_shortcuts()
 
     def _apply_markdown_icons(self) -> None:
+        """Internal helper for `_apply_markdown_icons`."""
         icon_map = {
             self.md_heading1_action: "md-heading",
             self.md_heading2_action: "md-heading",
@@ -4219,6 +4347,7 @@ class UiSetupMixin:
             action.setIcon(self._svg_icon(icon_name))
 
     def _apply_format_icons(self) -> None:
+        """Internal helper for `_apply_format_icons`."""
         icon_map = {
             self.bold_action: "format-bold",
             self.italic_action: "format-italic",
@@ -4229,6 +4358,7 @@ class UiSetupMixin:
             action.setIcon(self._svg_icon(icon_name))
 
     def _apply_ai_feature_icons(self) -> None:
+        """Internal helper for `_apply_ai_feature_icons`."""
         icon_map = {
             self.ask_ai_action: "ai-sparkles",
             self.ai_chat_panel_action: "ai-sparkles",
@@ -4252,6 +4382,7 @@ class UiSetupMixin:
             action.setIcon(self._svg_icon(icon_name))
 
     def _apply_main_toolbar_icons(self) -> None:
+        """Internal helper for `_apply_main_toolbar_icons`."""
         fallback = self._standard_style_icon("SP_FileIcon")
         icon_cut = self._svg_icon("edit-cut")
         icon_copy = self._svg_icon("edit-copy")
@@ -4329,6 +4460,7 @@ class UiSetupMixin:
             overflow_button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
 
     def _update_main_toolbar_overflow(self) -> None:
+        """Internal helper for `_update_main_toolbar_overflow`."""
         toolbar = getattr(self, "main_toolbar", None)
         overflow_button = getattr(self, "main_toolbar_overflow_button", None)
         overflow_menu = getattr(self, "main_toolbar_overflow_menu", None)
@@ -4350,11 +4482,13 @@ class UiSetupMixin:
             return
 
         def _set_toolbar_action_visible(action: QAction, visible: bool) -> None:
+            """Internal helper for `_set_toolbar_action_visible`."""
             widget = toolbar.widgetForAction(action)
             if widget is not None:
                 widget.setVisible(visible)
 
         def _toolbar_action_visible(action: QAction) -> bool:
+            """Internal helper for `_toolbar_action_visible`."""
             widget = toolbar.widgetForAction(action)
             return bool(widget and widget.isVisible())
 
@@ -4371,6 +4505,7 @@ class UiSetupMixin:
             return
 
         def _apply_layout(available_width: int) -> list[QAction]:
+            """Internal helper for `_apply_layout`."""
             used = 0
             hidden: list[QAction] = []
             for action in managed:
@@ -4464,6 +4599,7 @@ class UiSetupMixin:
         self._position_main_toolbar_overflow_button()
 
     def create_menus(self: Any) -> None:
+        """Build the top-level menu bar structure and populate it with window actions."""
         menu_bar = self.menuBar()
 
         # File
@@ -5112,6 +5248,7 @@ class UiSetupMixin:
                 pass
 
     def create_toolbars(self: Any) -> None:
+        """Build the main toolbars and attach frequently used actions with themed icons."""
         main_toolbar = QToolBar("Main", self)
         main_toolbar.setObjectName("mainToolbar")
         main_toolbar.setMovable(True)
@@ -5314,6 +5451,7 @@ class UiSetupMixin:
         self._layout_top_toolbars()
 
     def _layout_top_toolbars(self) -> None:
+        """Internal helper for `_layout_top_toolbars`."""
         main_toolbar = getattr(self, "main_toolbar", None)
         markdown_toolbar = getattr(self, "markdown_toolbar", None)
         search_toolbar = getattr(self, "search_toolbar", None)

@@ -1,3 +1,8 @@
+"""Represent a single editor tab and the supporting UI elements bound to one open document.
+
+This module belongs to the editor widget and text-manipulation UI layer. It helps explain how `pypad.ui.editor` is structured and where this file fits into the runtime workflow.
+"""
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QIcon, QPixmap
 from PySide6.QtWidgets import (
@@ -26,7 +31,9 @@ except Exception:
 
 
 class MarkdownPreviewPane(QWidget):
+    """Preview pane that renders Markdown as plain rich text or MathJax HTML when available."""
     def __init__(self, parent=None) -> None:
+        """Create the fallback text preview and optional web-based MathJax renderer."""
         super().__init__(parent)
         self._text_preview = QTextEdit(self)
         self._text_preview.setReadOnly(True)
@@ -46,12 +53,15 @@ class MarkdownPreviewPane(QWidget):
             layout.addWidget(self._web_preview)
 
     def supports_mathjax(self) -> bool:
+        """Return whether the web preview backend is available for MathJax rendering."""
         return self._web_preview is not None
 
     def setMarkdown(self, text: str) -> None:
+        """Compatibility wrapper that renders Markdown using the plain preview path."""
         self.set_markdown(text, enable_mathjax=False, dark_mode=False)
 
     def set_markdown(self, text: str, *, enable_mathjax: bool, dark_mode: bool) -> None:
+        """Render Markdown using either QTextEdit or a MathJax-capable web preview."""
         self._text_preview.setLayoutDirection(self.layoutDirection())
         if enable_mathjax and self._web_preview is not None:
             self._text_preview.hide()
@@ -64,13 +74,16 @@ class MarkdownPreviewPane(QWidget):
         self._text_preview.setMarkdown(text)
 
     def clear(self) -> None:
+        """Clear both preview backends so the pane has no visible content."""
         if self._web_preview is not None:
             self._web_preview.setHtml("")
         self._text_preview.clear()
 
 
 class EditorTab(QWidget):
+    """Stateful container for one open document, including editor, preview, and tab metadata."""
     def __init__(self, parent=None) -> None:
+        """Construct the editor container and initialize all per-tab runtime state."""
         super().__init__(parent)
         self.text_edit = EditorWidget(self)
         if hasattr(self.text_edit.widget, "setVerticalScrollBarPolicy"):
@@ -150,6 +163,7 @@ class EditorTab(QWidget):
         self._setup_editor_context_menu()
 
     def clear_media_mode(self) -> None:
+        """Remove any active media widget and return the tab to normal editor mode."""
         while self._media_page_layout.count():
             item = self._media_page_layout.takeAt(0)
             widget = item.widget()
@@ -160,6 +174,7 @@ class EditorTab(QWidget):
         self._main_stack.setCurrentWidget(self.editor_splitter)
 
     def set_media_widget(self, widget: QWidget, path: str) -> None:
+        """Replace editor mode with a media-view widget for the supplied file path."""
         self.clear_media_mode()
         self._media_page_layout.addWidget(widget)
         self.media_mode_enabled = True
@@ -167,6 +182,7 @@ class EditorTab(QWidget):
         self._main_stack.setCurrentWidget(self._media_page)
 
     def _setup_editor_context_menu(self) -> None:
+        """Install the custom context-menu hook on the underlying editor widget."""
         widget = self.text_edit.widget
         if not hasattr(widget, "setContextMenuPolicy") or not hasattr(widget, "customContextMenuRequested"):
             return
@@ -174,11 +190,13 @@ class EditorTab(QWidget):
         widget.customContextMenuRequested.connect(self._show_editor_context_menu)
 
     def _main_window(self):
+        """Return the owning main window when the tab is attached to one."""
         window = self.window()
         return window if window is not None else None
 
     @staticmethod
     def _context_icon(window, icon_name: str, size: int = 14) -> QIcon:
+        """Resolve a context-menu icon through the main window's shared icon helper."""
         icon_fn = getattr(window, "_icon", None)
         if callable(icon_fn):
             try:
@@ -189,6 +207,7 @@ class EditorTab(QWidget):
 
     @classmethod
     def _context_icon_name_for_action(cls, action_attr: str) -> str | None:
+        """Map known window action names to the icon identifiers used in the context menu."""
         mapping = {
             "explain_selection_ai_action": "ai-explain",
             "ai_inline_edit_action": "ai-inline-edit",
@@ -241,6 +260,7 @@ class EditorTab(QWidget):
 
     @classmethod
     def _set_action_context_icon(cls, window, action, action_attr: str) -> None:
+        """Apply the appropriate themed icon to a context-menu action when available."""
         if action is None:
             return
         icon_name = cls._context_icon_name_for_action(action_attr)
@@ -252,6 +272,7 @@ class EditorTab(QWidget):
 
     @staticmethod
     def _add_window_action(menu: QMenu, window, action_attr: str) -> bool:
+        """Add an action from the owning window to a menu if that action exists."""
         action = getattr(window, action_attr, None)
         if action is None:
             return False
@@ -260,12 +281,14 @@ class EditorTab(QWidget):
 
     @staticmethod
     def _swatch_icon(color_hex: str) -> QIcon:
+        """Create a small solid-color icon used for style-token menu entries."""
         pix = QPixmap(12, 12)
         pix.fill(QColor(color_hex))
         return QIcon(pix)
 
     @classmethod
     def _add_window_action_if_enabled(cls, menu: QMenu, window, action_attr: str) -> bool:
+        """Add an enabled window action to a menu and apply its context icon."""
         action = getattr(window, action_attr, None)
         if action is None or not action.isEnabled():
             return False
@@ -275,6 +298,7 @@ class EditorTab(QWidget):
 
     @staticmethod
     def _prune_empty_menu(parent_menu: QMenu, submenu: QMenu) -> None:
+        """Remove an empty submenu so the final context menu only shows usable sections."""
         if not submenu.actions():
             submenu.menuAction().setVisible(False)
             try:
@@ -283,6 +307,7 @@ class EditorTab(QWidget):
                 pass
 
     def _build_basic_fallback_menu(self, window) -> QMenu:
+        """Build a minimal editing menu used when the richer menu cannot be assembled."""
         menu = QMenu(self.text_edit.widget)
         for attr in (
             "cut_action",
@@ -297,6 +322,7 @@ class EditorTab(QWidget):
         return menu
 
     def _add_quick_ai_row(self, menu: QMenu, window) -> bool:
+        """Insert a compact row of high-frequency AI actions at the top of the context menu."""
         entries = [
             ("Explain", "explain_selection_ai_action", "ai-explain"),
             ("Rewrite", "ai_inline_edit_action", "ai-inline-edit"),
@@ -336,6 +362,7 @@ class EditorTab(QWidget):
         return True
 
     def _attach_more_ai_button(self, menu: QMenu, ai_menu: QMenu) -> None:
+        """Attach a 'More AI' button to the quick-action row that opens the full AI submenu."""
         if ai_menu is None or not ai_menu.actions():
             return
         row_action = None
@@ -364,6 +391,7 @@ class EditorTab(QWidget):
         row_layout.insertWidget(max(0, row_layout.count() - 1), more_btn)
 
     def _add_style_swatch_submenus(self, style_menu: QMenu, window) -> bool:
+        """Populate token-styling submenus with swatch icons and available style actions."""
         swatches = [
             ("Using 1st Style", "style_all_1_action", "style_one_1_action", "#8fb6a2"),
             ("Using 2nd Style", "style_all_2_action", "style_one_2_action", "#e6ea8e"),
@@ -407,6 +435,7 @@ class EditorTab(QWidget):
         return any_added
 
     def _show_editor_context_menu(self, pos) -> None:
+        """Build and show the full editor context menu based on selection and action state."""
         window = self._main_window()
         if window is None:
             return
@@ -611,6 +640,7 @@ class EditorTab(QWidget):
 
     @staticmethod
     def _selection_looks_like_math(text: str) -> bool:
+        """Heuristically detect whether selected text resembles mathematical content."""
         probe = str(text or "").strip()
         if not probe:
             return False

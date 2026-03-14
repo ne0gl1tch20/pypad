@@ -1,3 +1,8 @@
+"""Implement the docked AI chat surface that lets users ask questions and apply AI-generated suggestions.
+
+This module belongs to the AI-assisted editing and collaboration UI layer. It helps explain how `pypad.ui.ai` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 
 import base64
@@ -66,45 +71,57 @@ _LOGGER = get_logger(__name__)
 
 
 class _FlowLayout(QLayout):
+    """Class that implements the `_FlowLayout` runtime behavior."""
     def __init__(self, parent: QWidget | None = None, *, h_spacing: int = 6, v_spacing: int = 6) -> None:
+        """Initialize the `ai_chat_dock` state for this instance."""
         super().__init__(parent)
         self._items: list[QLayoutItem] = []
         self._h_spacing = h_spacing
         self._v_spacing = v_spacing
 
     def addItem(self, item: QLayoutItem) -> None:
+        """Execute the `addItem` workflow."""
         self._items.append(item)
 
     def count(self) -> int:
+        """Execute the `count` workflow."""
         return len(self._items)
 
     def itemAt(self, index: int) -> QLayoutItem | None:
+        """Execute the `itemAt` workflow."""
         if 0 <= index < len(self._items):
             return self._items[index]
         return None
 
     def takeAt(self, index: int) -> QLayoutItem | None:
+        """Execute the `takeAt` workflow."""
         if 0 <= index < len(self._items):
             return self._items.pop(index)
         return None
 
     def expandingDirections(self):  # type: ignore[override]
+        """Execute the `expandingDirections` workflow."""
         return Qt.Orientation(0)
 
     def hasHeightForWidth(self) -> bool:
+        """Execute the `hasHeightForWidth` workflow."""
         return True
 
     def heightForWidth(self, width: int) -> int:
+        """Execute the `heightForWidth` workflow."""
         return self._do_layout(QRect(0, 0, max(0, width), 0), test_only=True)
 
     def setGeometry(self, rect: QRect) -> None:
+        """Execute the `setGeometry` workflow."""
         super().setGeometry(rect)
         self._do_layout(rect, test_only=False)
 
     def sizeHint(self) -> QSize:
+        """Execute the `sizeHint` workflow."""
         return self.minimumSize()
 
     def minimumSize(self) -> QSize:
+        """Execute the `minimumSize` workflow."""
         size = QSize(0, 0)
         for item in self._items:
             size = size.expandedTo(item.minimumSize())
@@ -113,6 +130,7 @@ class _FlowLayout(QLayout):
         return size
 
     def _do_layout(self, rect: QRect, *, test_only: bool) -> int:
+        """Internal helper for `_do_layout`."""
         margins = self.contentsMargins()
         x = rect.x() + margins.left()
         y = rect.y() + margins.top()
@@ -138,33 +156,40 @@ class _FlowLayout(QLayout):
 
 
 class _HoverActionRow(QWidget):
+    """Class that implements the `_HoverActionRow` runtime behavior."""
     def __init__(self, parent: QWidget | None = None) -> None:
+        """Initialize the `ai_chat_dock` state for this instance."""
         super().__init__(parent)
         self._actions_widget: QWidget | None = None
         self._actions_enabled = True
 
     def set_actions_widget(self, widget: QWidget | None) -> None:
+        """Update state handled by `set_actions_widget`."""
         self._actions_widget = widget
         if self._actions_widget is not None:
             self._actions_widget.setVisible(False)
 
     def set_actions_enabled(self, enabled: bool) -> None:
+        """Update state handled by `set_actions_enabled`."""
         self._actions_enabled = bool(enabled)
         if self._actions_widget is not None:
             self._actions_widget.setVisible(False)
 
     def enterEvent(self, event) -> None:  # type: ignore[override]
+        """Execute the `enterEvent` workflow."""
         if self._actions_widget is not None and self._actions_enabled:
             self._actions_widget.setVisible(True)
         super().enterEvent(event)
 
     def leaveEvent(self, event) -> None:  # type: ignore[override]
+        """Execute the `leaveEvent` workflow."""
         if self._actions_widget is not None:
             self._actions_widget.setVisible(False)
         super().leaveEvent(event)
 
 
 class _Bubble(QFrame):
+    """Class that implements the `_Bubble` runtime behavior."""
     _HIDDEN_COMMAND_RE = re.compile(
         r"\[PYPAD_CMD_(?:(?:OFFER|OFF)_INSERT|SET_FILE|SET_CHAT_TITLE|OFFER_PATCH|PROPOSE_ACTION)_BEGIN\].*?\[PYPAD_CMD_(?:(?:OFFER|OFF)_INSERT|SET_FILE|SET_CHAT_TITLE|OFFER_PATCH|PROPOSE_ACTION)_END\]",
         re.DOTALL | re.IGNORECASE,
@@ -205,6 +230,7 @@ class _Bubble(QFrame):
         copy_icon_data_uri: str = "",
         on_pypad_link: Callable[[str], bool] | None = None,
     ) -> None:
+        """Initialize the `ai_chat_dock` state for this instance."""
         super().__init__(parent)
         self._role = role
         self._raw_text = text
@@ -242,19 +268,23 @@ class _Bubble(QFrame):
         self._sync_height()
 
     def append_text(self, text: str) -> None:
+        """Execute the `append_text` workflow."""
         self._raw_text += text
         self._render_markdown()
         self._sync_height()
 
     def set_text(self, text: str) -> None:
+        """Update state handled by `set_text`."""
         self._raw_text = text
         self._render_markdown()
         self._sync_height()
 
     def text(self) -> str:
+        """Execute the `text` workflow."""
         return self._HIDDEN_COMMAND_RE.sub("", self._raw_text).strip()
 
     def _render_markdown(self) -> None:
+        """Internal helper for `_render_markdown`."""
         if self._should_use_mathjax():
             self._render_markdown_mathjax()
             return
@@ -270,6 +300,7 @@ class _Bubble(QFrame):
         card_idx = 0
 
         def _replace_fenced(match: re.Match[str]) -> str:
+            """Internal helper for `_replace_fenced`."""
             nonlocal card_idx
             raw_label = (match.group(1) or "").strip()
             label = raw_label if raw_label else f"Code {card_idx + 1}"
@@ -304,6 +335,7 @@ class _Bubble(QFrame):
         processed = re.sub(r"```([^\n`]*)\n(.*?)```", _replace_fenced, clean_text, flags=re.DOTALL)
 
         def _replace_pypad_with_placeholder(match: re.Match[str]) -> str:
+            """Internal helper for `_replace_pypad_with_placeholder`."""
             href = str(match.group(1) or "").strip()
             if not href:
                 return ""
@@ -329,6 +361,7 @@ class _Bubble(QFrame):
         self._view.setHtml(html)
 
     def _should_use_mathjax(self) -> bool:
+        """Internal helper for `_should_use_mathjax`."""
         if self._web_view is None:
             return False
         text = str(self._raw_text or "")
@@ -337,6 +370,7 @@ class _Bubble(QFrame):
         return bool(self._MATH_RE.search(text))
 
     def _render_markdown_mathjax(self) -> None:
+        """Internal helper for `_render_markdown_mathjax`."""
         if self._web_view is None:
             return
         window = self.window()
@@ -362,6 +396,7 @@ class _Bubble(QFrame):
             self._web_view.setFixedHeight(180)
 
     def _apply_web_height(self, value) -> None:
+        """Internal helper for `_apply_web_height`."""
         try:
             height = int(float(value))
         except Exception:
@@ -374,6 +409,7 @@ class _Bubble(QFrame):
     def _normalize_escaped_math_delimiters(text: str) -> str:
         # Many model outputs escape math delimiters for markdown (\$...\$).
         # Normalize those back so MathJax can parse equations.
+        """Internal helper for `_normalize_escaped_math_delimiters`."""
         normalized = str(text or "")
         normalized = normalized.replace("\\$", "$")
         normalized = normalized.replace("\\[", "[")
@@ -384,9 +420,11 @@ class _Bubble(QFrame):
     def _normalize_peano_notation(cls, text: str) -> str:
         # Convert obvious unary Peano chains (S(...S(0)...)) to plain integers.
         # This is a display-only cleanup for AI responses.
+        """Internal helper for `_normalize_peano_notation`."""
         value = str(text or "")
 
         def _replace(match: re.Match[str]) -> str:
+            """Internal helper for `_replace`."""
             token = match.group(0)
             n = token.count("S(")
             # Keep output bounded/safe for huge nested chains.
@@ -398,11 +436,14 @@ class _Bubble(QFrame):
 
     @classmethod
     def _normalize_broken_pypad_buttons(cls, text: str) -> str:
+        """Internal helper for `_normalize_broken_pypad_buttons`."""
         def _replace_markdown_link(match: re.Match[str]) -> str:
+            """Internal helper for `_replace_markdown_link`."""
             href = cls._normalize_pypad_href(str(match.group(2) or ""))
             return href or match.group(0)
 
         def _replace_anchor(match: re.Match[str]) -> str:
+            """Internal helper for `_replace_anchor`."""
             href = cls._normalize_pypad_href(str(match.group(1) or ""))
             label = str(match.group(2) or "").strip()
             if not href:
@@ -419,6 +460,7 @@ class _Bubble(QFrame):
         )
 
         def _replace(match: re.Match[str]) -> str:
+            """Internal helper for `_replace`."""
             path = str(match.group(1) or "").strip().strip("/")
             if not path:
                 return match.group(0)
@@ -428,6 +470,7 @@ class _Bubble(QFrame):
 
     @staticmethod
     def _normalize_pypad_href(href: str) -> str:
+        """Internal helper for `_normalize_pypad_href`."""
         value = str(href or "").strip()
         if not value:
             return ""
@@ -439,6 +482,7 @@ class _Bubble(QFrame):
 
     @staticmethod
     def _label_for_pypad_link(href: str) -> str:
+        """Internal helper for `_label_for_pypad_link`."""
         normalized = _Bubble._normalize_pypad_href(href).lower()
         mapping = {
             "pypad://settings": "Open Settings",
@@ -458,6 +502,7 @@ class _Bubble(QFrame):
         return f"Open {target}"
 
     def _pypad_link_html(self, href: str) -> str:
+        """Internal helper for `_pypad_link_html`."""
         href = self._normalize_pypad_href(href)
         if not href:
             return ""
@@ -471,6 +516,7 @@ class _Bubble(QFrame):
         )
 
     def _on_anchor_clicked(self, url: QUrl) -> None:
+        """Internal helper for `_on_anchor_clicked`."""
         href = self._normalize_pypad_href(url.toString())
         window = self.window()
         settings = getattr(window, "settings", {}) if window is not None else {}
@@ -494,6 +540,7 @@ class _Bubble(QFrame):
             QApplication.clipboard().setText(self._code_blocks[index])
 
     def _sync_height(self) -> None:
+        """Internal helper for `_sync_height`."""
         if self._web_view is not None and self._web_view.isVisible():
             try:
                 self._web_view.page().runJavaScript(
@@ -509,12 +556,15 @@ class _Bubble(QFrame):
         self._view.setFixedHeight(int(doc_height + 8))
 
     def resizeEvent(self, event: QResizeEvent) -> None:
+        """Execute the `resizeEvent` workflow."""
         super().resizeEvent(event)
         self._sync_height()
 
 
 class _DockTitleBar(QWidget):
+    """Class that implements the `_DockTitleBar` runtime behavior."""
     def __init__(self, dock: "AIChatDock") -> None:
+        """Initialize the `ai_chat_dock` state for this instance."""
         super().__init__(dock)
         self.setObjectName("aiChatTitleBar")
         self._dock = dock
@@ -543,15 +593,19 @@ class _DockTitleBar(QWidget):
         self.setMinimumHeight(28)
 
     def _toggle_floating(self) -> None:
+        """Internal helper for `_toggle_floating`."""
         self._dock.setFloating(not self._dock.isFloating())
 
 
 class _AIChatInputEdit(QPlainTextEdit):
+    """Class that implements the `_AIChatInputEdit` runtime behavior."""
     def __init__(self, parent: QWidget, on_send: Callable[[], None]) -> None:
+        """Initialize the `ai_chat_dock` state for this instance."""
         super().__init__(parent)
         self._on_send = on_send
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
+        """Execute the `keyPressEvent` workflow."""
         modifiers = event.modifiers()
         key = event.key()
         if modifiers == Qt.KeyboardModifier.ControlModifier and key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
@@ -562,6 +616,7 @@ class _AIChatInputEdit(QPlainTextEdit):
 
 
 class AIChatDock(QDockWidget):
+    """Class that implements the `AIChatDock` runtime behavior."""
     apply_completed = Signal(str, bool, str)
     _INSERT_CMD_RE = re.compile(
         r"\[PYPAD_CMD_(?:OFFER|OFF)_INSERT_BEGIN\](.*?)\[PYPAD_CMD_(?:OFFER|OFF)_INSERT_END\]",
@@ -585,6 +640,7 @@ class AIChatDock(QDockWidget):
     )
 
     def __init__(self, parent: QWidget, ai_controller: "AIController") -> None:
+        """Initialize the `ai_chat_dock` state for this instance."""
         super().__init__("AI Chat", parent)
         self.setObjectName("aiChatDock")
         self.setAllowedAreas(Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea | Qt.BottomDockWidgetArea)
@@ -742,6 +798,7 @@ class AIChatDock(QDockWidget):
         self._refresh_context_usage_indicator()
 
     def _build_quick_plus_menu(self, state: str) -> None:
+        """Internal helper for `_build_quick_plus_menu`."""
         menu = getattr(self, "quick_plus_menu", None)
         if menu is None:
             return
@@ -771,7 +828,9 @@ class AIChatDock(QDockWidget):
         status_action.setEnabled(False)
 
     def _setup_shortcuts(self) -> None:
+        """Internal helper for `_setup_shortcuts`."""
         def _dock_shortcut(sequence: str, callback: Callable[[], None]) -> None:
+            """Internal helper for `_dock_shortcut`."""
             shortcut = QShortcut(QKeySequence(sequence), self)
             shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
             shortcut.activated.connect(callback)
@@ -782,6 +841,7 @@ class AIChatDock(QDockWidget):
         _dock_shortcut("Alt+M", self._choose_chat_model)
 
     def _log_ai_chat(self, message: str) -> None:
+        """Internal helper for `_log_ai_chat`."""
         window = getattr(self.ai_controller, "window", None)
         if window is None:
             return
@@ -796,10 +856,12 @@ class AIChatDock(QDockWidget):
                 logger("Info", f"[AI Chat] {message}")
 
     def _new_response_correlation_id(self) -> str:
+        """Internal helper for `_new_response_correlation_id`."""
         self._ai_response_correlation_seq += 1
         return f"chatresp-{self._ai_response_correlation_seq:05d}"
 
     def _is_effective_dark_mode(self) -> bool:
+        """Internal helper for `_is_effective_dark_mode`."""
         icon_color = getattr(self.ai_controller.window, "_icon_color", None)
         if isinstance(icon_color, QColor) and icon_color.isValid():
             # Light text color usually means dark UI chrome.
@@ -807,6 +869,7 @@ class AIChatDock(QDockWidget):
         return bool(getattr(self.ai_controller.window, "settings", {}).get("dark_mode", False))
 
     def _icon(self, name: str, size: int = 16) -> QIcon:
+        """Internal helper for `_icon`."""
         path = resolve_asset_path("icons", f"{name}.svg")
         if path is None:
             return QIcon()
@@ -837,6 +900,7 @@ class AIChatDock(QDockWidget):
 
     @staticmethod
     def _force_svg_monochrome(svg_text: str, color_hex: str) -> str:
+        """Internal helper for `_force_svg_monochrome`."""
         text = re.sub(
             r'\b(stroke|fill)\b\s*=\s*["\'](?!none\b)[^"\']*["\']',
             lambda m: f'{m.group(1)}="{color_hex}"',
@@ -852,6 +916,7 @@ class AIChatDock(QDockWidget):
         return text
 
     def _setup_button_icons(self) -> None:
+        """Internal helper for `_setup_button_icons`."""
         clear_icon = self._icon("ai-clear", size=16)
         send_icon = self._icon("ai-send", size=18)
         stop_icon = self._icon("ai-stop", size=18)
@@ -877,6 +942,7 @@ class AIChatDock(QDockWidget):
                 btn.setMaximumWidth(38)
 
     def _copy_code_icon_uri(self) -> str:
+        """Internal helper for `_copy_code_icon_uri`."""
         path = resolve_asset_path("icons", "ai-copy.svg")
         if path is None:
             return ""
@@ -889,6 +955,7 @@ class AIChatDock(QDockWidget):
             return ""
 
     def _apply_styles(self) -> None:
+        """Internal helper for `_apply_styles`."""
         settings = getattr(self.ai_controller.window, "settings", {})
         tokens = build_tokens_from_settings(settings if isinstance(settings, dict) else {})
         body_qss, title_qss = build_ai_chat_qss(tokens)
@@ -905,6 +972,7 @@ class AIChatDock(QDockWidget):
         self._refresh_mathjax_indicator()
 
     def refresh_theme(self) -> None:
+        """Execute the `refresh_theme` workflow."""
         self._icon_cache.clear()
         self._copy_code_icon_data_uri = self._copy_code_icon_uri()
         self._apply_styles()
@@ -913,6 +981,7 @@ class AIChatDock(QDockWidget):
         self._refresh_quick_action_icons()
 
     def _refresh_mathjax_indicator(self) -> None:
+        """Internal helper for `_refresh_mathjax_indicator`."""
         label = getattr(self._title_bar, "mathjax_label", None)
         if label is None:
             return
@@ -924,6 +993,7 @@ class AIChatDock(QDockWidget):
             label.setToolTip("LaTeX rendering is enabled for math-like AI chat messages.")
 
     def _refresh_message_action_icons(self) -> None:
+        """Internal helper for `_refresh_message_action_icons`."""
         for button in self.messages_host.findChildren(QPushButton):
             icon_name = button.property("ai_icon_name")
             if not icon_name:
@@ -934,6 +1004,7 @@ class AIChatDock(QDockWidget):
             button.setIcon(icon)
 
     def _refresh_quick_action_icons(self) -> None:
+        """Internal helper for `_refresh_quick_action_icons`."""
         bar = getattr(self, "quick_actions_bar", None)
         if bar is None:
             return
@@ -948,6 +1019,7 @@ class AIChatDock(QDockWidget):
             button.setIconSize(QSize(12, 12))
 
     def _remove_attachment_by_id(self, attachment_id: str) -> bool:
+        """Internal helper for `_remove_attachment_by_id`."""
         session = self._ensure_active_session(create_if_missing=False)
         if session is None:
             return False
@@ -965,6 +1037,7 @@ class AIChatDock(QDockWidget):
         return True
 
     def _refresh_attachment_chips(self) -> None:
+        """Internal helper for `_refresh_attachment_chips`."""
         if not hasattr(self, "attachments_layout"):
             return
         while self.attachments_layout.count() > 0:
@@ -1015,11 +1088,13 @@ class AIChatDock(QDockWidget):
         self._refresh_context_usage_indicator()
 
     def _set_generation_state(self, state: str) -> None:
+        """Internal helper for `_set_generation_state`."""
         value = str(state or "").strip().lower()
         normalized = value if value in {"idle", "thinking", "streaming", "error"} else "idle"
         self._build_quick_plus_menu(normalized)
 
     def _estimate_context_chars(self, prompt: str) -> tuple[int, int, bool]:
+        """Internal helper for `_estimate_context_chars`."""
         session = self._current_session()
         policy = self._sanitize_memory_policy(session.get("memory_policy", {})) if isinstance(session, dict) else self._default_memory_policy()
         attachments_count = 0
@@ -1049,6 +1124,7 @@ class AIChatDock(QDockWidget):
         return total, attachments_count, workspace_auto
 
     def _refresh_context_usage_indicator(self) -> None:
+        """Internal helper for `_refresh_context_usage_indicator`."""
         label = getattr(self, "context_usage_label", None)
         if label is None:
             return
@@ -1058,6 +1134,7 @@ class AIChatDock(QDockWidget):
         label.setText(f"Context: {attachments_count} attachments | ~{total} chars{suffix}")
 
     def _build_quick_action_prompt(self, action_key: str) -> tuple[str, str]:
+        """Internal helper for `_build_quick_action_prompt`."""
         key = str(action_key or "").strip().lower()
         window = getattr(self.ai_controller, "window", None)
         tab = window.active_tab() if window is not None and hasattr(window, "active_tab") else None
@@ -1099,6 +1176,7 @@ class AIChatDock(QDockWidget):
         return "", ""
 
     def _run_quick_action(self, action_key: str) -> None:
+        """Internal helper for `_run_quick_action`."""
         if not self.send_btn.isEnabled():
             return
         prompt, visible = self._build_quick_action_prompt(action_key)
@@ -1107,20 +1185,24 @@ class AIChatDock(QDockWidget):
         self.send_prompt(prompt=prompt, visible_prompt=visible)
 
     def focus_prompt(self) -> None:
+        """Execute the `focus_prompt` workflow."""
         self.input.setFocus()
 
     def _current_model_name(self) -> str:
+        """Internal helper for `_current_model_name`."""
         window = getattr(self.ai_controller, "window", None)
         settings = getattr(window, "settings", {}) if window is not None else {}
         return str(settings.get("ai_model", "gemini-3-flash-preview") or "gemini-3-flash-preview")
 
     def _refresh_model_button_label(self) -> None:
+        """Internal helper for `_refresh_model_button_label`."""
         model = self._current_model_name()
         short = model if len(model) <= 18 else model[:15] + "..."
         self.model_btn.setText(f"Model: {short}")
         self.model_btn.setToolTip(f"AI model\nCurrent: {model}\nShortcut: Alt+M")
 
     def _choose_chat_model(self) -> None:
+        """Internal helper for `_choose_chat_model`."""
         window = getattr(self.ai_controller, "window", None)
         if window is None:
             return
@@ -1160,10 +1242,12 @@ class AIChatDock(QDockWidget):
 
     @staticmethod
     def _new_chat_id() -> str:
+        """Internal helper for `_new_chat_id`."""
         return f"chat-{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
 
     @staticmethod
     def _chat_title_from_prompt(prompt: str) -> str:
+        """Internal helper for `_chat_title_from_prompt`."""
         text = (prompt or "").strip().replace("\r", " ").replace("\n", " ")
         if not text:
             return "New Chat"
@@ -1173,6 +1257,7 @@ class AIChatDock(QDockWidget):
 
     @staticmethod
     def _normalize_chat_title(value: str) -> str:
+        """Internal helper for `_normalize_chat_title`."""
         raw = re.sub(r"\s+", " ", str(value or "").strip())
         # Defensive fallback: if a base64 payload reaches title apply, decode it here.
         maybe_b64 = raw.strip().strip("\"'")
@@ -1196,6 +1281,7 @@ class AIChatDock(QDockWidget):
 
     @staticmethod
     def _default_memory_policy() -> dict[str, object]:
+        """Internal helper for `_default_memory_policy`."""
         return {
             "include_current_file_auto": False,
             "include_workspace_snippets_auto": False,
@@ -1204,6 +1290,7 @@ class AIChatDock(QDockWidget):
         }
 
     def _memory_policy_defaults_from_settings(self) -> dict[str, object]:
+        """Internal helper for `_memory_policy_defaults_from_settings`."""
         window = getattr(self.ai_controller, "window", None)
         settings = getattr(window, "settings", {}) if window is not None else {}
         base = self._default_memory_policy()
@@ -1230,6 +1317,7 @@ class AIChatDock(QDockWidget):
 
     @classmethod
     def _sanitize_memory_policy(cls, raw: object) -> dict[str, object]:
+        """Internal helper for `_sanitize_memory_policy`."""
         base = cls._default_memory_policy()
         if not isinstance(raw, dict):
             return dict(base)
@@ -1240,8 +1328,10 @@ class AIChatDock(QDockWidget):
 
     @staticmethod
     def _sanitize_context_attachments(raw: object) -> list[dict[str, object]]:
+        """Internal helper for `_sanitize_context_attachments`."""
         out: list[dict[str, object]] = []
         def _to_int(v: object) -> int:
+            """Internal helper for `_to_int`."""
             try:
                 return int(v)
             except Exception:
@@ -1273,6 +1363,7 @@ class AIChatDock(QDockWidget):
         return out
 
     def _default_chat_session(self, *, title: str = "New Chat") -> dict[str, object]:
+        """Internal helper for `_default_chat_session`."""
         now = datetime.now().isoformat(timespec="seconds")
         return {
             "id": self._new_chat_id(),
@@ -1290,12 +1381,14 @@ class AIChatDock(QDockWidget):
         }
 
     def _session_sort_key(self, session: dict[str, object]) -> tuple[int, str, str]:
+        """Internal helper for `_session_sort_key`."""
         pinned = bool(session.get("pinned", False))
         updated = str(session.get("updated_at", "") or "")
         title = str(session.get("title", "") or "New Chat").lower()
         return (0 if pinned else 1, "-" + updated, title)
 
     def _sanitize_chat_sessions(self, raw: object) -> list[dict[str, object]]:
+        """Internal helper for `_sanitize_chat_sessions`."""
         sessions: list[dict[str, object]] = []
         if not isinstance(raw, list):
             return sessions
@@ -1334,6 +1427,7 @@ class AIChatDock(QDockWidget):
         return sessions
 
     def _clear_messages_ui(self) -> None:
+        """Internal helper for `_clear_messages_ui`."""
         while self.messages_layout.count() > 1:
             item = self.messages_layout.takeAt(0)
             widget = item.widget()
@@ -1341,6 +1435,7 @@ class AIChatDock(QDockWidget):
                 widget.deleteLater()
 
     def _current_session(self) -> dict[str, object] | None:
+        """Internal helper for `_current_session`."""
         sid = str(self._active_chat_id or "")
         for session in self._chat_sessions:
             if str(session.get("id", "")) == sid:
@@ -1348,6 +1443,7 @@ class AIChatDock(QDockWidget):
         return None
 
     def _ensure_active_session(self, *, create_if_missing: bool = True) -> dict[str, object] | None:
+        """Internal helper for `_ensure_active_session`."""
         session = self._current_session()
         if session is not None:
             return session
@@ -1362,6 +1458,7 @@ class AIChatDock(QDockWidget):
         return session
 
     def _refresh_chat_session_header(self) -> None:
+        """Internal helper for `_refresh_chat_session_header`."""
         session = self._current_session()
         if session is None:
             self.chat_title_label.setText("New Chat")
@@ -1379,6 +1476,7 @@ class AIChatDock(QDockWidget):
         self.chat_title_label.setToolTip(title)
 
     def _set_active_chat(self, session_id: str, *, persist: bool = True) -> None:
+        """Internal helper for `_set_active_chat`."""
         target = None
         for session in self._chat_sessions:
             if str(session.get("id", "")) == str(session_id):
@@ -1411,12 +1509,14 @@ class AIChatDock(QDockWidget):
             self._persist_history(save=True)
 
     def _new_chat(self) -> None:
+        """Internal helper for `_new_chat`."""
         session = self._default_chat_session()
         self._chat_sessions.insert(0, session)
         self._set_active_chat(str(session.get("id", "")), persist=True)
         self.input.setFocus()
 
     def _rename_current_chat(self) -> None:
+        """Internal helper for `_rename_current_chat`."""
         session = self._ensure_active_session(create_if_missing=False)
         if session is None:
             return
@@ -1432,6 +1532,7 @@ class AIChatDock(QDockWidget):
         self._persist_history(save=True)
 
     def _toggle_current_chat_flag(self, key: str) -> None:
+        """Internal helper for `_toggle_current_chat_flag`."""
         session = self._ensure_active_session(create_if_missing=False)
         if session is None:
             return
@@ -1441,6 +1542,7 @@ class AIChatDock(QDockWidget):
         self._persist_history(save=True)
 
     def _delete_current_chat(self) -> None:
+        """Internal helper for `_delete_current_chat`."""
         session = self._current_session()
         if session is None:
             return
@@ -1466,6 +1568,7 @@ class AIChatDock(QDockWidget):
             self._persist_history(save=True)
 
     def _session_by_id(self, session_id: str) -> dict[str, object] | None:
+        """Internal helper for `_session_by_id`."""
         wanted = str(session_id or "")
         for session in self._chat_sessions:
             if str(session.get("id", "")) == wanted:
@@ -1473,6 +1576,7 @@ class AIChatDock(QDockWidget):
         return None
 
     def _rename_chat_by_id(self, session_id: str) -> None:
+        """Internal helper for `_rename_chat_by_id`."""
         session = self._session_by_id(session_id)
         if session is None:
             return
@@ -1488,6 +1592,7 @@ class AIChatDock(QDockWidget):
         self._persist_history(save=True)
 
     def _toggle_chat_flag_by_id(self, session_id: str, key: str) -> None:
+        """Internal helper for `_toggle_chat_flag_by_id`."""
         session = self._session_by_id(session_id)
         if session is None:
             return
@@ -1497,6 +1602,7 @@ class AIChatDock(QDockWidget):
         self._persist_history(save=True)
 
     def _delete_chat_by_id(self, session_id: str) -> None:
+        """Internal helper for `_delete_chat_by_id`."""
         session = self._session_by_id(session_id)
         if session is None:
             return
@@ -1525,6 +1631,7 @@ class AIChatDock(QDockWidget):
             self._persist_history(save=True)
 
     def _chat_transcript_text(self, session: dict[str, object]) -> str:
+        """Internal helper for `_chat_transcript_text`."""
         title = str(session.get("title", "") or "New Chat")
         lines = [f"# {title}", ""]
         for item in session.get("messages", []) if isinstance(session.get("messages", []), list) else []:
@@ -1540,6 +1647,7 @@ class AIChatDock(QDockWidget):
         return "\n".join(lines).strip()
 
     def _add_current_chat_to_project(self) -> None:
+        """Internal helper for `_add_current_chat_to_project`."""
         session = self._ensure_active_session(create_if_missing=False)
         if session is None:
             return
@@ -1564,6 +1672,7 @@ class AIChatDock(QDockWidget):
         self._persist_history(save=True)
 
     def _extract_current_chat_tasks_to_project(self) -> None:
+        """Internal helper for `_extract_current_chat_tasks_to_project`."""
         session = self._ensure_active_session(create_if_missing=False)
         if session is None:
             return
@@ -1616,6 +1725,7 @@ class AIChatDock(QDockWidget):
             window.show_status_message(f"Saved AI tasks: {target.name}", 3500)
 
     def _search_chat_sessions(self) -> None:
+        """Internal helper for `_search_chat_sessions`."""
         if not self._chat_sessions:
             QMessageBox.information(self, "Search Chats", "No saved chats yet.")
             return
@@ -1662,6 +1772,7 @@ class AIChatDock(QDockWidget):
         self._set_active_chat(str(matches[idx].get("id", "")), persist=True)
 
     def _start_menu_matches_filter(self, session: dict[str, object], query: str) -> bool:
+        """Internal helper for `_start_menu_matches_filter`."""
         q = str(query or "").strip().lower()
         if not q:
             return True
@@ -1676,6 +1787,7 @@ class AIChatDock(QDockWidget):
         return False
 
     def _on_start_menu_search_text_changed(self, text: str) -> None:
+        """Internal helper for `_on_start_menu_search_text_changed`."""
         self._start_menu_filter_text = str(text or "")
         if self._start_menu_rebuild_active:
             return
@@ -1686,6 +1798,7 @@ class AIChatDock(QDockWidget):
             edit.setCursorPosition(len(edit.text()))
 
     def _add_start_menu_search_widget(self, menu: QMenu) -> None:
+        """Internal helper for `_add_start_menu_search_widget`."""
         action = QWidgetAction(menu)
         host = QWidget(menu)
         lay = QHBoxLayout(host)
@@ -1701,6 +1814,7 @@ class AIChatDock(QDockWidget):
         self._start_menu_search_edit = edit
 
     def _rebuild_start_menu(self) -> None:
+        """Internal helper for `_rebuild_start_menu`."""
         menu = self.start_menu
         self._start_menu_rebuild_active = True
         menu.clear()
@@ -1763,6 +1877,7 @@ class AIChatDock(QDockWidget):
         ]
 
         def _add_session_entries(parent_menu: QMenu, sessions: list[dict[str, object]]) -> None:
+            """Internal helper for `_add_session_entries`."""
             for session in sorted(sessions, key=self._session_sort_key):
                 sid = str(session.get("id", ""))
                 title = str(session.get("title", "") or "New Chat")
@@ -1788,6 +1903,7 @@ class AIChatDock(QDockWidget):
         self._start_menu_rebuild_active = False
 
     def _chat_description(self, session: dict[str, object]) -> str:
+        """Internal helper for `_chat_description`."""
         messages = session.get("messages", [])
         preview = ""
         if isinstance(messages, list):
@@ -1815,6 +1931,7 @@ class AIChatDock(QDockWidget):
         return meta or "No messages yet"
 
     def _open_saved_chats_dialog(self) -> None:
+        """Internal helper for `_open_saved_chats_dialog`."""
         dlg = QDialog(self)
         dlg.setWindowTitle("Saved Chats")
         dlg.resize(760, 560)
@@ -1830,6 +1947,7 @@ class AIChatDock(QDockWidget):
         buttons.rejected.connect(dlg.reject)
 
         def rebuild() -> None:
+            """Execute the `rebuild` workflow."""
             listing.clear()
             query = str(search.text() or "").strip().lower()
             ordered = sorted(self._chat_sessions, key=self._session_sort_key)
@@ -1883,6 +2001,7 @@ class AIChatDock(QDockWidget):
                 listing.setItemWidget(item, row)
 
         def open_selected(item: QListWidgetItem) -> None:
+            """Open the UI or resource handled by `open_selected`."""
             sid = str(item.data(Qt.UserRole) or "")
             if not sid:
                 return
@@ -1895,6 +2014,7 @@ class AIChatDock(QDockWidget):
         dlg.exec()
 
     def clear_chat(self) -> None:
+        """Execute the `clear_chat` workflow."""
         _LOGGER.debug("AI chat clear_chat active_chat_id=%s history_items=%d", self._active_chat_id, len(self._history))
         self._set_generation_state("idle")
         self._pending_prompt_edit_row = None
@@ -1915,6 +2035,7 @@ class AIChatDock(QDockWidget):
         self._refresh_attachment_chips()
 
     def _send_prompt(self) -> None:
+        """Internal helper for `_send_prompt`."""
         prompt = self.input.toPlainText().strip()
         if not prompt:
             return
@@ -1961,6 +2082,7 @@ class AIChatDock(QDockWidget):
         _LOGGER.debug("AI chat _send_prompt dispatched effective_chars=%d", len(effective_prompt))
 
     def send_prompt(self, *, prompt: str, visible_prompt: str | None = None, on_done=None) -> None:
+        """Execute the `send_prompt` workflow."""
         prompt = (prompt or "").strip()
         if not prompt:
             return
@@ -2016,9 +2138,11 @@ class AIChatDock(QDockWidget):
     def _maybe_name_current_chat_from_first_prompt(self, prompt: str) -> None:
         # Title is now owned by the AI hidden title-command flow.
         # Keep the method as a no-op to avoid changing multiple send paths.
+        """Internal helper for `_maybe_name_current_chat_from_first_prompt`."""
         return
 
     def _apply_ai_chat_title_command(self, title: str) -> None:
+        """Internal helper for `_apply_ai_chat_title_command`."""
         session = self._current_session()
         if session is None:
             return
@@ -2031,6 +2155,7 @@ class AIChatDock(QDockWidget):
         self._refresh_chat_session_header()
 
     def _request_ai_chat_title_fallback(self) -> None:
+        """Internal helper for `_request_ai_chat_title_fallback`."""
         session = self._current_session()
         if session is None:
             return
@@ -2080,10 +2205,12 @@ class AIChatDock(QDockWidget):
         parts: list[str] = []
 
         def _on_chunk(piece: str) -> None:
+            """Internal helper for `_on_chunk`."""
             if piece:
                 parts.append(piece)
 
         def _on_done(text: str) -> None:
+            """Internal helper for `_on_done`."""
             payload = text or "".join(parts)
             _clean, _insert, _set_file, set_title, _patch, _action = self._extract_hidden_commands(payload)
             if not set_title:
@@ -2099,6 +2226,7 @@ class AIChatDock(QDockWidget):
             self._persist_history(save=True)
 
     def _add_context_attachment(self, attachment: dict[str, object]) -> None:
+        """Internal helper for `_add_context_attachment`."""
         session = self._ensure_active_session(create_if_missing=True)
         if session is None:
             return
@@ -2113,6 +2241,7 @@ class AIChatDock(QDockWidget):
         self._refresh_attachment_chips()
 
     def _attach_current_file_to_chat(self) -> None:
+        """Internal helper for `_attach_current_file_to_chat`."""
         window = getattr(self.ai_controller, "window", None)
         tab = window.active_tab() if window is not None and hasattr(window, "active_tab") else None
         if tab is None:
@@ -2134,6 +2263,7 @@ class AIChatDock(QDockWidget):
 
     @staticmethod
     def _read_attachment_file_text(path: Path) -> str:
+        """Internal helper for `_read_attachment_file_text`."""
         try:
             raw = path.read_bytes()
         except Exception:
@@ -2146,6 +2276,7 @@ class AIChatDock(QDockWidget):
         return raw.decode("utf-8", errors="replace")
 
     def _attach_files_to_chat(self) -> None:
+        """Internal helper for `_attach_files_to_chat`."""
         window = getattr(self.ai_controller, "window", None)
         start_dir = ""
         if window is not None and hasattr(window, "active_tab"):
@@ -2193,6 +2324,7 @@ class AIChatDock(QDockWidget):
                 window.show_status_message("No readable text files were added.", 3000)
 
     def _attach_selection_to_chat(self) -> None:
+        """Internal helper for `_attach_selection_to_chat`."""
         window = getattr(self.ai_controller, "window", None)
         tab = window.active_tab() if window is not None and hasattr(window, "active_tab") else None
         if tab is None:
@@ -2216,6 +2348,7 @@ class AIChatDock(QDockWidget):
         self.ai_controller.window.show_status_message("Attached selection to chat.", 2500)
 
     def _attach_workspace_search_results_to_chat(self) -> None:
+        """Internal helper for `_attach_workspace_search_results_to_chat`."""
         window = getattr(self.ai_controller, "window", None)
         if window is None:
             return
@@ -2249,6 +2382,7 @@ class AIChatDock(QDockWidget):
         window.show_status_message("Attached workspace search results to chat.", 2500)
 
     def _add_manual_snippet_to_chat(self) -> None:
+        """Internal helper for `_add_manual_snippet_to_chat`."""
         session = self._ensure_active_session(create_if_missing=True)
         if session is None:
             return
@@ -2272,6 +2406,7 @@ class AIChatDock(QDockWidget):
         self.ai_controller.window.show_status_message("Added manual chat attachment.", 2500)
 
     def _manage_chat_attachments(self) -> None:
+        """Internal helper for `_manage_chat_attachments`."""
         session = self._ensure_active_session(create_if_missing=False)
         if session is None:
             return
@@ -2292,6 +2427,7 @@ class AIChatDock(QDockWidget):
         split.setStretchFactor(1, 2)
 
         def _refresh_list() -> None:
+            """Internal helper for `_refresh_list`."""
             list_widget.clear()
             current_rows = session.get("context_attachments", [])
             if not isinstance(current_rows, list):
@@ -2311,6 +2447,7 @@ class AIChatDock(QDockWidget):
                 list_widget.setCurrentRow(0)
 
         def _refresh_preview() -> None:
+            """Internal helper for `_refresh_preview`."""
             item = list_widget.currentItem()
             if item is None:
                 preview.clear()
@@ -2349,6 +2486,7 @@ class AIChatDock(QDockWidget):
         btns.button(QDialogButtonBox.StandardButton.Close).clicked.connect(dlg.accept)
 
         def _remove_selected() -> None:
+            """Internal helper for `_remove_selected`."""
             item = list_widget.currentItem()
             if item is None:
                 return
@@ -2364,6 +2502,7 @@ class AIChatDock(QDockWidget):
             _refresh_preview()
 
         def _clear_all() -> None:
+            """Internal helper for `_clear_all`."""
             current_rows = session.get("context_attachments", [])
             if not isinstance(current_rows, list) or not current_rows:
                 return
@@ -2383,6 +2522,7 @@ class AIChatDock(QDockWidget):
             _refresh_preview()
 
         def _add_manual() -> None:
+            """Internal helper for `_add_manual`."""
             title, ok = QInputDialog.getText(dlg, "Add Manual Attachment", "Title:")
             if not ok:
                 return
@@ -2412,6 +2552,7 @@ class AIChatDock(QDockWidget):
         dlg.exec()
 
     def _toggle_memory_policy(self, key: str) -> None:
+        """Internal helper for `_toggle_memory_policy`."""
         session = self._ensure_active_session(create_if_missing=True)
         if session is None:
             return
@@ -2422,6 +2563,7 @@ class AIChatDock(QDockWidget):
         self._persist_history(save=True)
 
     def _build_session_context_prefix(self, prompt: str) -> str:
+        """Internal helper for `_build_session_context_prefix`."""
         session = self._current_session()
         if session is None:
             return ""
@@ -2485,6 +2627,7 @@ class AIChatDock(QDockWidget):
         return out
 
         def _on_error(_message: str) -> None:
+            """Internal helper for `_on_error`."""
             return
 
         self.ai_controller.ask_ai_chat(
@@ -2497,6 +2640,7 @@ class AIChatDock(QDockWidget):
 
     @staticmethod
     def _has_internet_connection(timeout_sec: float = 0.8) -> bool:
+        """Internal helper for `_has_internet_connection`."""
         try:
             sock = socket.create_connection(("1.1.1.1", 53), timeout=timeout_sec)
             sock.close()
@@ -2505,6 +2649,7 @@ class AIChatDock(QDockWidget):
             return False
 
     def _on_stream_chunk(self, text: str) -> None:
+        """Internal helper for `_on_stream_chunk`."""
         cid = self._active_response_correlation_id or "none"
         _LOGGER.debug("AI chat on_stream_chunk cid=%s chars=%d", cid, len(text or ""))
         self._set_generation_state("streaming")
@@ -2524,6 +2669,7 @@ class AIChatDock(QDockWidget):
         self._scroll_to_bottom()
 
     def _on_stream_done(self, full_text: str) -> None:
+        """Internal helper for `_on_stream_done`."""
         cid = self._active_response_correlation_id or "none"
         self.send_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
@@ -2644,6 +2790,7 @@ class AIChatDock(QDockWidget):
         self._scroll_to_bottom()
 
     def _on_stream_error(self, message: str) -> None:
+        """Internal helper for `_on_stream_error`."""
         cid = self._active_response_correlation_id or "none"
         _LOGGER.debug("AI chat on_stream_error cid=%s message_len=%d", cid, len(message or ""))
         self.send_btn.setEnabled(True)
@@ -2667,6 +2814,7 @@ class AIChatDock(QDockWidget):
         self._scroll_to_bottom()
 
     def _on_stream_cancel(self, _partial: str) -> None:
+        """Internal helper for `_on_stream_cancel`."""
         cid = self._active_response_correlation_id or "none"
         _LOGGER.debug("AI chat on_stream_cancel cid=%s", cid)
         self.send_btn.setEnabled(True)
@@ -2681,6 +2829,7 @@ class AIChatDock(QDockWidget):
         self._scroll_to_bottom()
 
     def _start_typing_animation(self) -> None:
+        """Internal helper for `_start_typing_animation`."""
         if self._active_reply_bubble is None:
             return
         self._typing_step = 0
@@ -2689,6 +2838,7 @@ class AIChatDock(QDockWidget):
         self._typing_timer.start()
 
     def _stop_typing_animation(self, *, clear: bool) -> None:
+        """Internal helper for `_stop_typing_animation`."""
         if self._typing_timer.isActive():
             self._typing_timer.stop()
         self._typing_active = False
@@ -2697,6 +2847,7 @@ class AIChatDock(QDockWidget):
             self._active_reply_bubble.set_text("")
 
     def _advance_typing_animation(self) -> None:
+        """Internal helper for `_advance_typing_animation`."""
         if not self._typing_active or self._active_reply_bubble is None:
             self._typing_timer.stop()
             return
@@ -2704,6 +2855,7 @@ class AIChatDock(QDockWidget):
         self._active_reply_bubble.set_text("." * self._typing_step)
 
     def _add_bubble(self, text: str, role: str, *, persist: bool = False) -> _Bubble:
+        """Internal helper for `_add_bubble`."""
         bubble = _Bubble(
             text,
             role,
@@ -2791,6 +2943,7 @@ class AIChatDock(QDockWidget):
         text: str,
         icon_only: bool = True,
     ) -> QPushButton:
+        """Internal helper for `_create_bubble_action_button`."""
         btn = QPushButton(text, parent)
         btn.setObjectName("aiChatBubbleActionButton")
         btn.setProperty("ai_icon_name", icon_name)
@@ -2805,9 +2958,11 @@ class AIChatDock(QDockWidget):
         return btn
 
     def _copy_bubble_text(self, bubble: _Bubble) -> None:
+        """Internal helper for `_copy_bubble_text`."""
         QApplication.clipboard().setText(bubble.text())
 
     def _edit_bubble_text(self, bubble: _Bubble) -> None:
+        """Internal helper for `_edit_bubble_text`."""
         text = bubble.text().strip()
         if not text:
             return
@@ -2826,6 +2981,7 @@ class AIChatDock(QDockWidget):
         self.input.setFocus()
 
     def _retry_bubble_response(self, row: QWidget) -> None:
+        """Internal helper for `_retry_bubble_response`."""
         if not self.send_btn.isEnabled():
             return
         prompt = self._previous_user_prompt_for_row(row)
@@ -2834,6 +2990,7 @@ class AIChatDock(QDockWidget):
         self.send_prompt(prompt=prompt, visible_prompt=prompt)
 
     def _find_bubble_row(self, bubble: _Bubble) -> QWidget | None:
+        """Internal helper for `_find_bubble_row`."""
         parent = bubble.parentWidget()
         while parent is not None and parent is not self.messages_host:
             if parent.objectName() == "aiChatRow":
@@ -2842,6 +2999,7 @@ class AIChatDock(QDockWidget):
         return None
 
     def _history_index_for_row(self, row: QWidget | None) -> int | None:
+        """Internal helper for `_history_index_for_row`."""
         if row is None:
             return None
         for i in range(self.messages_layout.count() - 1):
@@ -2852,6 +3010,7 @@ class AIChatDock(QDockWidget):
         return None
 
     def _remove_rows_from_history_index(self, start_index: int) -> None:
+        """Internal helper for `_remove_rows_from_history_index`."""
         if start_index < 0:
             start_index = 0
         while self.messages_layout.count() - 1 > start_index:
@@ -2861,6 +3020,7 @@ class AIChatDock(QDockWidget):
                 widget.deleteLater()
 
     def _previous_user_prompt_for_row(self, row: QWidget) -> str:
+        """Internal helper for `_previous_user_prompt_for_row`."""
         target_index = -1
         for i in range(self.messages_layout.count()):
             item = self.messages_layout.itemAt(i)
@@ -2881,6 +3041,7 @@ class AIChatDock(QDockWidget):
         return ""
 
     def _try_send_edited_prompt_retry(self) -> bool:
+        """Internal helper for `_try_send_edited_prompt_retry`."""
         row = self._pending_prompt_edit_row
         if row is None:
             return False
@@ -2911,6 +3072,7 @@ class AIChatDock(QDockWidget):
         return True
 
     def _refresh_pending_insert_indicator(self) -> None:
+        """Internal helper for `_refresh_pending_insert_indicator`."""
         label = getattr(self, "pending_insert_label", None)
         if label is None:
             return
@@ -2945,6 +3107,7 @@ class AIChatDock(QDockWidget):
 
     @staticmethod
     def _is_affirmative(text: str) -> bool:
+        """Internal helper for `_is_affirmative`."""
         value = re.sub(r"[^a-z]+", " ", text.lower()).strip()
         if not value:
             return False
@@ -2962,6 +3125,7 @@ class AIChatDock(QDockWidget):
 
     @staticmethod
     def _is_negative(text: str) -> bool:
+        """Internal helper for `_is_negative`."""
         value = re.sub(r"[^a-z]+", " ", text.lower()).strip()
         if not value:
             return False
@@ -2975,6 +3139,7 @@ class AIChatDock(QDockWidget):
 
     @staticmethod
     def _looks_like_insert_confirmation(text: str) -> bool:
+        """Internal helper for `_looks_like_insert_confirmation`."""
         value = re.sub(r"[^a-z]+", " ", text.lower()).strip()
         if not value:
             return False
@@ -2982,12 +3147,14 @@ class AIChatDock(QDockWidget):
 
     @staticmethod
     def _looks_like_set_file_confirmation(text: str) -> bool:
+        """Internal helper for `_looks_like_set_file_confirmation`."""
         value = re.sub(r"[^a-z]+", " ", text.lower()).strip()
         if not value:
             return False
         return bool(re.search(r"\b(replace|set|update|overwrite)\b", value) and re.search(r"\b(file|tab|document)\b", value))
 
     def _insert_text_to_active_tab(self, text: str) -> bool:
+        """Internal helper for `_insert_text_to_active_tab`."""
         tab = self.ai_controller.window.active_tab()
         if tab is None:
             QMessageBox.information(self, "Insert", "Open a tab first.")
@@ -3001,6 +3168,7 @@ class AIChatDock(QDockWidget):
         return True
 
     def _set_text_to_active_tab(self, text: str) -> bool:
+        """Internal helper for `_set_text_to_active_tab`."""
         tab = self.ai_controller.window.active_tab()
         if tab is None:
             QMessageBox.information(self, "Set File", "Open a tab first.")
@@ -3017,6 +3185,7 @@ class AIChatDock(QDockWidget):
         return True
 
     def _apply_review_mode(self) -> str:
+        """Internal helper for `_apply_review_mode`."""
         window = getattr(self.ai_controller, "window", None)
         settings = getattr(window, "settings", {}) if window is not None else {}
         mode = str(settings.get("ai_apply_review_mode", "always_preview") or "always_preview").strip().lower()
@@ -3026,10 +3195,12 @@ class AIChatDock(QDockWidget):
 
     @staticmethod
     def _sha256_text(text: str) -> str:
+        """Internal helper for `_sha256_text`."""
         return hashlib.sha256((text or "").encode("utf-8")).hexdigest()
 
     @staticmethod
     def _decode_hidden_json_payload(payload: str) -> dict[str, object] | None:
+        """Internal helper for `_decode_hidden_json_payload`."""
         stripped = str(payload or "").strip()
         if not stripped:
             return None
@@ -3046,6 +3217,7 @@ class AIChatDock(QDockWidget):
 
     @staticmethod
     def _safe_int(value: object, default: int = 0) -> int:
+        """Internal helper for `_safe_int`."""
         try:
             return int(value)
         except Exception:
@@ -3053,6 +3225,7 @@ class AIChatDock(QDockWidget):
 
     @classmethod
     def _parse_patch_offer(cls, payload: str) -> dict[str, object] | None:
+        """Internal helper for `_parse_patch_offer`."""
         data = cls._decode_hidden_json_payload(payload)
         if not isinstance(data, dict):
             return None
@@ -3082,6 +3255,7 @@ class AIChatDock(QDockWidget):
 
     @classmethod
     def _parse_proposed_action(cls, payload: str) -> dict[str, object] | None:
+        """Internal helper for `_parse_proposed_action`."""
         data = cls._decode_hidden_json_payload(payload)
         if not isinstance(data, dict):
             return None
@@ -3101,6 +3275,7 @@ class AIChatDock(QDockWidget):
 
     @staticmethod
     def _split_unified_lines(text: str) -> list[str]:
+        """Internal helper for `_split_unified_lines`."""
         if not text:
             return []
         lines = text.splitlines(keepends=True)
@@ -3110,6 +3285,7 @@ class AIChatDock(QDockWidget):
 
     @classmethod
     def _apply_unified_diff_to_text(cls, original_text: str, diff_text: str) -> str:
+        """Internal helper for `_apply_unified_diff_to_text`."""
         original_lines = cls._split_unified_lines(original_text or "")
         diff_lines = cls._split_unified_lines(diff_text or "")
         i = 0
@@ -3175,6 +3351,7 @@ class AIChatDock(QDockWidget):
         return "".join(out)
 
     def _current_scope_bounds(self, scope: str, metadata: dict[str, object] | None = None) -> tuple[int, int, str] | None:
+        """Internal helper for `_current_scope_bounds`."""
         tab = self.ai_controller.window.active_tab()
         if tab is None:
             return None
@@ -3208,6 +3385,7 @@ class AIChatDock(QDockWidget):
 
     @staticmethod
     def _python_function_bounds(text: str, cursor_index: int) -> tuple[int, int] | None:
+        """Internal helper for `_python_function_bounds`."""
         lines = text.splitlines(keepends=True)
         if not lines:
             return None
@@ -3248,6 +3426,7 @@ class AIChatDock(QDockWidget):
         return (start, end)
 
     def _preview_and_apply_text(self, *, title: str, proposed_text: str, success_message: str) -> bool:
+        """Internal helper for `_preview_and_apply_text`."""
         tab = self.ai_controller.window.active_tab()
         if tab is None:
             _LOGGER.debug("AI chat preview/apply blocked title=%s reason=no_active_tab", title)
@@ -3288,6 +3467,7 @@ class AIChatDock(QDockWidget):
         return True
 
     def _try_apply_pending_patch_offer(self) -> tuple[bool, str]:
+        """Internal helper for `_try_apply_pending_patch_offer`."""
         offer = self._pending_patch_offer or {}
         if not offer:
             self._log_ai_chat("patch apply requested without pending patch")
@@ -3344,6 +3524,7 @@ class AIChatDock(QDockWidget):
         return ok, ("Applied AI patch." if ok else "Patch apply canceled.")
 
     def _try_execute_pending_local_action(self) -> tuple[bool, str]:
+        """Internal helper for `_try_execute_pending_local_action`."""
         action = self._pending_local_action or {}
         if not action:
             return False, "No local action."
@@ -3389,6 +3570,7 @@ class AIChatDock(QDockWidget):
         return False, "This AI local action isn't available in this window yet."
 
     def _open_file_path_and_line(self, raw_path: str, *, line: int = 0) -> bool:
+        """Internal helper for `_open_file_path_and_line`."""
         window = getattr(self.ai_controller, "window", None)
         if window is None:
             return False
@@ -3426,6 +3608,7 @@ class AIChatDock(QDockWidget):
         return True
 
     def _confirm_set_file_apply(self) -> bool:
+        """Internal helper for `_confirm_set_file_apply`."""
         window = getattr(self.ai_controller, "window", None)
         parent = window if window is not None else self
         reply = QMessageBox.question(
@@ -3438,6 +3621,7 @@ class AIChatDock(QDockWidget):
         return reply == QMessageBox.Yes
 
     def _try_handle_insert_offer_response(self, prompt: str) -> bool:
+        """Internal helper for `_try_handle_insert_offer_response`."""
         pending = (self._pending_insert_offer or "").strip()
         pending_set = (self._pending_set_file_offer or "").strip()
         pending_patch = self._pending_patch_offer or {}
@@ -3557,6 +3741,7 @@ class AIChatDock(QDockWidget):
         *,
         debug_correlation_id: str | None = None,
     ) -> tuple[str, str, str, str, dict[str, object] | None, dict[str, object] | None]:
+        """Internal helper for `_extract_hidden_commands`."""
         raw = text or ""
         _LOGGER.debug("AI chat extract_hidden_commands start cid=%r chars=%d", debug_correlation_id, len(raw))
         offered_insert = ""
@@ -3566,6 +3751,7 @@ class AIChatDock(QDockWidget):
         offered_action: dict[str, object] | None = None
 
         def _decode(payload: str) -> str | None:
+            """Internal helper for `_decode`."""
             stripped = payload.strip()
             if stripped.lower().startswith("base64:"):
                 b64 = stripped.split(":", 1)[1].strip()
@@ -3576,6 +3762,7 @@ class AIChatDock(QDockWidget):
             return stripped or None
 
         def _decode_chat_title(payload: str) -> str | None:
+            """Internal helper for `_decode_chat_title`."""
             stripped = str(payload or "").strip()
             decoded = _decode(stripped)
             if decoded is None:
@@ -3594,6 +3781,7 @@ class AIChatDock(QDockWidget):
             return decoded
 
         def _replace_insert(match: re.Match[str]) -> str:
+            """Internal helper for `_replace_insert`."""
             nonlocal offered_insert
             payload = str(match.group(1) or "")
             decoded = _decode(payload)
@@ -3609,6 +3797,7 @@ class AIChatDock(QDockWidget):
             return ""
 
         def _replace_set_file(match: re.Match[str]) -> str:
+            """Internal helper for `_replace_set_file`."""
             nonlocal offered_set_file
             payload = str(match.group(1) or "")
             decoded = _decode(payload)
@@ -3624,6 +3813,7 @@ class AIChatDock(QDockWidget):
             return ""
 
         def _replace_set_chat_title(match: re.Match[str]) -> str:
+            """Internal helper for `_replace_set_chat_title`."""
             nonlocal offered_chat_title
             payload = str(match.group(1) or "")
             decoded = _decode_chat_title(payload)
@@ -3639,6 +3829,7 @@ class AIChatDock(QDockWidget):
             return ""
 
         def _replace_patch(match: re.Match[str]) -> str:
+            """Internal helper for `_replace_patch`."""
             nonlocal offered_patch
             payload = str(match.group(1) or "")
             parsed = cls._parse_patch_offer(payload)
@@ -3659,6 +3850,7 @@ class AIChatDock(QDockWidget):
             return ""
 
         def _replace_proposed_action(match: re.Match[str]) -> str:
+            """Internal helper for `_replace_proposed_action`."""
             nonlocal offered_action
             payload = str(match.group(1) or "")
             parsed = cls._parse_proposed_action(payload)
@@ -3698,6 +3890,7 @@ class AIChatDock(QDockWidget):
     def _infer_plaintext_insert_offer(cls, text: str) -> str | None:
         # Fallback: if the assistant returns a long standalone prose block without the hidden
         # command protocol, treat it as an insert offer so the yes/no flow still works.
+        """Internal helper for `_infer_plaintext_insert_offer`."""
         cleaned = (text or "").strip()
         if not cleaned:
             return None
@@ -3732,6 +3925,7 @@ class AIChatDock(QDockWidget):
         return payload or cleaned
 
     def _handle_pypad_link(self, href: str) -> bool:
+        """Internal helper for `_handle_pypad_link`."""
         window = getattr(self.ai_controller, "window", None)
         if window is None:
             _LOGGER.debug("AI chat pypad link ignored no-window href=%r", href)
@@ -3803,6 +3997,7 @@ class AIChatDock(QDockWidget):
         return True
 
     def _insert_bubble_text_to_tab(self, bubble: _Bubble) -> None:
+        """Internal helper for `_insert_bubble_text_to_tab`."""
         tab = self.ai_controller.window.active_tab()
         if tab is None:
             QMessageBox.information(self, "Insert", "Open a tab first.")
@@ -3815,6 +4010,7 @@ class AIChatDock(QDockWidget):
         tab.text_edit.insert_text(text)
 
     def _replace_selection_with_bubble_text(self, bubble: _Bubble) -> None:
+        """Internal helper for `_replace_selection_with_bubble_text`."""
         window = self.ai_controller.window
         tab = window.active_tab()
         if tab is None:
@@ -3832,6 +4028,7 @@ class AIChatDock(QDockWidget):
         tab.text_edit.replace_selection(text)
 
     def _append_bubble_text_to_tab(self, bubble: _Bubble) -> None:
+        """Internal helper for `_append_bubble_text_to_tab`."""
         window = self.ai_controller.window
         tab = window.active_tab()
         if tab is None:
@@ -3852,6 +4049,7 @@ class AIChatDock(QDockWidget):
         tab.text_edit.insert_text(text)
 
     def _new_tab_from_bubble_text(self, bubble: _Bubble) -> None:
+        """Internal helper for `_new_tab_from_bubble_text`."""
         window = self.ai_controller.window
         text = bubble.text().strip()
         if not text:
@@ -3862,6 +4060,7 @@ class AIChatDock(QDockWidget):
         window.add_new_tab(text=text, make_current=True)
 
     def _replace_whole_file_with_bubble_text(self, bubble: _Bubble) -> None:
+        """Internal helper for `_replace_whole_file_with_bubble_text`."""
         text = bubble.text().strip()
         if not text:
             return
@@ -3872,6 +4071,7 @@ class AIChatDock(QDockWidget):
         )
 
     def _open_bubble_diff_preview(self, bubble: _Bubble) -> None:
+        """Internal helper for `_open_bubble_diff_preview`."""
         tab = self.ai_controller.window.active_tab()
         if tab is None:
             QMessageBox.information(self, "Diff Preview", "Open a tab first.")
@@ -3895,9 +4095,11 @@ class AIChatDock(QDockWidget):
             self.ai_controller.window.show_status_message("Applied changes from diff preview.", 3000)
 
     def _stop_generation(self) -> None:
+        """Internal helper for `_stop_generation`."""
         self.ai_controller.cancel_active_chat_request()
 
     def _load_history(self) -> None:
+        """Internal helper for `_load_history`."""
         settings = getattr(self.ai_controller.window, "settings", {})
         self._chat_sessions = self._load_chat_sessions_from_disk(settings)
         if not self._chat_sessions:
@@ -3927,9 +4129,11 @@ class AIChatDock(QDockWidget):
         self._persist_history(save=False)
 
     def _chat_storage_dir(self) -> Path:
+        """Internal helper for `_chat_storage_dir`."""
         return get_ai_chats_dir_path()
 
     def _chat_storage_file_name(self, session: dict[str, object]) -> str:
+        """Internal helper for `_chat_storage_file_name`."""
         value = str(session.get("storage_file", "") or "").strip()
         if value:
             return value
@@ -3939,6 +4143,7 @@ class AIChatDock(QDockWidget):
         return value
 
     def _write_chat_session_to_disk(self, session: dict[str, object]) -> None:
+        """Internal helper for `_write_chat_session_to_disk`."""
         folder = self._chat_storage_dir()
         folder.mkdir(parents=True, exist_ok=True)
         file_name = self._chat_storage_file_name(session)
@@ -3946,6 +4151,7 @@ class AIChatDock(QDockWidget):
         path.write_bytes(json.dumps(session, indent=2).encode("utf-8"))
 
     def _load_chat_sessions_from_disk(self, settings: dict[str, object]) -> list[dict[str, object]]:
+        """Internal helper for `_load_chat_sessions_from_disk`."""
         folder = self._chat_storage_dir()
         file_names: list[str] = []
         raw_names = settings.get("ai_chat_session_files")
@@ -3969,6 +4175,7 @@ class AIChatDock(QDockWidget):
         return self._sanitize_chat_sessions(sessions)
 
     def _prune_orphaned_chat_files(self, referenced_file_names: set[str]) -> None:
+        """Internal helper for `_prune_orphaned_chat_files`."""
         folder = self._chat_storage_dir()
         if not folder.exists():
             return
@@ -3981,6 +4188,7 @@ class AIChatDock(QDockWidget):
                 _LOGGER.exception("Failed to remove orphaned AI chat file: %s", path)
 
     def _persist_history(self, *, save: bool) -> None:
+        """Internal helper for `_persist_history`."""
         window = self.ai_controller.window
         session = self._current_session()
         if session is not None:
@@ -4008,16 +4216,20 @@ class AIChatDock(QDockWidget):
             window.save_settings_to_disk()
 
     def _is_chat_near_bottom(self, *, threshold_px: int = 48) -> bool:
+        """Internal helper for `_is_chat_near_bottom`."""
         bar = self.scroll.verticalScrollBar()
         return (bar.maximum() - bar.value()) <= max(0, int(threshold_px))
 
     def _update_chat_stick_to_bottom_state(self) -> None:
+        """Internal helper for `_update_chat_stick_to_bottom_state`."""
         self._chat_stick_to_bottom = self._is_chat_near_bottom()
 
     def _scroll_to_bottom(self, *, force: bool = False) -> None:
+        """Internal helper for `_scroll_to_bottom`."""
         if not force and not bool(getattr(self, "_chat_stick_to_bottom", True)):
             return
         def _apply() -> None:
+            """Internal helper for `_apply`."""
             if not hasattr(self, "scroll") or self.scroll is None:
                 return
             bar = self.scroll.verticalScrollBar()

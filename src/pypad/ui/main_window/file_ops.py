@@ -1,3 +1,8 @@
+"""Collect file-focused main-window actions such as opening, saving, exporting, and printing documents.
+
+This module belongs to the main-window orchestration layer that ties together menus, actions, state, and dialogs. It helps explain how `pypad.ui.main_window` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 import getpass
 import base64
@@ -96,22 +101,28 @@ _LOGGER = get_logger(__name__)
 
 
 class FileOpsMixin:
+    """Main-window file workflow layer for open, save, import, export, print, and encoding tasks."""
     if TYPE_CHECKING:
-        def __getattr__(self, name: str) -> Any: ...
+        def __getattr__(self, name: str) -> Any:
+            """Satisfy static type checkers for attributes provided by sibling mixins."""
+            ...
 
     # ---------- File operations ----------
     def maybe_save(self) -> bool:
+        """Prompt to save the active tab if needed before a destructive file operation."""
         tab = self.active_tab()
         if tab is None:
             return True
         return self.maybe_save_tab(tab)
 
     def file_new(self) -> None:
+        """Create a new blank editor tab and refresh the window title."""
         self.add_new_tab(make_current=True)
         self.update_window_title()
         self.log_event("Info", "Created new file tab")
 
     def file_open(self) -> None:
+        """Open a file picker and load the selected document into the editor."""
         path, _ = QFileDialog.getOpenFileName(
             self,
             "Open",
@@ -138,12 +149,15 @@ class FileOpsMixin:
         self.log_event("Info", f'Open succeeded: "{path}"')
 
     def _prompt_password(self, title: str, label: str) -> str | None:
+        """Internal helper for `_prompt_password`."""
         return self.security_controller.prompt_password(title, label)
 
     def _load_text_from_path(self, path: str, encoding: str = "utf-8") -> tuple[str, bool, str | None]:
+        """Internal helper for `_load_text_from_path`."""
         return self.security_controller.load_text_from_path(path, encoding=encoding)
 
     def _confirm_open_non_text_file(self, path: str, encoding: str, suffix: str) -> bool:
+        """Warn before opening files that appear binary or likely unreadable as text."""
         risky_binary_exts = {
             ".exe",
             ".dll",
@@ -197,6 +211,7 @@ class FileOpsMixin:
 
     @staticmethod
     def _is_supported_media_suffix(suffix: str) -> bool:
+        """Return whether the path should open in the built-in media viewer flow."""
         return suffix in {
             ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".svg",
             ".mp3", ".wav", ".ogg", ".flac", ".m4a",
@@ -204,6 +219,7 @@ class FileOpsMixin:
         }
 
     def _open_media_viewer_with_raw(self, path: str) -> bool:
+        """Open media content in a preview tab while still allowing raw-text fallback."""
         suffix = Path(path).suffix.lower()
         active = self.active_tab()
         if active and not active.current_file and not active.text_edit.is_modified() and not active.text_edit.get_text().strip():
@@ -294,15 +310,18 @@ class FileOpsMixin:
                         layout.addWidget(QLabel("Audio player", media_container), 1)
 
                     def _fmt(ms: int) -> str:
+                        """Internal helper for `_fmt`."""
                         sec = max(0, int(ms // 1000))
                         return f"{sec // 60:02d}:{sec % 60:02d}"
 
                     def _on_pos(ms: int) -> None:
+                        """Internal helper for `_on_pos`."""
                         if not slider.isSliderDown():
                             slider.setValue(int(ms))
                         elapsed_label.setText(_fmt(ms))
 
                     def _on_dur(ms: int) -> None:
+                        """Internal helper for `_on_dur`."""
                         slider.setRange(0, max(0, int(ms)))
                         total_label.setText(_fmt(ms))
 
@@ -321,6 +340,7 @@ class FileOpsMixin:
                 return False
 
             def _open_raw() -> None:
+                """Internal helper for `_open_raw`."""
                 if hasattr(tab, "clear_media_mode"):
                     tab.clear_media_mode()
                 self._open_file_path(path, force_raw=True, preferred_tab=tab)
@@ -338,6 +358,7 @@ class FileOpsMixin:
         return False
 
     def _open_file_path_raw(self, path: str) -> bool:
+        """Force a file path through the raw-text opening path instead of richer viewers/importers."""
         suffix = Path(path).suffix.lower()
         encoding = self._encoding_for_path(path)
         structured_import = suffix in {".docx", ".odt", ".html", ".htm", ".pdf"}
@@ -347,6 +368,7 @@ class FileOpsMixin:
         return self._open_file_path(path, force_raw=True)
 
     def _open_file_path(self, path: str, force_raw: bool = False, preferred_tab: EditorTab | None = None) -> bool:
+        """Open a file path into a tab, handling media, imports, encryption, and large-file preview."""
         suffix = Path(path).suffix.lower()
         if not force_raw and self._is_supported_media_suffix(suffix):
             return self._open_media_viewer_with_raw(path)
@@ -504,6 +526,7 @@ class FileOpsMixin:
         return True
 
     def file_save(self) -> bool:
+        """Save the active tab unless the current mode temporarily forbids saving."""
         tab = self.active_tab()
         if tab is None:
             return False
@@ -513,6 +536,7 @@ class FileOpsMixin:
         return self.file_save_tab(tab)
 
     def file_save_tab(self, tab: EditorTab) -> bool:
+        """Persist one tab to disk, including export, encryption, metadata, and autosave cleanup."""
         if bool(getattr(tab, "quiz_mode_enabled", False)) or bool(getattr(tab, "typing_test_mode_enabled", False)):
             self.show_status_message("Saving is disabled during active play mode.", 2500)
             return False
@@ -604,6 +628,7 @@ class FileOpsMixin:
         return True
 
     def load_full_large_file_current_tab(self) -> None:
+        """Replace a partial large-file preview with the full document content."""
         tab = self.active_tab()
         if tab is None or not tab.current_file:
             return
@@ -633,12 +658,14 @@ class FileOpsMixin:
         self.show_status_message("Full large file loaded.", 3000)
 
     def file_save_as(self) -> bool:
+        """Run Save As for the active tab."""
         tab = self.active_tab()
         if tab is None:
             return False
         return self.file_save_as_tab(tab)
 
     def file_save_as_tab(self, tab: EditorTab) -> bool:
+        """Choose a new path for a tab, update its metadata, then save it."""
         if bool(getattr(tab, "quiz_mode_enabled", False)) or bool(getattr(tab, "typing_test_mode_enabled", False)):
             self.show_status_message("Save As is disabled during active play mode.", 2500)
             return False
@@ -703,6 +730,7 @@ class FileOpsMixin:
         return self.file_save_tab(tab)
 
     def file_print(self) -> None:
+        """Send the active tab to the system print dialog and printer."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -720,6 +748,7 @@ class FileOpsMixin:
         self.show_status_message("Print job sent to printer", 3000)
 
     def file_print_preview(self) -> None:
+        """Show a print-preview dialog for the active tab using the current print settings."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -728,6 +757,7 @@ class FileOpsMixin:
         dialog.setWindowTitle("Print Preview")
 
         def render_preview(preview_printer: QPrinter) -> None:
+            """Execute the `render_preview` workflow."""
             doc = self._build_print_document(tab)
             try:
                 doc.print_(preview_printer)
@@ -738,6 +768,7 @@ class FileOpsMixin:
         dialog.exec()
 
     def _build_print_document(self, tab: EditorTab) -> QTextDocument:
+        """Build a QTextDocument tailored for printing the tab's current content."""
         doc = QTextDocument()
         print_font = tab.text_edit.current_font()
         if print_font.pointSizeF() <= 0:
@@ -777,12 +808,14 @@ class FileOpsMixin:
         return doc
 
     def _encoding_for_path(self, path: str) -> str:
+        """Look up the preferred text encoding stored for a given file path."""
         enc_map = self.settings.get("file_encodings", {})
         if isinstance(enc_map, dict):
             return str(enc_map.get(path, "utf-8") or "utf-8")
         return "utf-8"
 
     def _persist_encoding_for_path(self, path: str, encoding: str) -> None:
+        """Persist the chosen encoding for a file path back into settings."""
         enc_map = self.settings.get("file_encodings", {})
         if not isinstance(enc_map, dict):
             enc_map = {}
@@ -790,6 +823,7 @@ class FileOpsMixin:
         self.settings["file_encodings"] = enc_map
 
     def _persist_eol_for_path(self, path: str, mode: str) -> None:
+        """Persist the preferred line-ending mode for a file path back into settings."""
         eol_map = self.settings.get("file_eol_modes", {})
         if not isinstance(eol_map, dict):
             eol_map = {}
@@ -798,6 +832,7 @@ class FileOpsMixin:
 
     @staticmethod
     def _detect_eol_mode(text: str) -> str:
+        """Infer the dominant end-of-line mode from the document text."""
         if "\r\n" in text:
             return "CRLF"
         if "\n" in text:
@@ -806,12 +841,14 @@ class FileOpsMixin:
 
     @staticmethod
     def _normalize_eol(text: str, mode: str) -> str:
+        """Rewrite text so its line endings match the requested mode."""
         normalized = text.replace("\r\n", "\n").replace("\r", "\n")
         if mode == "CRLF":
             return normalized.replace("\n", "\r\n")
         return normalized
 
     def set_tab_encoding(self, encoding: str) -> None:
+        """Change the active tab's remembered encoding without rewriting the file immediately."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -821,6 +858,7 @@ class FileOpsMixin:
         self.show_status_message(f"Encoding set to {encoding}", 3000)
 
     def set_tab_eol_mode(self, mode: str) -> None:
+        """Change the active tab's line endings and mark it modified when text is rewritten."""
         tab = self.active_tab()
         if tab is None:
             return

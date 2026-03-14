@@ -1,3 +1,8 @@
+"""Manage recent-settings behavior and helper functions for restoring or presenting recent choices.
+
+This module belongs to the main-window orchestration layer that ties together menus, actions, state, and dialogs. It helps explain how `pypad.ui.main_window` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -21,50 +26,64 @@ from .notepadpp_pref_runtime import recent_file_max_entries, recent_file_menu_la
 
 
 class MiscSettingsRecentMixin:
+    """Mixin that provides the `MiscSettingsRecentMixin` behavior set."""
     if TYPE_CHECKING:
-        def __getattr__(self, name: str) -> Any: ...
+        def __getattr__(self, name: str) -> Any:
+            """Satisfy static type checkers for runtime-resolved window attributes."""
+            ...
 
     @staticmethod
     def _get_settings_file_path() -> Path:
+        """Internal helper for `_get_settings_file_path`."""
         return get_settings_file_path()
 
     @staticmethod
     def _get_themes_file_path() -> Path:
+        """Internal helper for `_get_themes_file_path`."""
         return get_themes_file_path()
 
     @staticmethod
     def _get_legacy_settings_file_path() -> Path:
+        """Internal helper for `_get_legacy_settings_file_path`."""
         return get_legacy_settings_file_path()
 
     @staticmethod
     def _get_password_file_path() -> Path:
+        """Internal helper for `_get_password_file_path`."""
         return get_password_file_path()
 
     @staticmethod
     def _get_reminders_file_path() -> Path:
+        """Internal helper for `_get_reminders_file_path`."""
         return get_reminders_file_path()
 
     @staticmethod
     def _get_autosave_dir_path() -> Path:
+        """Internal helper for `_get_autosave_dir_path`."""
         return get_autosave_dir_path()
 
     @staticmethod
     def _get_translation_cache_path() -> Path:
+        """Internal helper for `_get_translation_cache_path`."""
         return get_translation_cache_path()
 
     @staticmethod
     def _get_ai_chats_dir_path() -> Path:
+        """Internal helper for `_get_ai_chats_dir_path`."""
         return get_ai_chats_dir_path()
 
     @staticmethod
     def _get_debug_logs_file_path() -> Path:
+        """Internal helper for `_get_debug_logs_file_path`."""
         return get_debug_logs_file_path()
 
     @staticmethod
     def _get_crash_logs_file_path() -> Path:
+        """Internal helper for `_get_crash_logs_file_path`."""
         return get_crash_logs_file_path()
 
     def _add_recent_file(self, path: str | None) -> None:
+        """Internal helper for `_add_recent_file`."""
         if not path:
             return
         recent = [p for p in self.settings.get("recent_files", []) if isinstance(p, str) and p]
@@ -75,6 +94,7 @@ class MiscSettingsRecentMixin:
         self._refresh_favorite_files_menu()
 
     def _refresh_recent_files_menu(self) -> None:
+        """Internal helper for `_refresh_recent_files_menu`."""
         menu = getattr(self, "recent_files_menu", None)
         if menu is None:
             return
@@ -110,6 +130,7 @@ class MiscSettingsRecentMixin:
                 return
 
     def _refresh_favorite_files_menu(self) -> None:
+        """Internal helper for `_refresh_favorite_files_menu`."""
         menu = getattr(self, "favorite_files_menu", None)
         if menu is None:
             return

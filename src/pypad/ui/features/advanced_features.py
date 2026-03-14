@@ -1,3 +1,8 @@
+"""Group advanced user-facing features that extend the baseline editor experience.
+
+This module belongs to the optional productivity and feature UI layer. It helps explain how `pypad.ui.features` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 
 import ast
@@ -71,10 +76,12 @@ PLUGIN_API_VERSION = "1.0"
 
 def _root() -> Path:
     # src/pypad/ui/features/advanced_features.py -> repo root at parents[4]
+    """Internal helper for `_root`."""
     return Path(__file__).resolve().parents[4]
 
 
 def _read_app_version() -> str:
+    """Internal helper for `_read_app_version`."""
     version_file = _root() / "assets" / "version.txt"
     try:
         return str(version_file.read_text(encoding="utf-8").strip() or "0.0.0")
@@ -83,6 +90,7 @@ def _read_app_version() -> str:
 
 
 def _parse_version_tuple(value: str) -> tuple[int, int, int]:
+    """Internal helper for `_parse_version_tuple`."""
     text = str(value or "").strip().lower().lstrip("v")
     nums = [int(x) for x in re.findall(r"\d+", text)]
     while len(nums) < 3:
@@ -91,6 +99,7 @@ def _parse_version_tuple(value: str) -> tuple[int, int, int]:
 
 
 def _is_version_compatible(app_version: str, min_version: str, max_version: str) -> bool:
+    """Internal helper for `_is_version_compatible`."""
     app_v = _parse_version_tuple(app_version)
     if str(min_version or "").strip():
         if app_v < _parse_version_tuple(min_version):
@@ -102,6 +111,7 @@ def _is_version_compatible(app_version: str, min_version: str, max_version: str)
 
 
 def _parse_api_version(value: str) -> tuple[int, int]:
+    """Internal helper for `_parse_api_version`."""
     text = str(value or "").strip().lower().lstrip("v")
     nums = [int(x) for x in re.findall(r"\d+", text)]
     while len(nums) < 2:
@@ -110,6 +120,7 @@ def _parse_api_version(value: str) -> tuple[int, int]:
 
 
 def _is_plugin_api_compatible(plugin_api_version: str, supported_api_version: str) -> bool:
+    """Internal helper for `_is_plugin_api_compatible`."""
     plugin_major, plugin_minor = _parse_api_version(plugin_api_version)
     supported_major, supported_minor = _parse_api_version(supported_api_version)
     if plugin_major != supported_major:
@@ -119,6 +130,7 @@ def _is_plugin_api_compatible(plugin_api_version: str, supported_api_version: st
 
 @dataclass
 class PluginRecord:
+    """Class that implements the `PluginRecord` runtime behavior."""
     plugin_id: str
     name: str
     description: str
@@ -152,6 +164,7 @@ class PluginRecord:
 
 
 def compute_plugin_digest(plugin_dir: Path) -> str:
+    """Execute the `compute_plugin_digest` workflow."""
     hasher = hashlib.sha256()
     for rel in ("plugin.json", "plugin.py"):
         path = plugin_dir / rel
@@ -165,6 +178,7 @@ def compute_plugin_digest(plugin_dir: Path) -> str:
 
 
 def apply_text_operations(text: str, operations: list[dict[str, Any]]) -> str:
+    """Apply the changes or settings handled by `apply_text_operations`."""
     out = text
     for op in operations:
         kind = str(op.get("op", "")).strip().lower()
@@ -188,31 +202,39 @@ def apply_text_operations(text: str, operations: list[dict[str, Any]]) -> str:
 
 
 class PluginAPI:
+    """Class that implements the `PluginAPI` runtime behavior."""
     def __init__(self, window, record: PluginRecord) -> None:
+        """Initialize the `advanced_features` state for this instance."""
         self.window = window
         self.record = record
 
     def _allow(self, perm: str) -> None:
+        """Internal helper for `_allow`."""
         if perm not in self.record.permissions:
             raise RuntimeError(f"Plugin '{self.record.plugin_id}' missing permission: {perm}")
 
     def _allow_any(self, perms: set[str]) -> None:
+        """Internal helper for `_allow_any`."""
         if not (self.record.permissions & perms):
             raise RuntimeError(f"Plugin '{self.record.plugin_id}' missing permission: {', '.join(sorted(perms))}")
 
     def notify(self, text: str) -> None:
+        """Execute the `notify` workflow."""
         self.window.show_status_message(f"[Plugin:{self.record.name}] {text}", 3000)
 
     def _host(self):
+        """Internal helper for `_host`."""
         controller = getattr(self.window, "advanced_features", None)
         return getattr(controller, "plugin_host", None)
 
     def _record_runtime(self, event: str, payload: dict[str, Any] | None = None) -> None:
+        """Internal helper for `_record_runtime`."""
         host = self._host()
         if host is not None and hasattr(host, "record_runtime_event"):
             host.record_runtime_event(self.record.plugin_id, event, payload or {})
 
     def _allow_unsafe_ui_bridge(self) -> None:
+        """Internal helper for `_allow_unsafe_ui_bridge`."""
         enabled = bool(self.window.settings.get("plugin_allow_unsafe_ui_bridge", False))
         if not enabled:
             raise RuntimeError(
@@ -221,16 +243,19 @@ class PluginAPI:
             )
 
     def app_window(self):
+        """Execute the `app_window` workflow."""
         self._allow("ui")
         self._allow_unsafe_ui_bridge()
         return self.window
 
     def active_tab(self):
+        """Execute the `active_tab` workflow."""
         self._allow("ui")
         self._allow_unsafe_ui_bridge()
         return self.window.active_tab()
 
     def app_info(self) -> dict[str, Any]:
+        """Execute the `app_info` workflow."""
         return {
             "app_name": "Pypad",
             "plugin_id": self.record.plugin_id,
@@ -239,9 +264,11 @@ class PluginAPI:
         }
 
     def show_status(self, text: str, timeout_ms: int = 3000) -> None:
+        """Execute the `show_status` workflow."""
         self.window.show_status_message(f"[Plugin:{self.record.name}] {text}", max(500, int(timeout_ms)))
 
     def plugin_state_get(self, key: str, default: Any = None) -> Any:
+        """Execute the `plugin_state_get` workflow."""
         state = self.window.settings.get("plugin_state", {})
         if not isinstance(state, dict):
             return default
@@ -251,6 +278,7 @@ class PluginAPI:
         return plugin_state.get(str(key), default)
 
     def plugin_state_set(self, key: str, value: Any) -> None:
+        """Execute the `plugin_state_set` workflow."""
         text_key = str(key).strip()
         if not text_key:
             raise ValueError("state key cannot be empty")
@@ -266,9 +294,11 @@ class PluginAPI:
         self.window.save_settings_to_disk()
 
     def plugin_config_schema(self) -> dict[str, dict[str, Any]]:
+        """Execute the `plugin_config_schema` workflow."""
         return dict(getattr(self.record, "settings_schema", {}) or {})
 
     def plugin_config_get(self, key: str, default: Any = None) -> Any:
+        """Execute the `plugin_config_get` workflow."""
         cfg = self.window.settings.get("plugin_config", {})
         if not isinstance(cfg, dict):
             return default
@@ -278,6 +308,7 @@ class PluginAPI:
         return p.get(str(key), default)
 
     def plugin_config_set(self, key: str, value: Any) -> None:
+        """Execute the `plugin_config_set` workflow."""
         host = self._host()
         if host is not None and hasattr(host, "set_plugin_config"):
             host.set_plugin_config(self.record.plugin_id, str(key), value)
@@ -294,6 +325,7 @@ class PluginAPI:
         self.window.save_settings_to_disk()
 
     def register_service(self, service_name: str, obj: Any) -> None:
+        """Execute the `register_service` workflow."""
         host = self._host()
         if host is None or not hasattr(host, "register_plugin_service"):
             raise RuntimeError("Plugin host service registry unavailable.")
@@ -301,6 +333,7 @@ class PluginAPI:
         self._record_runtime("service_register", {"service": str(service_name)})
 
     def get_service(self, service_ref: str) -> Any:
+        """Return the value produced by `get_service`."""
         host = self._host()
         if host is None or not hasattr(host, "resolve_plugin_service"):
             raise RuntimeError("Plugin host service registry unavailable.")
@@ -316,6 +349,7 @@ class PluginAPI:
         description: str = "",
         args_schema: dict[str, Any] | None = None,
     ) -> None:
+        """Execute the `register_command` workflow."""
         host = self._host()
         if host is None or not hasattr(host, "register_plugin_command"):
             raise RuntimeError("Plugin host command registry unavailable.")
@@ -329,6 +363,7 @@ class PluginAPI:
         self._record_runtime("command_register", {"command": str(command_name)})
 
     def run_command(self, command_ref: str, args: dict[str, Any] | None = None) -> Any:
+        """Execute the `run_command` workflow."""
         host = self._host()
         if host is None or not hasattr(host, "run_plugin_command"):
             raise RuntimeError("Plugin host command registry unavailable.")
@@ -336,6 +371,7 @@ class PluginAPI:
         return host.run_plugin_command(self.record.plugin_id, str(command_ref), dict(args or {}))
 
     def log(self, level: str, message: str) -> None:
+        """Execute the `log` workflow."""
         host = self._host()
         lvl = str(level or "INFO").strip().upper() or "INFO"
         msg = str(message or "")
@@ -344,6 +380,7 @@ class PluginAPI:
         self.window.log_event(lvl, f"[Plugin:{self.record.plugin_id}] {msg}")
 
     def start_job(self, job_name: str, fn) -> str:
+        """Execute the `start_job` workflow."""
         self._allow("background")
         host = self._host()
         if host is None or not hasattr(host, "start_plugin_job"):
@@ -353,6 +390,7 @@ class PluginAPI:
         return job_id
 
     def cancel_job(self, job_id: str) -> bool:
+        """Execute the `cancel_job` workflow."""
         self._allow("background")
         host = self._host()
         if host is None or not hasattr(host, "cancel_plugin_job"):
@@ -362,6 +400,7 @@ class PluginAPI:
         return ok
 
     def job_status(self, job_id: str) -> dict[str, Any]:
+        """Execute the `job_status` workflow."""
         self._allow("background")
         host = self._host()
         if host is None or not hasattr(host, "plugin_job_status"):
@@ -369,24 +408,29 @@ class PluginAPI:
         return dict(host.plugin_job_status(self.record.plugin_id, str(job_id)))
 
     def log_metric(self, event: str, detail: str = "") -> None:
+        """Execute the `log_metric` workflow."""
         host = self._host()
         if host is None or not hasattr(host, "record_runtime_event"):
             return
         host.record_runtime_event(self.record.plugin_id, str(event or "metric"), {"detail": str(detail or "")})
 
     def emit_runtime_event(self, event: str, payload: dict[str, Any] | None = None) -> None:
+        """Execute the `emit_runtime_event` workflow."""
         host = self._host()
         if host is None or not hasattr(host, "publish_runtime_event"):
             return
         host.publish_runtime_event(self.record.plugin_id, str(event or "event"), dict(payload or {}))
 
     def tab_count(self) -> int:
+        """Execute the `tab_count` workflow."""
         return int(self.window.tab_widget.count())
 
     def active_tab_index(self) -> int:
+        """Execute the `active_tab_index` workflow."""
         return int(self.window.tab_widget.currentIndex())
 
     def active_tab_info(self) -> dict[str, Any]:
+        """Execute the `active_tab_info` workflow."""
         tab = self.window.active_tab()
         if tab is None:
             return {
@@ -411,6 +455,7 @@ class PluginAPI:
         }
 
     def switch_to_tab(self, index: int) -> bool:
+        """Execute the `switch_to_tab` workflow."""
         idx = int(index)
         if idx < 0 or idx >= self.window.tab_widget.count():
             return False
@@ -418,6 +463,7 @@ class PluginAPI:
         return True
 
     def file_new(self, text: str = "") -> bool:
+        """Execute the `file_new` workflow."""
         self._allow("file")
         if not hasattr(self.window, "file_new"):
             return False
@@ -427,6 +473,7 @@ class PluginAPI:
         return True
 
     def close_tab(self, index: int | None = None) -> bool:
+        """Execute the `close_tab` workflow."""
         self._allow("file")
         idx = self.window.tab_widget.currentIndex() if index is None else int(index)
         if idx < 0 or idx >= self.window.tab_widget.count():
@@ -437,6 +484,7 @@ class PluginAPI:
         return False
 
     def workspace_root(self) -> str:
+        """Execute the `workspace_root` workflow."""
         ctrl = getattr(self.window, "workspace_controller", None)
         if ctrl is None:
             return ""
@@ -444,6 +492,7 @@ class PluginAPI:
         return str(root or "")
 
     def workspace_files(self) -> list[str]:
+        """Execute the `workspace_files` workflow."""
         self._allow("file")
         ctrl = getattr(self.window, "workspace_controller", None)
         if ctrl is None:
@@ -451,6 +500,7 @@ class PluginAPI:
         return list(ctrl.workspace_files())
 
     def refresh_workspace_index(self) -> None:
+        """Execute the `refresh_workspace_index` workflow."""
         self._allow("file")
         ctrl = getattr(self.window, "workspace_controller", None)
         if ctrl is None:
@@ -459,6 +509,7 @@ class PluginAPI:
             ctrl._start_background_scan(force=True)
 
     def workspace_index_status(self) -> dict[str, Any]:
+        """Execute the `workspace_index_status` workflow."""
         self._allow("file")
         ctrl = getattr(self.window, "workspace_controller", None)
         if ctrl is None:
@@ -471,18 +522,22 @@ class PluginAPI:
         }
 
     def current_text(self) -> str:
+        """Execute the `current_text` workflow."""
         tab = self.window.active_tab()
         return tab.text_edit.get_text() if tab is not None else ""
 
     def selection_text(self) -> str:
+        """Execute the `selection_text` workflow."""
         tab = self.window.active_tab()
         return tab.text_edit.selected_text() if tab is not None else ""
 
     def selection_range(self):
+        """Execute the `selection_range` workflow."""
         tab = self.window.active_tab()
         return tab.text_edit.selection_range() if tab is not None else None
 
     def open_tabs(self) -> list[dict[str, str]]:
+        """Open the UI or resource handled by `open_tabs`."""
         tabs = []
         for i in range(self.window.tab_widget.count()):
             tab = self.window.tab_widget.widget(i)
@@ -497,6 +552,7 @@ class PluginAPI:
         return tabs
 
     def list_actions(self) -> list[dict[str, str]]:
+        """Execute the `list_actions` workflow."""
         self._allow_any({"ui", "menu"})
         return [
             {
@@ -509,6 +565,7 @@ class PluginAPI:
         ]
 
     def trigger_action(self, action_id: str) -> bool:
+        """Execute the `trigger_action` workflow."""
         self._allow_any({"ui", "menu"})
         target_id = str(action_id or "").strip()
         if not target_id:
@@ -520,18 +577,21 @@ class PluginAPI:
         return False
 
     def open_file(self, path: str) -> bool:
+        """Open the UI or resource handled by `open_file`."""
         self._allow("file")
         if hasattr(self.window, "_open_file_path"):
             return bool(self.window._open_file_path(path))
         return False
 
     def save_active(self) -> bool:
+        """Save data handled by `save_active`."""
         self._allow("file")
         if hasattr(self.window, "file_save"):
             return bool(self.window.file_save())
         return False
 
     def replace_text(self, text: str) -> None:
+        """Execute the `replace_text` workflow."""
         self._allow("file")
         tab = self.window.active_tab()
         if tab is None or tab.text_edit.is_read_only():
@@ -540,6 +600,7 @@ class PluginAPI:
         tab.text_edit.set_modified(True)
 
     def insert_text(self, text: str) -> None:
+        """Execute the `insert_text` workflow."""
         self._allow("file")
         tab = self.window.active_tab()
         if tab is None or tab.text_edit.is_read_only():
@@ -547,6 +608,7 @@ class PluginAPI:
         tab.text_edit.insert_text(text)
 
     def replace_selection(self, text: str) -> None:
+        """Execute the `replace_selection` workflow."""
         self._allow("file")
         tab = self.window.active_tab()
         if tab is None or tab.text_edit.is_read_only():
@@ -557,19 +619,23 @@ class PluginAPI:
             tab.text_edit.insert_text(text)
 
     def ask_ai(self, prompt: str) -> None:
+        """Execute the `ask_ai` workflow."""
         self._allow("ai")
         self.window.ai_controller._start_generation(prompt, "Plugin AI", action_name=f"plugin:{self.record.plugin_id}")
 
     def network_allowed(self) -> bool:
+        """Execute the `network_allowed` workflow."""
         self._allow("network")
         return True
 
     def run_background(self, fn, *, name: str | None = None) -> None:
+        """Execute the `run_background` workflow."""
         self._allow("background")
         thread = threading.Thread(target=fn, name=name or f"plugin-{self.record.plugin_id}", daemon=True)
         thread.start()
 
     def start_timer(self, interval_ms: int, fn) -> QTimer:
+        """Execute the `start_timer` workflow."""
         self._allow("background")
         timer = QTimer(self.window)
         timer.setInterval(max(10, int(interval_ms)))
@@ -579,6 +645,7 @@ class PluginAPI:
         return timer
 
     def add_menu_action(self, menu_path: str, label: str, callback, shortcut: str | None = None) -> QAction:
+        """Execute the `add_menu_action` workflow."""
         self._allow_any({"menu", "ui"})
         menu = self._resolve_menu_path(menu_path)
         action = QAction(label, self.window)
@@ -590,6 +657,7 @@ class PluginAPI:
         return action
 
     def add_toolbar_action(self, toolbar_name: str, label: str, callback, shortcut: str | None = None) -> QAction:
+        """Execute the `add_toolbar_action` workflow."""
         self._allow_any({"toolbar", "ui"})
         toolbar = self._resolve_toolbar(toolbar_name)
         action = QAction(label, self.window)
@@ -603,6 +671,7 @@ class PluginAPI:
         return action
 
     def add_panel(self, title: str, widget: QWidget, area: Qt.DockWidgetArea = Qt.RightDockWidgetArea) -> QDockWidget:
+        """Execute the `add_panel` workflow."""
         self._allow_any({"panel", "ui"})
         dock = QDockWidget(title, self.window)
         dock.setAllowedAreas(Qt.AllDockWidgetAreas)
@@ -615,6 +684,7 @@ class PluginAPI:
         return dock
 
     def _resolve_toolbar(self, toolbar_name: str) -> QToolBar:
+        """Internal helper for `_resolve_toolbar`."""
         name = (toolbar_name or "main").strip().lower()
         if name in {"main", "main_toolbar"} and hasattr(self.window, "main_toolbar"):
             return self.window.main_toolbar
@@ -630,6 +700,7 @@ class PluginAPI:
         return tb
 
     def _resolve_menu_path(self, menu_path: str):
+        """Internal helper for `_resolve_menu_path`."""
         parts = [p for p in (menu_path or "Plugins").split("/") if p.strip()]
         root_name = parts[0] if parts else "Plugins"
         menu = self._resolve_top_level_menu(root_name)
@@ -638,6 +709,7 @@ class PluginAPI:
         return menu
 
     def _resolve_top_level_menu(self, root_name: str):
+        """Internal helper for `_resolve_top_level_menu`."""
         normalized = str(root_name or "Plugins").strip() or "Plugins"
         normalized_clean = normalized.replace("&", "").strip().lower()
         menu_bar = self.window.menuBar() if hasattr(self.window, "menuBar") else None
@@ -662,7 +734,9 @@ class PluginAPI:
 
 
 class PluginHost:
+    """Class that implements the `PluginHost` runtime behavior."""
     def __init__(self, window) -> None:
+        """Initialize the `advanced_features` state for this instance."""
         self.window = window
         self.app_version = _read_app_version()
         self.plugins_dir = self._resolve_plugins_dir()
@@ -684,12 +758,14 @@ class PluginHost:
 
     def _resolve_plugins_dir(self) -> Path:
         # Dev-exclusive override: allow loading directly from repo ../plugins folder.
+        """Internal helper for `_resolve_plugins_dir`."""
         if not getattr(sys, "frozen", False):
             if bool(self.window.settings.get("plugin_dev_use_repo_plugins", False)):
                 return _root() / "plugins"
         return get_plugins_dir_path()
 
     def set_dev_plugins_source(self, use_repo_plugins: bool) -> None:
+        """Update state handled by `set_dev_plugins_source`."""
         if getattr(sys, "frozen", False):
             return
         self.window.settings["plugin_dev_use_repo_plugins"] = bool(use_repo_plugins)
@@ -699,12 +775,14 @@ class PluginHost:
         self.reload()
 
     def _load_startup_plugins(self) -> None:
+        """Internal helper for `_load_startup_plugins`."""
         if self._startup_plugins_loaded:
             return
         self._startup_plugins_loaded = True
         self.reload(startup=True)
 
     def _packaged_plugins_dir(self) -> Path:
+        """Internal helper for `_packaged_plugins_dir`."""
         if getattr(sys, "frozen", False):
             meipass = Path(str(getattr(sys, "_MEIPASS", "")))
             if meipass:
@@ -714,9 +792,11 @@ class PluginHost:
         return _root() / "plugins"
 
     def runtime_mode_label(self) -> str:
+        """Execute the `runtime_mode_label` workflow."""
         return "production" if getattr(sys, "frozen", False) else "development"
 
     def _install_example_plugins_if_missing(self) -> None:
+        """Internal helper for `_install_example_plugins_if_missing`."""
         source_root = self._packaged_plugins_dir()
         if not source_root.exists():
             return
@@ -742,13 +822,16 @@ class PluginHost:
                 self.window.log_event("Error", f"Could not install bundled example plugin {name}: {exc}")
 
     def _enabled(self) -> set[str]:
+        """Internal helper for `_enabled`."""
         return {str(x) for x in self.window.settings.get("enabled_plugins", []) if isinstance(x, str)}
 
     def _save_enabled(self, ids: set[str]) -> None:
+        """Internal helper for `_save_enabled`."""
         self.window.settings["enabled_plugins"] = sorted(ids)
         self.window.save_settings_to_disk()
 
     def _trusted_hashes(self) -> dict[str, str]:
+        """Internal helper for `_trusted_hashes`."""
         raw = self.window.settings.get("trusted_plugin_hashes", {})
         if not isinstance(raw, dict):
             return {}
@@ -761,21 +844,26 @@ class PluginHost:
         return out
 
     def _save_trusted_hashes(self, mapping: dict[str, str]) -> None:
+        """Internal helper for `_save_trusted_hashes`."""
         self.window.settings["trusted_plugin_hashes"] = dict(sorted(mapping.items()))
         self.window.save_settings_to_disk()
 
     def _quarantined(self) -> set[str]:
+        """Internal helper for `_quarantined`."""
         raw = self.window.settings.get("quarantined_plugins", [])
         return {str(x).strip() for x in raw if str(x).strip()}
 
     def _save_quarantined(self, ids: set[str]) -> None:
+        """Internal helper for `_save_quarantined`."""
         self.window.settings["quarantined_plugins"] = sorted(ids)
         self.window.save_settings_to_disk()
 
     def _is_startup_safe_mode(self) -> bool:
+        """Internal helper for `_is_startup_safe_mode`."""
         return bool(self.window.settings.get("plugin_startup_safe_mode", False))
 
     def _failure_counts(self) -> dict[str, int]:
+        """Internal helper for `_failure_counts`."""
         raw = self.window.settings.get("plugin_failure_counts", {})
         if not isinstance(raw, dict):
             return {}
@@ -791,11 +879,13 @@ class PluginHost:
         return out
 
     def _save_failure_counts(self, mapping: dict[str, int]) -> None:
+        """Internal helper for `_save_failure_counts`."""
         serial = {k: int(v) for k, v in sorted(mapping.items()) if int(v) > 0}
         self.window.settings["plugin_failure_counts"] = serial
         self.window.save_settings_to_disk()
 
     def _max_failures_before_disable(self) -> int:
+        """Internal helper for `_max_failures_before_disable`."""
         try:
             value = int(self.window.settings.get("plugin_max_failures_before_disable", 3) or 3)
         except Exception:
@@ -803,6 +893,7 @@ class PluginHost:
         return max(1, min(20, value))
 
     def plugin_health_score(self, rec: PluginRecord) -> int:
+        """Execute the `plugin_health_score` workflow."""
         score = 100
         score -= min(60, int(rec.failure_count) * 15)
         if rec.last_error:
@@ -816,6 +907,7 @@ class PluginHost:
         return max(0, min(100, score))
 
     def _record_plugin_failure(self, plugin_id: str, reason: str) -> int:
+        """Internal helper for `_record_plugin_failure`."""
         counts = self._failure_counts()
         counts[plugin_id] = int(counts.get(plugin_id, 0) or 0) + 1
         self._save_failure_counts(counts)
@@ -823,15 +915,18 @@ class PluginHost:
         return counts[plugin_id]
 
     def _clear_plugin_failure(self, plugin_id: str) -> None:
+        """Internal helper for `_clear_plugin_failure`."""
         counts = self._failure_counts()
         if plugin_id in counts:
             counts.pop(plugin_id, None)
             self._save_failure_counts(counts)
 
     def reset_plugin_failure_count(self, plugin_id: str) -> None:
+        """Execute the `reset_plugin_failure_count` workflow."""
         self._clear_plugin_failure(plugin_id)
 
     def _trust_prompt(self, rec: PluginRecord) -> bool:
+        """Internal helper for `_trust_prompt`."""
         box = QMessageBox(self.window)
         box.setWindowTitle("Trust Plugin")
         box.setIcon(QMessageBox.Warning)
@@ -844,15 +939,18 @@ class PluginHost:
         return box.clickedButton() == trust_btn
 
     def _is_plugin_trusted(self, rec: PluginRecord) -> bool:
+        """Internal helper for `_is_plugin_trusted`."""
         trusted = self._trusted_hashes()
         return trusted.get(rec.plugin_id, "").strip().lower() == rec.digest.lower()
 
     def _mark_trusted(self, rec: PluginRecord) -> None:
+        """Internal helper for `_mark_trusted`."""
         trusted = self._trusted_hashes()
         trusted[rec.plugin_id] = rec.digest.lower()
         self._save_trusted_hashes(trusted)
 
     def _quarantine_plugin(self, rec: PluginRecord, reason: str) -> None:
+        """Internal helper for `_quarantine_plugin`."""
         quarantined = self._quarantined()
         quarantined.add(rec.plugin_id)
         self._save_quarantined(quarantined)
@@ -863,6 +961,7 @@ class PluginHost:
         self.window.log_event("Error", f"Plugin quarantined ({rec.plugin_id}): {reason}")
 
     def _permission_overrides(self) -> dict[str, set[str]]:
+        """Internal helper for `_permission_overrides`."""
         raw = self.window.settings.get("plugin_permission_overrides", {})
         if not isinstance(raw, dict):
             return {}
@@ -879,6 +978,7 @@ class PluginHost:
         return out
 
     def _save_permission_overrides(self, mapping: dict[str, set[str]]) -> None:
+        """Internal helper for `_save_permission_overrides`."""
         serial: dict[str, list[str]] = {}
         for pid, perms in mapping.items():
             serial[str(pid)] = sorted({str(p).strip().lower() for p in perms if str(p).strip()})
@@ -886,6 +986,7 @@ class PluginHost:
         self.window.save_settings_to_disk()
 
     def set_permission_override(self, plugin_id: str, allowed: set[str] | None) -> None:
+        """Update state handled by `set_permission_override`."""
         overrides = self._permission_overrides()
         if allowed is None:
             overrides.pop(plugin_id, None)
@@ -894,10 +995,12 @@ class PluginHost:
         self._save_permission_overrides(overrides)
 
     def reset_permission_overrides(self) -> None:
+        """Execute the `reset_permission_overrides` workflow."""
         self.window.settings["plugin_permission_overrides"] = {}
         self.window.save_settings_to_disk()
 
     def _plugin_config_map(self) -> dict[str, dict[str, Any]]:
+        """Internal helper for `_plugin_config_map`."""
         raw = self.window.settings.get("plugin_config", {})
         if isinstance(raw, dict):
             return raw
@@ -905,6 +1008,7 @@ class PluginHost:
         return self.window.settings["plugin_config"]
 
     def _coerce_schema_value(self, spec: dict[str, Any], value: Any) -> Any:
+        """Internal helper for `_coerce_schema_value`."""
         typ = str(spec.get("type", "str")).strip().lower()
         if typ in {"int", "integer"}:
             try:
@@ -947,6 +1051,7 @@ class PluginHost:
         return text
 
     def _apply_plugin_settings_schema(self, rec: PluginRecord) -> None:
+        """Internal helper for `_apply_plugin_settings_schema`."""
         schema = dict(rec.settings_schema or {})
         if not schema:
             return
@@ -973,6 +1078,7 @@ class PluginHost:
             self.window.save_settings_to_disk()
 
     def set_plugin_config(self, plugin_id: str, key: str, value: Any) -> None:
+        """Update state handled by `set_plugin_config`."""
         rec = next((x for x in self.discover() if x.plugin_id == plugin_id), None)
         schema = rec.settings_schema if rec is not None else {}
         if key in schema:
@@ -987,14 +1093,17 @@ class PluginHost:
         self.window.save_settings_to_disk()
 
     def _append_runtime_log(self, item: dict[str, Any]) -> None:
+        """Internal helper for `_append_runtime_log`."""
         self.runtime_event_log.append(dict(item))
         if len(self.runtime_event_log) > 500:
             self.runtime_event_log = self.runtime_event_log[-500:]
 
     def plugin_logs(self, plugin_id: str) -> list[dict[str, Any]]:
+        """Execute the `plugin_logs` workflow."""
         return list(self._plugin_logs.get(str(plugin_id), []))
 
     def record_plugin_log(self, plugin_id: str, level: str, message: str) -> None:
+        """Execute the `record_plugin_log` workflow."""
         pid = str(plugin_id or "").strip()
         if not pid:
             return
@@ -1012,6 +1121,7 @@ class PluginHost:
             self._plugin_logs[pid] = items[-300:]
 
     def register_plugin_service(self, plugin_id: str, service_name: str, obj: Any) -> None:
+        """Execute the `register_plugin_service` workflow."""
         pid = str(plugin_id or "").strip()
         name = str(service_name or "").strip()
         if not pid or not name:
@@ -1023,6 +1133,7 @@ class PluginHost:
         registry[name] = obj
 
     def resolve_plugin_service(self, requester: PluginRecord, service_ref: str) -> Any:
+        """Execute the `resolve_plugin_service` workflow."""
         ref = str(service_ref or "").strip()
         if not ref:
             raise RuntimeError("service reference is required")
@@ -1050,6 +1161,7 @@ class PluginHost:
 
     @staticmethod
     def _normalize_dep_id(dep: str) -> str:
+        """Internal helper for `_normalize_dep_id`."""
         text = str(dep or "").strip()
         if not text:
             return ""
@@ -1060,6 +1172,7 @@ class PluginHost:
         return text
 
     def _build_load_order(self, records: list[PluginRecord]) -> list[PluginRecord]:
+        """Internal helper for `_build_load_order`."""
         rec_by_id = {r.plugin_id: r for r in records}
         deps: dict[str, set[str]] = {}
         for rec in records:
@@ -1083,6 +1196,7 @@ class PluginHost:
         return out
 
     def record_runtime_event(self, plugin_id: str, event: str, payload: dict[str, Any] | None = None) -> None:
+        """Execute the `record_runtime_event` workflow."""
         now = datetime.now().isoformat(timespec="seconds")
         rec = next((x for x in self.records if x.plugin_id == plugin_id), None)
         item = {
@@ -1100,6 +1214,7 @@ class PluginHost:
                 rec.runtime_events = rec.runtime_events[-100:]
 
     def publish_runtime_event(self, source_plugin_id: str, event: str, payload: dict[str, Any]) -> None:
+        """Execute the `publish_runtime_event` workflow."""
         self.record_runtime_event(source_plugin_id, f"bus:{event}", payload)
         envelope = {
             "source_plugin_id": source_plugin_id,
@@ -1127,6 +1242,7 @@ class PluginHost:
         description: str = "",
         args_schema: dict[str, Any] | None = None,
     ) -> None:
+        """Execute the `register_plugin_command` workflow."""
         pid = str(plugin_id or "").strip()
         name = str(command_name or "").strip()
         if not pid or not name:
@@ -1189,6 +1305,7 @@ class PluginHost:
                 pass
 
     def list_plugin_commands(self, plugin_id: str) -> list[dict[str, Any]]:
+        """Execute the `list_plugin_commands` workflow."""
         pid = str(plugin_id or "").strip()
         per = self._command_registry.get(pid, {})
         out: list[dict[str, Any]] = []
@@ -1204,6 +1321,7 @@ class PluginHost:
         return out
 
     def run_plugin_command(self, requester_plugin_id: str, command_ref: str, args: dict[str, Any] | None = None) -> Any:
+        """Execute the `run_plugin_command` workflow."""
         ref = str(command_ref or "").strip()
         if not ref:
             raise RuntimeError("command reference is required")
@@ -1223,6 +1341,7 @@ class PluginHost:
         raise RuntimeError(f"Command callback is not callable: {ref}")
 
     def install_plugin_archive(self, archive_path: Path) -> Path:
+        """Execute the `install_plugin_archive` workflow."""
         path = Path(archive_path)
         if not path.exists() or not path.is_file():
             raise FileNotFoundError(f"Archive not found: {path}")
@@ -1292,6 +1411,7 @@ class PluginHost:
                     shutil.rmtree(staging_dir, ignore_errors=True)
 
     def _repo_online_plugins_dir(self) -> Path:
+        """Internal helper for `_repo_online_plugins_dir`."""
         if getattr(sys, "frozen", False):
             meipass = Path(str(getattr(sys, "_MEIPASS", "")))
             if meipass:
@@ -1301,6 +1421,7 @@ class PluginHost:
         return _root() / "online_plugins"
 
     def load_online_plugin_catalog(self) -> list[dict[str, str]]:
+        """Load data required by `load_online_plugin_catalog`."""
         catalog_url = str(
             self.window.settings.get(
                 "plugin_online_catalog_url",
@@ -1362,6 +1483,7 @@ class PluginHost:
 
     @staticmethod
     def _catalog_bool_text(value: Any) -> str:
+        """Internal helper for `_catalog_bool_text`."""
         if isinstance(value, bool):
             return "Yes" if value else "No"
         text = str(value or "").strip()
@@ -1376,6 +1498,7 @@ class PluginHost:
 
     @staticmethod
     def _catalog_rating_text(value: Any) -> str:
+        """Internal helper for `_catalog_rating_text`."""
         try:
             rating = float(value)
         except Exception:
@@ -1389,12 +1512,14 @@ class PluginHost:
 
     @staticmethod
     def _catalog_changelog_text(value: Any) -> str:
+        """Internal helper for `_catalog_changelog_text`."""
         if isinstance(value, list):
             return "\n".join(f"- {str(item).strip()}" for item in value if str(item).strip())
         return str(value or "").strip()
 
     @staticmethod
     def _decode_text_bytes_with_fallback(payload: bytes) -> str:
+        """Internal helper for `_decode_text_bytes_with_fallback`."""
         try:
             text = payload.decode("utf-8", errors="strict")
         except Exception:
@@ -1404,6 +1529,7 @@ class PluginHost:
         return text
 
     def install_online_plugin(self, entry: dict[str, str]) -> Path:
+        """Execute the `install_online_plugin` workflow."""
         plugin_id = self._normalize_plugin_id(str(entry.get("id", "")).strip())
         source = str(entry.get("source", "") or "").strip().strip("/\\")
         repo = str(entry.get("repo", "") or "").strip()
@@ -1470,6 +1596,7 @@ class PluginHost:
         return dest_dir
 
     def uninstall_plugin(self, plugin_id: str) -> None:
+        """Execute the `uninstall_plugin` workflow."""
         pid = self._normalize_plugin_id(str(plugin_id or "").strip())
         if not pid:
             raise RuntimeError("Plugin id is required.")
@@ -1529,6 +1656,7 @@ class PluginHost:
         self._plugin_logs.pop(pid, None)
 
     def inspect_plugin_archive(self, archive_path: Path) -> dict[str, Any]:
+        """Execute the `inspect_plugin_archive` workflow."""
         path = Path(archive_path)
         if not path.exists() or not path.is_file():
             raise FileNotFoundError(f"Archive not found: {path}")
@@ -1595,6 +1723,7 @@ class PluginHost:
             }
 
     def check_plugin_update(self, rec: PluginRecord) -> dict[str, Any]:
+        """Execute the `check_plugin_update` workflow."""
         update_url = str(rec.metadata.get("update_url", "") or "").strip()
         current = str(rec.metadata.get("version", "") or "").strip() or "0.0.0"
         result = {
@@ -1625,12 +1754,14 @@ class PluginHost:
             return result
 
     def check_all_plugin_updates(self) -> list[dict[str, Any]]:
+        """Execute the `check_all_plugin_updates` workflow."""
         out: list[dict[str, Any]] = []
         for rec in self.discover():
             out.append(self.check_plugin_update(rec))
         return out
 
     def plugin_diagnostics_snapshot(self, rec: PluginRecord) -> dict[str, Any]:
+        """Execute the `plugin_diagnostics_snapshot` workflow."""
         return {
             "plugin_id": rec.plugin_id,
             "name": rec.name,
@@ -1659,6 +1790,7 @@ class PluginHost:
         }
 
     def start_plugin_job(self, plugin_id: str, job_name: str, fn) -> str:
+        """Execute the `start_plugin_job` workflow."""
         pid = str(plugin_id or "").strip()
         if not pid:
             raise ValueError("plugin_id is required")
@@ -1680,13 +1812,16 @@ class PluginHost:
         per[jid] = state
 
         def _run() -> None:
+            """Internal helper for `_run`."""
             def report_progress(value: float) -> None:
+                """Execute the `report_progress` workflow."""
                 try:
                     state["progress"] = max(0.0, min(1.0, float(value)))
                 except Exception:
                     pass
 
             def should_stop() -> bool:
+                """Execute the `should_stop` workflow."""
                 return bool(state.get("cancel_requested", False))
 
             try:
@@ -1711,6 +1846,7 @@ class PluginHost:
         return jid
 
     def cancel_plugin_job(self, plugin_id: str, job_id: str) -> bool:
+        """Execute the `cancel_plugin_job` workflow."""
         pid = str(plugin_id or "").strip()
         jid = str(job_id or "").strip()
         state = self._job_registry.get(pid, {}).get(jid)
@@ -1723,6 +1859,7 @@ class PluginHost:
         return True
 
     def plugin_job_status(self, plugin_id: str, job_id: str) -> dict[str, Any]:
+        """Execute the `plugin_job_status` workflow."""
         pid = str(plugin_id or "").strip()
         jid = str(job_id or "").strip()
         state = self._job_registry.get(pid, {}).get(jid)
@@ -1733,6 +1870,7 @@ class PluginHost:
         return out
 
     def discover(self) -> list[PluginRecord]:
+        """Execute the `discover` workflow."""
         enabled = self._enabled()
         quarantined = self._quarantined()
         overrides = self._permission_overrides()
@@ -1849,6 +1987,7 @@ class PluginHost:
         return out
 
     def emit_event(self, event_name: str, **payload) -> None:
+        """Execute the `emit_event` workflow."""
         for rec in list(self.records):
             if rec.instance is None:
                 continue
@@ -1876,6 +2015,7 @@ class PluginHost:
                 self.window.log_event("Error", f"Plugin hook error ({rec.plugin_id}:{event_name}): {exc}")
 
     def _unload_record(self, rec: PluginRecord) -> None:
+        """Internal helper for `_unload_record`."""
         try:
             on_unload = getattr(rec.instance, "on_unload", None)
             if callable(on_unload):
@@ -1920,6 +2060,7 @@ class PluginHost:
         rec.instance = None
 
     def _unload_all(self) -> None:
+        """Internal helper for `_unload_all`."""
         self._service_registry = {}
         self._command_registry = {}
         self._job_registry = {}
@@ -1929,6 +2070,7 @@ class PluginHost:
                 self._unload_record(rec)
 
     def reload(self, *, startup: bool = False) -> None:
+        """Execute the `reload` workflow."""
         import importlib.util
 
         self._unload_all()
@@ -2020,6 +2162,7 @@ class PluginHost:
                     )
 
     def set_enabled(self, plugin_id: str, enabled: bool) -> None:
+        """Update state handled by `set_enabled`."""
         ids = self._enabled()
         rec = next((x for x in self.discover() if x.plugin_id == plugin_id), None)
         if enabled and rec is not None:
@@ -2055,6 +2198,7 @@ class PluginHost:
         self._save_enabled(ids)
 
     def export_plugin(self, plugin_id: str, output_zip: Path) -> Path:
+        """Execute the `export_plugin` workflow."""
         rec = next((x for x in self.discover() if x.plugin_id == plugin_id), None)
         if rec is None:
             raise FileNotFoundError(f"Plugin not found: {plugin_id}")
@@ -2071,10 +2215,12 @@ class PluginHost:
 
     @staticmethod
     def _normalize_plugin_id(value: str) -> str:
+        """Internal helper for `_normalize_plugin_id`."""
         return re.sub(r"[^a-z0-9_.-]+", "_", str(value or "").strip().lower())
 
     @staticmethod
     def _valid_plugin_id(value: str) -> bool:
+        """Internal helper for `_valid_plugin_id`."""
         text = str(value or "").strip().lower()
         if not text:
             return False
@@ -2090,6 +2236,7 @@ class PluginHost:
         description: str = "",
         permissions: set[str] | None = None,
     ) -> Path:
+        """Execute the `scaffold_plugin` workflow."""
         allowed_permissions = {
             "file",
             "network",
@@ -2152,7 +2299,9 @@ class PluginHost:
 
 
 class PluginManagerDialog(QDialog):
+    """Dialog class that implements the `PluginManagerDialog` workflow."""
     def __init__(self, parent, host: PluginHost) -> None:
+        """Initialize the `advanced_features` state for this instance."""
         super().__init__(parent)
         self.host = host
         self.setWindowTitle("Plugin Manager")
@@ -2267,6 +2416,7 @@ class PluginManagerDialog(QDialog):
         self._populate()
 
     def _icon_button(self, icon_name: str, tooltip: str) -> QToolButton:
+        """Internal helper for `_icon_button`."""
         btn = QToolButton(self)
         btn.setAutoRaise(False)
         btn.setToolTip(tooltip)
@@ -2285,6 +2435,7 @@ class PluginManagerDialog(QDialog):
         return btn
 
     def _clear_layout(self, layout: QHBoxLayout) -> None:
+        """Internal helper for `_clear_layout`."""
         while layout.count():
             item = layout.takeAt(0)
             widget = item.widget()
@@ -2292,6 +2443,7 @@ class PluginManagerDialog(QDialog):
                 widget.setParent(self)
 
     def _relayout_action_buttons(self) -> None:
+        """Internal helper for `_relayout_action_buttons`."""
         self._clear_layout(self._action_row_top)
         self._clear_layout(self._action_row_bottom)
         available = max(220, self.width() - 80)
@@ -2314,10 +2466,12 @@ class PluginManagerDialog(QDialog):
             self._action_row_bottom.addStretch(1)
 
     def resizeEvent(self, event):  # type: ignore[override]
+        """Execute the `resizeEvent` workflow."""
         super().resizeEvent(event)
         self._relayout_action_buttons()
 
     def _populate(self) -> None:
+        """Internal helper for `_populate`."""
         self.list_widget.clear()
         self._visible_plugin_ids = []
         query = self.search_input.text().strip().lower()
@@ -2397,6 +2551,7 @@ class PluginManagerDialog(QDialog):
                     perms_row.addWidget(cb)
 
                 def _persist_permissions(pid=rec.plugin_id, requested_perms=set(rec.requested_permissions), checks=perm_checks):
+                    """Internal helper for `_persist_permissions`."""
                     allowed = {p for p, box in checks.items() if box.isChecked()}
                     if allowed == set(requested_perms):
                         self.host.set_permission_override(pid, None)
@@ -2418,23 +2573,28 @@ class PluginManagerDialog(QDialog):
         self._refresh_diagnostics()
 
     def _reload(self) -> None:
+        """Internal helper for `_reload`."""
         self.host.reload()
         self._populate()
 
     def _clear_quarantine(self) -> None:
+        """Internal helper for `_clear_quarantine`."""
         self.host.window.settings["quarantined_plugins"] = []
         self.host.window.save_settings_to_disk()
         self._populate()
 
     def _reset_permission_overrides(self) -> None:
+        """Internal helper for `_reset_permission_overrides`."""
         self.host.reset_permission_overrides()
         self._populate()
 
     def _toggle_unsafe_ui_bridge(self, enabled: bool) -> None:
+        """Internal helper for `_toggle_unsafe_ui_bridge`."""
         self.host.window.settings["plugin_allow_unsafe_ui_bridge"] = bool(enabled)
         self.host.window.save_settings_to_disk()
 
     def _toggle_dev_repo_plugins_source(self, enabled: bool) -> None:
+        """Internal helper for `_toggle_dev_repo_plugins_source`."""
         if self.host.runtime_mode_label() != "development":
             return
         self.host.set_dev_plugins_source(bool(enabled))
@@ -2443,6 +2603,7 @@ class PluginManagerDialog(QDialog):
         self._populate()
 
     def _scaffold_plugin(self) -> None:
+        """Internal helper for `_scaffold_plugin`."""
         pid, ok = QInputDialog.getText(self, "Scaffold Plugin", "Plugin id (lowercase, 2-64 chars):")
         if not ok:
             return
@@ -2480,6 +2641,7 @@ class PluginManagerDialog(QDialog):
         self._populate()
 
     def _selected_plugin_record(self) -> PluginRecord | None:
+        """Internal helper for `_selected_plugin_record`."""
         row = int(self.list_widget.currentRow())
         if row < 0 or row >= len(self._visible_plugin_ids):
             return None
@@ -2491,6 +2653,7 @@ class PluginManagerDialog(QDialog):
         return runtime or rec
 
     def _refresh_diagnostics(self) -> None:
+        """Internal helper for `_refresh_diagnostics`."""
         rec = self._selected_plugin_record()
         if rec is None:
             self.diagnostics_view.setPlainText("Select a plugin to view runtime diagnostics.")
@@ -2553,6 +2716,7 @@ class PluginManagerDialog(QDialog):
         self.diagnostics_view.setPlainText("\n".join(lines))
 
     def _export_plugin(self) -> None:
+        """Internal helper for `_export_plugin`."""
         rec = self._selected_plugin_record()
         if rec is None:
             QMessageBox.information(self, "Export Plugin", "Select a plugin first.")
@@ -2572,6 +2736,7 @@ class PluginManagerDialog(QDialog):
         self.host.window.show_status_message(f"Plugin exported: {out}", 3500)
 
     def _run_selected_command(self) -> None:
+        """Internal helper for `_run_selected_command`."""
         rec = self._selected_plugin_record()
         if rec is None:
             QMessageBox.information(self, "Run Command", "Select a plugin first.")
@@ -2612,6 +2777,7 @@ class PluginManagerDialog(QDialog):
         self._refresh_diagnostics()
 
     def _inspect_plugin_zip(self) -> None:
+        """Internal helper for `_inspect_plugin_zip`."""
         path, _ = QFileDialog.getOpenFileName(self, "Inspect Plugin Zip", str(self.host.plugins_dir), "Zip Files (*.zip)")
         if not path:
             return
@@ -2638,6 +2804,7 @@ class PluginManagerDialog(QDialog):
         QMessageBox.information(self, "Inspect Plugin Zip", "\n".join(lines))
 
     def _install_plugin_zip(self) -> None:
+        """Internal helper for `_install_plugin_zip`."""
         path, _ = QFileDialog.getOpenFileName(self, "Install Plugin from Zip", str(self.host.plugins_dir), "Zip Files (*.zip)")
         if not path:
             return
@@ -2650,6 +2817,7 @@ class PluginManagerDialog(QDialog):
         self._populate()
 
     def _check_selected_plugin_update(self) -> None:
+        """Internal helper for `_check_selected_plugin_update`."""
         rec = self._selected_plugin_record()
         if rec is None:
             QMessageBox.information(self, "Check Update", "Select a plugin first.")
@@ -2674,6 +2842,7 @@ class PluginManagerDialog(QDialog):
             )
 
     def _check_all_plugin_updates(self) -> None:
+        """Internal helper for `_check_all_plugin_updates`."""
         results = self.host.check_all_plugin_updates()
         if not results:
             QMessageBox.information(self, "Check All Updates", "No plugins found.")
@@ -2698,6 +2867,7 @@ class PluginManagerDialog(QDialog):
         QMessageBox.information(self, "Check All Updates", summary + "\n\n" + "\n".join(lines[:40]))
 
     def _export_plugin_diagnostics(self) -> None:
+        """Internal helper for `_export_plugin_diagnostics`."""
         rec = self._selected_plugin_record()
         if rec is None:
             QMessageBox.information(self, "Export Diagnostics", "Select a plugin first.")
@@ -2723,6 +2893,7 @@ class PluginManagerDialog(QDialog):
         self.host.window.show_status_message(f"Plugin diagnostics exported: {out}", 3200)
 
     def _retry_selected_plugin(self) -> None:
+        """Internal helper for `_retry_selected_plugin`."""
         rec = self._selected_plugin_record()
         if rec is None:
             QMessageBox.information(self, "Retry Plugin", "Select a plugin first.")
@@ -2739,6 +2910,7 @@ class PluginManagerDialog(QDialog):
         self.host.window.show_status_message(f"Retried plugin: {rec.plugin_id}", 2500)
 
     def _open_plugin_settings(self) -> None:
+        """Internal helper for `_open_plugin_settings`."""
         rec = self._selected_plugin_record()
         if rec is None:
             QMessageBox.information(self, "Plugin Settings", "Select a plugin first.")
@@ -2806,6 +2978,7 @@ class PluginManagerDialog(QDialog):
         buttons.rejected.connect(dlg.reject)
 
         def _save() -> None:
+            """Internal helper for `_save`."""
             try:
                 for key, (kind, widget) in editors.items():
                     if kind == "bool":
@@ -2829,6 +3002,7 @@ class PluginManagerDialog(QDialog):
         self._refresh_diagnostics()
 
     def _export_plugin_logs(self) -> None:
+        """Internal helper for `_export_plugin_logs`."""
         rec = self._selected_plugin_record()
         if rec is None:
             QMessageBox.information(self, "Export Logs", "Select a plugin first.")
@@ -2853,6 +3027,7 @@ class PluginManagerDialog(QDialog):
         self.host.window.show_status_message(f"Plugin logs exported: {out}", 3000)
 
     def _reset_selected_plugin_failures(self) -> None:
+        """Internal helper for `_reset_selected_plugin_failures`."""
         rec = self._selected_plugin_record()
         if rec is None:
             QMessageBox.information(self, "Reset Failures", "Select a plugin first.")
@@ -2863,7 +3038,9 @@ class PluginManagerDialog(QDialog):
 
 
 class OnlinePluginsDialog(QDialog):
+    """Dialog class that implements the `OnlinePluginsDialog` workflow."""
     def __init__(self, parent, host: PluginHost) -> None:
+        """Initialize the `advanced_features` state for this instance."""
         super().__init__(parent)
         self.host = host
         self._entries: list[dict[str, str]] = []
@@ -2936,16 +3113,19 @@ class OnlinePluginsDialog(QDialog):
         self._populate()
 
     def _installed_by_id(self) -> dict[str, PluginRecord]:
+        """Internal helper for `_installed_by_id`."""
         return {rec.plugin_id: rec for rec in self.host.discover()}
 
     @staticmethod
     def _is_newer_version(candidate: str, current: str) -> bool:
+        """Internal helper for `_is_newer_version`."""
         try:
             return _parse_version_tuple(str(candidate or "")) > _parse_version_tuple(str(current or ""))
         except Exception:
             return False
 
     def _populate(self) -> None:
+        """Internal helper for `_populate`."""
         self.list_widget.clear()
         self.details.clear()
         self._entries = self.host.load_online_plugin_catalog()
@@ -2970,6 +3150,7 @@ class OnlinePluginsDialog(QDialog):
         self._refresh_details()
 
     def _refresh_details(self) -> None:
+        """Internal helper for `_refresh_details`."""
         idx = int(self.list_widget.currentRow())
         if idx < 0 or idx >= len(self._entries):
             self.details.setPlainText("Select an online plugin to see details.")
@@ -3005,6 +3186,7 @@ class OnlinePluginsDialog(QDialog):
         self.details.setPlainText("\n".join(lines))
 
     def _install_selected(self) -> None:
+        """Internal helper for `_install_selected`."""
         idx = int(self.list_widget.currentRow())
         if idx < 0 or idx >= len(self._entries):
             QMessageBox.information(self, "Online Plugins", "Select an online plugin first.")
@@ -3021,6 +3203,7 @@ class OnlinePluginsDialog(QDialog):
         self._populate()
 
     def _uninstall_selected(self) -> None:
+        """Internal helper for `_uninstall_selected`."""
         idx = int(self.list_widget.currentRow())
         if idx < 0 or idx >= len(self._entries):
             QMessageBox.information(self, "Online Plugins", "Select an online plugin first.")
@@ -3048,6 +3231,7 @@ class OnlinePluginsDialog(QDialog):
         self._populate()
 
     def _check_selected_update(self) -> None:
+        """Internal helper for `_check_selected_update`."""
         idx = int(self.list_widget.currentRow())
         if idx < 0 or idx >= len(self._entries):
             QMessageBox.information(self, "Check Update", "Select an online plugin first.")
@@ -3074,6 +3258,7 @@ class OnlinePluginsDialog(QDialog):
         )
 
     def _check_all_updates(self) -> None:
+        """Internal helper for `_check_all_updates`."""
         installed = self._installed_by_id()
         updates: list[str] = []
         checked = 0
@@ -3099,7 +3284,9 @@ class OnlinePluginsDialog(QDialog):
 
 
 class MinimapDock(QDockWidget):
+    """Class that implements the `MinimapDock` runtime behavior."""
     def __init__(self, parent) -> None:
+        """Initialize the `advanced_features` state for this instance."""
         super().__init__("Minimap", parent)
         self.text = QTextEdit(self)
         self.text.setObjectName("minimapText")
@@ -3113,6 +3300,7 @@ class MinimapDock(QDockWidget):
         self._apply_theme()
 
     def _apply_theme(self) -> None:
+        """Internal helper for `_apply_theme`."""
         parent = self.parentWidget()
         settings = getattr(parent, "settings", {}) if parent is not None else {}
         tokens = build_tokens_from_settings(settings if isinstance(settings, dict) else {})
@@ -3131,6 +3319,7 @@ class MinimapDock(QDockWidget):
         )
 
     def refresh(self, src: str, *, show_line_numbers: bool = False) -> None:
+        """Execute the `refresh` workflow."""
         self._apply_theme()
         lines = src.splitlines()[:1800]
         if show_line_numbers:
@@ -3141,7 +3330,9 @@ class MinimapDock(QDockWidget):
 
 
 class OutlineDock(QDockWidget):
+    """Class that implements the `OutlineDock` runtime behavior."""
     def __init__(self, parent, jump_cb) -> None:
+        """Initialize the `advanced_features` state for this instance."""
         super().__init__("Symbol Outline", parent)
         self.jump_cb = jump_cb
         self.list_widget = QListWidget(self)
@@ -3149,11 +3340,13 @@ class OutlineDock(QDockWidget):
         self.list_widget.itemDoubleClicked.connect(self._jump)
 
     def _jump(self, item: QListWidgetItem) -> None:
+        """Internal helper for `_jump`."""
         line = item.data(Qt.ItemDataRole.UserRole)
         if isinstance(line, int):
             self.jump_cb(line)
 
     def refresh(self, language: str, text: str) -> None:
+        """Execute the `refresh` workflow."""
         self.list_widget.clear()
         rows: list[tuple[int, str]] = []
         if language == "python":
@@ -3182,7 +3375,9 @@ class OutlineDock(QDockWidget):
 
 
 class CollaborationServer:
+    """Class that implements the `CollaborationServer` runtime behavior."""
     def __init__(self, window) -> None:
+        """Initialize the `advanced_features` state for this instance."""
         self.window = window
         self.server: ThreadingHTTPServer | None = None
         self.thread: threading.Thread | None = None
@@ -3194,12 +3389,14 @@ class CollaborationServer:
         self._session_text = ""
 
     def _presence_timeout_sec(self) -> int:
+        """Internal helper for `_presence_timeout_sec`."""
         try:
             return max(20, int(self.window.settings.get("collab_presence_timeout_sec", 120) or 120))
         except Exception:
             return 120
 
     def _prune_stale_clients_locked(self) -> None:
+        """Internal helper for `_prune_stale_clients_locked`."""
         now = int(time.time())
         timeout = self._presence_timeout_sec()
         stale = [cid for cid, row in self._clients.items() if (now - int(row.get("last_seen", now))) > timeout]
@@ -3207,6 +3404,7 @@ class CollaborationServer:
             self._clients.pop(cid, None)
 
     def _ensure_token(self) -> str:
+        """Internal helper for `_ensure_token`."""
         token = str(self.window.settings.get("collab_token", "") or "").strip()
         if token:
             return token
@@ -3216,6 +3414,7 @@ class CollaborationServer:
         return token
 
     def start(self, port: int, read_write: bool) -> None:
+        """Execute the `start` workflow."""
         if self.server is not None:
             return
         token = self._ensure_token()
@@ -3223,7 +3422,9 @@ class CollaborationServer:
         owner = self
 
         class Handler(BaseHTTPRequestHandler):
+            """Class that implements the `Handler` runtime behavior."""
             def _send(self, code: int, payload: dict[str, Any]) -> None:
+                """Internal helper for `_send`."""
                 body = json.dumps(payload).encode("utf-8")
                 self.send_response(code)
                 self.send_header("Content-Type", "application/json")
@@ -3232,11 +3433,13 @@ class CollaborationServer:
                 self.wfile.write(body)
 
             def _raw_body(self) -> str:
+                """Internal helper for `_raw_body`."""
                 size = int(self.headers.get("Content-Length", "0") or 0)
                 raw = (self.rfile.read(size) if size > 0 else b"") or b""
                 return raw.decode("utf-8", errors="replace")
 
             def _read_json(self) -> tuple[dict[str, Any], str]:
+                """Internal helper for `_read_json`."""
                 raw = self._raw_body()
                 if not raw:
                     return {}, raw
@@ -3247,6 +3450,7 @@ class CollaborationServer:
                 return data if isinstance(data, dict) else {}, raw
 
             def _authorized(self) -> bool:
+                """Internal helper for `_authorized`."""
                 auth = str(self.headers.get("Authorization", "") or "")
                 if auth.startswith("Bearer "):
                     supplied = auth[7:].strip()
@@ -3255,6 +3459,7 @@ class CollaborationServer:
                 return bool(supplied) and hmac.compare_digest(supplied, token)
 
             def _verify_signature(self, method: str, path: str, raw_body: str) -> bool:
+                """Internal helper for `_verify_signature`."""
                 timestamp = str(self.headers.get("X-Collab-Timestamp", "") or "").strip()
                 signature = str(self.headers.get("X-Collab-Signature", "") or "").strip().lower()
                 if not timestamp or not signature:
@@ -3271,6 +3476,7 @@ class CollaborationServer:
                 return hmac.compare_digest(signature, expected)
 
             def do_GET(self) -> None:  # noqa: N802
+                """Execute the `do_GET` workflow."""
                 parsed = urlparse(self.path)
                 if not self._authorized():
                     self._send(403, {"error": "forbidden"})
@@ -3313,6 +3519,7 @@ class CollaborationServer:
                 )
 
             def do_POST(self) -> None:  # noqa: N802
+                """Execute the `do_POST` workflow."""
                 parsed = urlparse(self.path)
                 if not self._authorized():
                     self._send(403, {"error": "forbidden"})
@@ -3380,6 +3587,7 @@ class CollaborationServer:
                 self._send(200, {"ok": True, "revision": rev})
 
             def log_message(self, format: str, *args) -> None:  # noqa: A003
+                """Execute the `log_message` workflow."""
                 return
 
         with self._lock:
@@ -3393,6 +3601,7 @@ class CollaborationServer:
         self.thread.start()
 
     def stop(self) -> None:
+        """Execute the `stop` workflow."""
         if self.server is None:
             return
         self.server.shutdown()
@@ -3401,6 +3610,7 @@ class CollaborationServer:
         self.thread = None
 
     def snapshot(self) -> dict[str, Any]:
+        """Execute the `snapshot` workflow."""
         with self._lock:
             self._prune_stale_clients_locked()
             now = int(time.time())
@@ -3419,10 +3629,12 @@ class CollaborationServer:
             }
 
     def get_shared_text(self) -> str:
+        """Return the value produced by `get_shared_text`."""
         with self._lock:
             return str(self._session_text)
 
     def set_shared_text(self, text: str, *, source: str = "host") -> int:
+        """Update state handled by `set_shared_text`."""
         with self._lock:
             self._session_text = str(text)
             self._revision += 1
@@ -3439,6 +3651,7 @@ class CollaborationServer:
         return rev
 
     def _apply_session_text_to_active_tab(self, text: str) -> None:
+        """Internal helper for `_apply_session_text_to_active_tab`."""
         tab = self.window.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -3447,7 +3660,9 @@ class CollaborationServer:
 
 
 class AdvancedFeaturesController:
+    """Controller class that coordinates the `AdvancedFeaturesController` workflow."""
     def __init__(self, window) -> None:
+        """Initialize the `advanced_features` state for this instance."""
         self.window = window
         self.plugin_host = PluginHost(window)
         try:
@@ -3541,20 +3756,25 @@ class AdvancedFeaturesController:
         self._apply_aux_dock_theme()
 
     def collaboration_snapshot(self) -> dict[str, Any]:
+        """Execute the `collaboration_snapshot` workflow."""
         return self.collab.snapshot()
 
     def collaboration_shared_text(self) -> str:
+        """Execute the `collaboration_shared_text` workflow."""
         return self.collab.get_shared_text()
 
     def collaboration_set_shared_text(self, text: str, *, source: str = "host") -> int:
+        """Execute the `collaboration_set_shared_text` workflow."""
         return self.collab.set_shared_text(text, source=source)
 
     def _jump_line(self, line: int) -> None:
+        """Internal helper for `_jump_line`."""
         tab = self.window.active_tab()
         if tab is not None:
             tab.text_edit.set_cursor_position(max(0, line), 0)
 
     def refresh_views(self) -> None:
+        """Execute the `refresh_views` workflow."""
         tab = self.window.active_tab()
         if tab is None:
             self.minimap_dock.refresh("")
@@ -3572,6 +3792,7 @@ class AdvancedFeaturesController:
         self.window._set_breadcrumb_text(f"{tab.current_file or 'Untitled'} > line {line + 1}")
 
     def toggle_minimap(self, checked: bool) -> None:
+        """Toggle the state controlled by `toggle_minimap`."""
         self.minimap_dock.setVisible(bool(checked))
         tab = self.window.active_tab()
         if checked and tab is not None and not bool(tab.text_edit.is_scintilla):
@@ -3582,18 +3803,22 @@ class AdvancedFeaturesController:
         self.refresh_views()
 
     def toggle_outline(self, checked: bool) -> None:
+        """Toggle the state controlled by `toggle_outline`."""
         self.outline_dock.setVisible(bool(checked))
         self.refresh_views()
 
     def open_plugin_manager(self) -> None:
+        """Open the UI or resource handled by `open_plugin_manager`."""
         PluginManagerDialog(self.window, self.plugin_host).exec()
         self.plugin_host.reload()
 
     def open_online_plugins(self) -> None:
+        """Open the UI or resource handled by `open_online_plugins`."""
         OnlinePluginsDialog(self.window, self.plugin_host).exec()
         self.plugin_host.reload()
 
     def go_to_definition(self) -> None:
+        """Execute the `go_to_definition` workflow."""
         tab = self.window.active_tab()
         if tab is None:
             return
@@ -3648,6 +3873,7 @@ class AdvancedFeaturesController:
         self.window.show_status_message(f"Definition: {shown_path}:{target_line + 1}", 2800)
 
     def _lsp_log(self, message: str, *, level: str = "Info") -> None:
+        """Internal helper for `_lsp_log`."""
         if not bool(self.window.settings.get("lsp_definition_verbose_logging", False)):
             return
         try:
@@ -3656,7 +3882,9 @@ class AdvancedFeaturesController:
             pass
 
     def _resolve_lsp_candidates(self, *, language: str, file_path: str) -> tuple[str, list[list[str]]]:
+        """Internal helper for `_resolve_lsp_candidates`."""
         def _normalize_server_list(value: Any) -> list[str]:
+            """Internal helper for `_normalize_server_list`."""
             if isinstance(value, list):
                 return [str(item).strip() for item in value if str(item).strip()]
             if isinstance(value, str) and value.strip():
@@ -3701,6 +3929,7 @@ class AdvancedFeaturesController:
         request_id: int,
         timeout_sec: float,
     ) -> dict[str, Any] | None:
+        """Internal helper for `_lsp_wait_for_response`."""
         deadline = time.monotonic() + max(0.1, float(timeout_sec))
         while time.monotonic() < deadline:
             remaining = max(0.05, deadline - time.monotonic())
@@ -3725,6 +3954,7 @@ class AdvancedFeaturesController:
         request_id: int,
         timeout_sec: float,
     ) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+        """Internal helper for `_lsp_wait_for_response_collect`."""
         notifications: list[dict[str, Any]] = []
         deadline = time.monotonic() + max(0.1, float(timeout_sec))
         while time.monotonic() < deadline:
@@ -3750,6 +3980,7 @@ class AdvancedFeaturesController:
         message_queue: "queue.Queue[dict[str, Any]]",
         timeout_sec: float,
     ) -> list[dict[str, Any]]:
+        """Internal helper for `_lsp_collect_notifications`."""
         out: list[dict[str, Any]] = []
         deadline = time.monotonic() + max(0.0, float(timeout_sec))
         while time.monotonic() < deadline:
@@ -3764,6 +3995,7 @@ class AdvancedFeaturesController:
 
     @staticmethod
     def _uri_to_path(uri: str, default_path: str) -> str:
+        """Internal helper for `_uri_to_path`."""
         target_uri = str(uri or "")
         if target_uri.startswith("file://"):
             parsed = urlparse(target_uri)
@@ -3781,6 +4013,7 @@ class AdvancedFeaturesController:
         file_path: str,
         source_text: str,
     ) -> dict[str, Any] | None:
+        """Internal helper for `_lsp_open_session`."""
         path_obj = Path(file_path)
         root = str(self.window._workspace_root() or path_obj.parent)
         uri = path_obj.resolve().as_uri()
@@ -3799,12 +4032,14 @@ class AdvancedFeaturesController:
             stop_reader = threading.Event()
 
             def _send(payload: dict[str, Any]) -> None:
+                """Internal helper for `_send`."""
                 body = json.dumps(payload).encode("utf-8")
                 header = f"Content-Length: {len(body)}\r\n\r\n".encode("ascii")
                 proc.stdin.write(header + body)
                 proc.stdin.flush()
 
             def _reader_loop() -> None:
+                """Internal helper for `_reader_loop`."""
                 try:
                     while not stop_reader.is_set():
                         header = b""
@@ -3897,6 +4132,7 @@ class AdvancedFeaturesController:
             return None
 
     def _lsp_close_session(self, session: dict[str, Any], *, attempt: int = 0) -> None:
+        """Internal helper for `_lsp_close_session`."""
         proc = session.get("proc")
         send = session.get("send")
         try:
@@ -3928,6 +4164,7 @@ class AdvancedFeaturesController:
         params: dict[str, Any],
         timeout_sec: float,
     ) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+        """Internal helper for `_lsp_request_with_notifications`."""
         request_id = int(session.get("next_id", 1))
         session["next_id"] = request_id + 1
         session["send"]({"jsonrpc": "2.0", "id": request_id, "method": method, "params": params})
@@ -3945,6 +4182,7 @@ class AdvancedFeaturesController:
         source_text: str,
         fn,
     ) -> Any:
+        """Internal helper for `_run_lsp_feature`."""
         if not file_path:
             return None
         language_id, candidates = self._resolve_lsp_candidates(language=language, file_path=file_path)
@@ -3977,6 +4215,7 @@ class AdvancedFeaturesController:
         col: int,
         source_text: str,
     ) -> tuple[str, int] | None:
+        """Internal helper for `_resolve_definition_with_lsp`."""
         if not file_path:
             return None
         path_obj = Path(file_path)
@@ -4014,12 +4253,14 @@ class AdvancedFeaturesController:
                     stop_reader = threading.Event()
 
                     def _send(payload: dict[str, Any]) -> None:
+                        """Internal helper for `_send`."""
                         body = json.dumps(payload).encode("utf-8")
                         header = f"Content-Length: {len(body)}\r\n\r\n".encode("ascii")
                         proc.stdin.write(header + body)
                         proc.stdin.flush()
 
                     def _reader_loop() -> None:
+                        """Internal helper for `_reader_loop`."""
                         try:
                             while not stop_reader.is_set():
                                 header = b""
@@ -4190,6 +4431,7 @@ class AdvancedFeaturesController:
         source_text: str,
         current_file: str,
     ) -> tuple[str, int] | None:
+        """Internal helper for `_resolve_definition_fallback`."""
         patterns: list[str] = []
         if language == "python":
             patterns = [rf"^\s*def\s+{re.escape(symbol)}\b", rf"^\s*class\s+{re.escape(symbol)}\b", rf"^\s*{re.escape(symbol)}\s*="]
@@ -4222,12 +4464,14 @@ class AdvancedFeaturesController:
         return None
 
     def _append_output_line(self, text: str) -> None:
+        """Internal helper for `_append_output_line`."""
         view = getattr(self, "output_view", None)
         if view is None:
             return
         view.append(str(text))
 
     def _active_lsp_context(self) -> tuple[Any, str, str, int, int] | None:
+        """Internal helper for `_active_lsp_context`."""
         tab = self.window.active_tab()
         if tab is None or not getattr(tab, "current_file", None):
             return None
@@ -4239,6 +4483,7 @@ class AdvancedFeaturesController:
         return tab, language, file_path, int(line), int(col)
 
     def _set_problem_rows(self, rows: list[dict[str, Any]]) -> None:
+        """Internal helper for `_set_problem_rows`."""
         self.problems_list.clear()
         self.problems_summary_label.setText("No problems reported." if not rows else f"{len(rows)} problem(s) detected.")
         for row in rows:
@@ -4254,6 +4499,7 @@ class AdvancedFeaturesController:
             self.problems_dock.raise_()
 
     def _apply_aux_dock_theme(self) -> None:
+        """Internal helper for `_apply_aux_dock_theme`."""
         tokens = build_tokens_from_settings(self.window.settings)
         qss = f"""
         QWidget {{
@@ -4277,6 +4523,7 @@ class AdvancedFeaturesController:
                 widget.setStyleSheet(qss)
 
     def _open_problem_item(self, item: QListWidgetItem) -> None:
+        """Internal helper for `_open_problem_item`."""
         row = item.data(Qt.UserRole)
         if not isinstance(row, dict):
             return
@@ -4290,6 +4537,7 @@ class AdvancedFeaturesController:
 
     @staticmethod
     def _flatten_hover_contents(contents: Any) -> str:
+        """Internal helper for `_flatten_hover_contents`."""
         if isinstance(contents, str):
             return contents
         if isinstance(contents, list):
@@ -4303,6 +4551,7 @@ class AdvancedFeaturesController:
         return ""
 
     def lsp_hover_current(self) -> None:
+        """Execute the `lsp_hover_current` workflow."""
         ctx = self._active_lsp_context()
         if ctx is None:
             QMessageBox.information(self.window, "LSP Hover", "Open a saved file first.")
@@ -4312,6 +4561,7 @@ class AdvancedFeaturesController:
         request_timeout = float(self.window.settings.get("lsp_definition_request_timeout_sec", 3.0) or 3.0)
 
         def _run(session: dict[str, Any]) -> str | None:
+            """Internal helper for `_run`."""
             response, _notifications = self._lsp_request_with_notifications(
                 session,
                 method="textDocument/hover",
@@ -4337,6 +4587,7 @@ class AdvancedFeaturesController:
         self.output_dock.raise_()
 
     def lsp_find_references(self) -> None:
+        """Execute the `lsp_find_references` workflow."""
         ctx = self._active_lsp_context()
         if ctx is None:
             QMessageBox.information(self.window, "LSP References", "Open a saved file first.")
@@ -4346,6 +4597,7 @@ class AdvancedFeaturesController:
         request_timeout = float(self.window.settings.get("lsp_definition_request_timeout_sec", 3.0) or 3.0)
 
         def _run(session: dict[str, Any]) -> list[dict[str, Any]] | None:
+            """Internal helper for `_run`."""
             response, _notifications = self._lsp_request_with_notifications(
                 session,
                 method="textDocument/references",
@@ -4383,6 +4635,7 @@ class AdvancedFeaturesController:
         self.window.show_status_message(f"LSP references: {len(rows)}", 2500)
 
     def _apply_workspace_edit(self, edit: dict[str, Any]) -> int:
+        """Internal helper for `_apply_workspace_edit`."""
         changes = edit.get("changes", {})
         document_changes = edit.get("documentChanges", [])
         file_edits: dict[str, list[dict[str, Any]]] = {}
@@ -4410,6 +4663,7 @@ class AdvancedFeaturesController:
                 continue
             lines = text.splitlines(keepends=True)
             def _offset(pos: dict[str, Any]) -> int:
+                """Internal helper for `_offset`."""
                 line = int(pos.get("line", 0) or 0)
                 char = int(pos.get("character", 0) or 0)
                 return sum(len(lines[idx]) for idx in range(min(line, len(lines)))) + char
@@ -4435,6 +4689,7 @@ class AdvancedFeaturesController:
         return changed
 
     def lsp_rename_symbol(self) -> None:
+        """Execute the `lsp_rename_symbol` workflow."""
         ctx = self._active_lsp_context()
         if ctx is None:
             QMessageBox.information(self.window, "LSP Rename", "Open a saved file first.")
@@ -4447,6 +4702,7 @@ class AdvancedFeaturesController:
         request_timeout = float(self.window.settings.get("lsp_definition_request_timeout_sec", 3.0) or 3.0)
 
         def _run(session: dict[str, Any]) -> dict[str, Any] | None:
+            """Internal helper for `_run`."""
             response, _notifications = self._lsp_request_with_notifications(
                 session,
                 method="textDocument/rename",
@@ -4470,6 +4726,7 @@ class AdvancedFeaturesController:
         self.window.show_status_message(f"Renamed symbol across {changed} file(s).", 3000)
 
     def lsp_show_completion(self) -> None:
+        """Execute the `lsp_show_completion` workflow."""
         ctx = self._active_lsp_context()
         if ctx is None:
             QMessageBox.information(self.window, "LSP Completion", "Open a saved file first.")
@@ -4479,6 +4736,7 @@ class AdvancedFeaturesController:
         request_timeout = float(self.window.settings.get("lsp_definition_request_timeout_sec", 3.0) or 3.0)
 
         def _run(session: dict[str, Any]) -> list[dict[str, Any]] | None:
+            """Internal helper for `_run`."""
             response, _notifications = self._lsp_request_with_notifications(
                 session,
                 method="textDocument/completion",
@@ -4512,6 +4770,7 @@ class AdvancedFeaturesController:
         tab.text_edit.insert_text(insert_text)
 
     def lsp_format_document(self) -> None:
+        """Execute the `lsp_format_document` workflow."""
         ctx = self._active_lsp_context()
         if ctx is None:
             QMessageBox.information(self.window, "LSP Format", "Open a saved file first.")
@@ -4521,6 +4780,7 @@ class AdvancedFeaturesController:
         request_timeout = float(self.window.settings.get("lsp_definition_request_timeout_sec", 3.0) or 3.0)
 
         def _run(session: dict[str, Any]) -> list[dict[str, Any]] | None:
+            """Internal helper for `_run`."""
             response, _notifications = self._lsp_request_with_notifications(
                 session,
                 method="textDocument/formatting",
@@ -4543,6 +4803,7 @@ class AdvancedFeaturesController:
         self.window.show_status_message(f"Formatted {changed} file(s) with LSP.", 3000)
 
     def lsp_refresh_diagnostics(self) -> None:
+        """Execute the `lsp_refresh_diagnostics` workflow."""
         ctx = self._active_lsp_context()
         if ctx is None:
             QMessageBox.information(self.window, "LSP Diagnostics", "Open a saved file first.")
@@ -4552,6 +4813,7 @@ class AdvancedFeaturesController:
         request_timeout = float(self.window.settings.get("lsp_definition_request_timeout_sec", 3.0) or 3.0)
 
         def _run(session: dict[str, Any]) -> list[dict[str, Any]] | None:
+            """Internal helper for `_run`."""
             rows: list[dict[str, Any]] = []
             response, notifications = self._lsp_request_with_notifications(
                 session,
@@ -4605,6 +4867,7 @@ class AdvancedFeaturesController:
         self._append_output_line(f"LSP diagnostics refreshed: {len(rows)} issue(s)")
 
     def refresh_gitlens_for_active_tab(self) -> None:
+        """Execute the `refresh_gitlens_for_active_tab` workflow."""
         tab = self.window.active_tab()
         if tab is None or not str(tab.current_file or "").strip():
             self.gitlens_view.setPlainText("Open a saved file to view blame details.")
@@ -4626,6 +4889,7 @@ class AdvancedFeaturesController:
             self.gitlens_view.setPlainText(f"GitLens unavailable:\n{exc}")
 
     def open_diff(self) -> None:
+        """Open the UI or resource handled by `open_diff`."""
         tab = self.window.active_tab()
         if tab is None:
             return
@@ -4710,6 +4974,7 @@ class AdvancedFeaturesController:
         v.addWidget(btn_row)
 
         def _apply_text_to_active(value: str) -> None:
+            """Internal helper for `_apply_text_to_active`."""
             active = self.window.active_tab()
             if active is None:
                 return
@@ -4724,6 +4989,7 @@ class AdvancedFeaturesController:
         apply_right_btn.clicked.connect(lambda: _apply_text_to_active(right.toPlainText()))
 
         def _refresh_stats() -> None:
+            """Internal helper for `_refresh_stats`."""
             patch = build_unified_diff_text(
                 left.toPlainText(),
                 right.toPlainText(),
@@ -4737,6 +5003,7 @@ class AdvancedFeaturesController:
             )
 
         def _swap_sides() -> None:
+            """Internal helper for `_swap_sides`."""
             left_text_cur = left.toPlainText()
             right_text_cur = right.toPlainText()
             left.setPlainText(right_text_cur)
@@ -4747,6 +5014,7 @@ class AdvancedFeaturesController:
         ignore_ws.toggled.connect(lambda _checked: _refresh_stats())
 
         def _show_unified_diff() -> None:
+            """Internal helper for `_show_unified_diff`."""
             left_label = str(tab.current_file or "active")
             right_label = compare_target_label or "other"
             diff_text = build_unified_diff_text(
@@ -4771,6 +5039,7 @@ class AdvancedFeaturesController:
             pv.addWidget(b)
 
             def _apply_patch_to_active() -> None:
+                """Internal helper for `_apply_patch_to_active`."""
                 active = self.window.active_tab()
                 if active is None:
                     return
@@ -4799,6 +5068,7 @@ class AdvancedFeaturesController:
         dlg.exec()
 
     def apply_patch_file_to_active(self) -> None:
+        """Apply the changes or settings handled by `apply_patch_file_to_active`."""
         active = self.window.active_tab()
         if active is None:
             return
@@ -4836,6 +5106,7 @@ class AdvancedFeaturesController:
         )
 
     def open_merge_helper(self) -> None:
+        """Open the UI or resource handled by `open_merge_helper`."""
         base, _ = QFileDialog.getOpenFileName(self.window, "Base File", "", "All Files (*.*)")
         ours, _ = QFileDialog.getOpenFileName(self.window, "Ours File", "", "All Files (*.*)")
         theirs, _ = QFileDialog.getOpenFileName(self.window, "Theirs File", "", "All Files (*.*)")
@@ -4869,6 +5140,7 @@ class AdvancedFeaturesController:
         use_auto_btn.clicked.connect(lambda: edit.setPlainText(merged))
 
         def _apply_to_active() -> None:
+            """Internal helper for `_apply_to_active`."""
             active = self.window.active_tab()
             if active is None:
                 return
@@ -4883,11 +5155,13 @@ class AdvancedFeaturesController:
         dlg.exec()
 
     def _save_text_dialog(self, text: str) -> None:
+        """Internal helper for `_save_text_dialog`."""
         path, _ = QFileDialog.getSaveFileName(self.window, "Save File", "", "All Files (*.*)")
         if path:
             Path(path).write_text(text, encoding="utf-8")
 
     def _default_snippet_library(self) -> list[dict[str, str]]:
+        """Internal helper for `_default_snippet_library`."""
         return [
             {
                 "name": "python_func",
@@ -4910,6 +5184,7 @@ class AdvancedFeaturesController:
         ]
 
     def _snippet_library(self) -> list[dict[str, str]]:
+        """Internal helper for `_snippet_library`."""
         raw = self.window.settings.get("snippets_library", [])
         rows: list[dict[str, str]] = []
         if isinstance(raw, list):
@@ -4943,6 +5218,7 @@ class AdvancedFeaturesController:
         return rows
 
     def _save_snippet_library(self, rows: list[dict[str, str]]) -> None:
+        """Internal helper for `_save_snippet_library`."""
         cleaned: list[dict[str, str]] = []
         legacy_snippets: dict[str, str] = {}
         workspace_templates: dict[str, str] = {}
@@ -4965,6 +5241,7 @@ class AdvancedFeaturesController:
         self.window.save_settings_to_disk()
 
     def _expand_snippet_text(self, text: str) -> str:
+        """Internal helper for `_expand_snippet_text`."""
         placeholder_re = re.compile(r"\$\{(\d+)(?::([^}]*))?\}")
         ordered: list[tuple[str, str]] = []
         seen: set[str] = set()
@@ -4984,6 +5261,7 @@ class AdvancedFeaturesController:
             values[key] = value
 
         def _replace(match: re.Match[str]) -> str:
+            """Internal helper for `_replace`."""
             key = str(match.group(1))
             default = str(match.group(2) or "")
             return values.get(key, default)
@@ -4993,6 +5271,7 @@ class AdvancedFeaturesController:
         return expanded
 
     def open_snippets(self) -> None:
+        """Open the UI or resource handled by `open_snippets`."""
         rows = self._snippet_library()
         current_language = ""
         tab = self.window.active_tab()
@@ -5054,6 +5333,7 @@ class AdvancedFeaturesController:
         outer.addWidget(close_box)
 
         def _matches_language(row: dict[str, str], selected: str) -> bool:
+            """Internal helper for `_matches_language`."""
             scoped = [part.strip().lower() for part in str(row.get("language", "") or "").split(",") if part.strip()]
             if selected == "Any Language":
                 return True
@@ -5064,6 +5344,7 @@ class AdvancedFeaturesController:
             return selected.lower() in scoped
 
         def _filtered() -> list[dict[str, str]]:
+            """Internal helper for `_filtered`."""
             text = search_edit.text().strip().lower()
             selected_kind = kind_combo.currentText()
             selected_language = language_combo.currentText()
@@ -5080,6 +5361,7 @@ class AdvancedFeaturesController:
             return out
 
         def _refresh_list(select_name: str = "") -> None:
+            """Internal helper for `_refresh_list`."""
             list_widget.clear()
             for row in _filtered():
                 label = str(row.get("name", ""))
@@ -5093,6 +5375,7 @@ class AdvancedFeaturesController:
                 list_widget.setCurrentRow(0)
 
         def _load_selected() -> None:
+            """Internal helper for `_load_selected`."""
             current = list_widget.currentItem()
             if current is None:
                 return
@@ -5106,6 +5389,7 @@ class AdvancedFeaturesController:
             body_edit.setPlainText(str(row.get("body", "")))
 
         def _save_current() -> None:
+            """Internal helper for `_save_current`."""
             name = name_edit.text().strip()
             body = body_edit.toPlainText()
             if not name or not body.strip():
@@ -5126,6 +5410,7 @@ class AdvancedFeaturesController:
             _refresh_list(select_name=name)
 
         def _delete_current() -> None:
+            """Internal helper for `_delete_current`."""
             name = name_edit.text().strip()
             if not name:
                 return
@@ -5138,6 +5423,7 @@ class AdvancedFeaturesController:
             _refresh_list()
 
         def _apply_selected(new_tab: bool) -> None:
+            """Internal helper for `_apply_selected`."""
             name = name_edit.text().strip()
             row = next((item for item in rows if item.get("name") == name), None)
             if row is None:
@@ -5179,6 +5465,7 @@ class AdvancedFeaturesController:
         dlg.exec()
 
     def ensure_template_packs(self) -> None:
+        """Execute the `ensure_template_packs` workflow."""
         packs = self.window.settings.get("template_packs", {})
         if not isinstance(packs, dict):
             packs = {}
@@ -5202,6 +5489,7 @@ class AdvancedFeaturesController:
         self.window.show_status_message("Template packs installed into Snippet Manager.", 2500)
 
     def show_tasks(self) -> None:
+        """Execute the `show_tasks` workflow."""
         tasks: list[str] = []
         due = re.compile(r"due[:=]\s*(\d{4}-\d{2}-\d{2})", re.IGNORECASE)
         for i in range(self.window.tab_widget.count()):
@@ -5243,6 +5531,7 @@ class AdvancedFeaturesController:
                 pass
 
     def backup_now(self) -> None:
+        """Execute the `backup_now` workflow."""
         configured = str(self.window.settings.get("backup_output_dir", "") or "").strip()
         dest = Path(configured) if configured else (_root() / "backups")
         dest.mkdir(parents=True, exist_ok=True)
@@ -5257,6 +5546,7 @@ class AdvancedFeaturesController:
         self.window.show_status_message(f"Backup created: {out}", 3500)
 
     def apply_backup_schedule(self) -> None:
+        """Apply the changes or settings handled by `apply_backup_schedule`."""
         enabled = bool(self.window.settings.get("backup_scheduler_enabled", False))
         mins = max(1, int(self.window.settings.get("backup_interval_min", 15) or 15))
         if enabled:
@@ -5265,6 +5555,7 @@ class AdvancedFeaturesController:
             self.backup_timer.stop()
 
     def configure_backup(self) -> None:
+        """Execute the `configure_backup` workflow."""
         dlg = QDialog(self.window)
         dlg.setWindowTitle("Backup Scheduler")
         form = QFormLayout(dlg)
@@ -5283,6 +5574,7 @@ class AdvancedFeaturesController:
         output_layout.addWidget(browse_btn)
 
         def pick_output() -> None:
+            """Execute the `pick_output` workflow."""
             start_dir = output_dir.text().strip() or ""
             picked = QFileDialog.getExistingDirectory(dlg, "Choose Backup Output Folder", start_dir)
             if picked:
@@ -5305,6 +5597,7 @@ class AdvancedFeaturesController:
         self.apply_backup_schedule()
 
     def export_diagnostics(self) -> None:
+        """Execute the `export_diagnostics` workflow."""
         path, _ = QFileDialog.getSaveFileName(self.window, "Diagnostics Bundle", str(_root() / "diagnostics_bundle.zip"), "Zip Files (*.zip)")
         if not path:
             return
@@ -5315,6 +5608,7 @@ class AdvancedFeaturesController:
         self.window.show_status_message("Diagnostics exported.", 2500)
 
     def toggle_keyboard_only(self, checked: bool, *, persist: bool = True) -> None:
+        """Toggle the state controlled by `toggle_keyboard_only`."""
         self.window.settings["keyboard_only_mode"] = bool(checked)
         if checked:
             self.window.main_toolbar.hide()
@@ -5328,16 +5622,19 @@ class AdvancedFeaturesController:
             self.window.save_settings_to_disk()
 
     def apply_accessibility_high_contrast(self) -> None:
+        """Apply the changes or settings handled by `apply_accessibility_high_contrast`."""
         self.window.settings["theme"] = "High Contrast"
         self.window.settings["dark_mode"] = True
         self.window.apply_settings()
 
     def apply_accessibility_dyslexic(self) -> None:
+        """Apply the changes or settings handled by `apply_accessibility_dyslexic`."""
         self.window.settings["font_family"] = "OpenDyslexic"
         self.window.settings["font_size"] = max(13, int(self.window.settings.get("font_size", 11)))
         self.window.apply_settings()
 
     def open_collaboration(self) -> None:
+        """Open the UI or resource handled by `open_collaboration`."""
         port = int(self.window.settings.get("collab_port", 8765) or 8765)
         rw = bool(self.window.settings.get("collab_rw", False))
         dlg = QDialog(self.window)
@@ -5359,6 +5656,7 @@ class AdvancedFeaturesController:
         stop_btn.clicked.connect(self.collab.stop)
 
         def start() -> None:
+            """Execute the `start` workflow."""
             self.window.settings["collab_port"] = int(port_spin.value())
             self.window.settings["collab_rw"] = rw_check.isChecked()
             self.window.save_settings_to_disk()
@@ -5379,6 +5677,7 @@ class AdvancedFeaturesController:
         dlg.exec()
 
     def open_annotations(self) -> None:
+        """Open the UI or resource handled by `open_annotations`."""
         tab = self.window.active_tab()
         if tab is None:
             return
@@ -5408,11 +5707,13 @@ class AdvancedFeaturesController:
         v.addLayout(row)
 
         def persist() -> None:
+            """Execute the `persist` workflow."""
             all_notes[key] = notes
             self.window.settings["annotations"] = all_notes
             self.window.save_settings_to_disk()
 
         def add() -> None:
+            """Execute the `add` workflow."""
             line, ok = QInputDialog.getInt(dlg, "Line", "Line number:", 1, 1, 1000000)
             if not ok:
                 return
@@ -5424,6 +5725,7 @@ class AdvancedFeaturesController:
             persist()
 
         def delete() -> None:
+            """Execute the `delete` workflow."""
             item = lst.currentItem()
             if item is None:
                 return

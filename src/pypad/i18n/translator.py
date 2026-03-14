@@ -1,3 +1,8 @@
+"""Provide non-blocking translation helpers and state used by the application internationalization layer.
+
+This module belongs to the internationalization layer responsible for translation and locale-sensitive text handling. It helps explain how `pypad.i18n` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 
 import json
@@ -24,10 +29,12 @@ _LANGUAGE_OPTIONS: list[tuple[str, str]] = [
 
 
 def get_language_display_options() -> list[str]:
+    """Return the value produced by `get_language_display_options`."""
     return [label for label, _ in _LANGUAGE_OPTIONS]
 
 
 def language_code_for(label: str) -> str:
+    """Execute the `language_code_for` workflow."""
     normalized = (label or "").strip()
     if not normalized:
         return "en"
@@ -40,7 +47,9 @@ def language_code_for(label: str) -> str:
 
 
 class AppTranslator:
+    """Class that implements the `AppTranslator` runtime behavior."""
     def __init__(self, cache_path: Path) -> None:
+        """Initialize the `translator` state for this instance."""
         self._cache_path = Path(cache_path)
         self._cache: dict[str, dict[str, str]] = {}
         self._loaded = False
@@ -51,6 +60,7 @@ class AppTranslator:
         self._worker_started = False
 
     def clear_cache(self) -> None:
+        """Execute the `clear_cache` workflow."""
         with self._lock:
             self._cache = {}
             self._loaded = True
@@ -66,6 +76,7 @@ class AppTranslator:
             pass
 
     def translate(self, text: str, target_lang: str) -> str:
+        """Execute the `translate` workflow."""
         if not text:
             return text
         target = (target_lang or "").strip().lower()
@@ -81,9 +92,11 @@ class AppTranslator:
         return text
 
     def translate_many(self, values: Iterable[str], target_lang: str) -> list[str]:
+        """Execute the `translate_many` workflow."""
         return [self.translate(value, target_lang) for value in values]
 
     def _load_cache(self) -> None:
+        """Internal helper for `_load_cache`."""
         with self._lock:
             if self._loaded:
                 return
@@ -106,6 +119,7 @@ class AppTranslator:
                 self._cache = {}
 
     def _save_cache(self) -> None:
+        """Internal helper for `_save_cache`."""
         try:
             self._cache_path.parent.mkdir(parents=True, exist_ok=True)
             with self._lock:
@@ -116,6 +130,7 @@ class AppTranslator:
             pass
 
     def _start_worker(self) -> None:
+        """Internal helper for `_start_worker`."""
         with self._lock:
             if self._worker_started:
                 return
@@ -124,6 +139,7 @@ class AppTranslator:
         thread.start()
 
     def _enqueue_translation(self, text: str, target_lang: str) -> None:
+        """Internal helper for `_enqueue_translation`."""
         key = (target_lang, text)
         with self._lock:
             if key in self._pending:
@@ -133,6 +149,7 @@ class AppTranslator:
         self._queue.put(key)
 
     def _worker_loop(self) -> None:
+        """Internal helper for `_worker_loop`."""
         while True:
             target_lang, text = self._queue.get()
             try:
@@ -150,6 +167,7 @@ class AppTranslator:
                 self._queue.task_done()
 
     def _translate_remote(self, text: str, target_lang: str) -> str:
+        """Internal helper for `_translate_remote`."""
         try:
             if self._translator is None:
                 from googletrans import Translator  # type: ignore

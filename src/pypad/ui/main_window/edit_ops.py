@@ -1,3 +1,8 @@
+"""Collect edit-focused main-window actions such as selection, clipboard, formatting, and text manipulation commands.
+
+This module belongs to the main-window orchestration layer that ties together menus, actions, state, and dialogs. It helps explain how `pypad.ui.main_window` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 import getpass
 import base64
@@ -81,32 +86,42 @@ from .notepadpp_pref_runtime import build_search_internet_url
 
 
 class EditOpsMixin:
+    """Main-window editing workflow layer for search, replace, clipboard, and text operations."""
     if TYPE_CHECKING:
-        def __getattr__(self, name: str) -> Any: ...
+        def __getattr__(self, name: str) -> Any:
+            """Satisfy static type checkers for attributes provided by sibling mixins."""
+            ...
 
     # ---------- Edit helpers ----------
     def toggle_search_panel(self, checked: bool) -> None:
+        """Show or hide the inline search toolbar based on an action's checked state."""
         if checked:
             self.show_search_panel()
         else:
             self.hide_search_panel()
 
     def edit_undo(self) -> None:
+        """Execute the `edit_undo` workflow."""
         self.text_edit.undo()
 
     def edit_redo(self) -> None:
+        """Execute the `edit_redo` workflow."""
         self.text_edit.redo()
 
     def edit_cut(self) -> None:
+        """Execute the `edit_cut` workflow."""
         self.text_edit.cut()
 
     def edit_copy(self) -> None:
+        """Execute the `edit_copy` workflow."""
         self.text_edit.copy()
 
     def edit_paste(self) -> None:
+        """Execute the `edit_paste` workflow."""
         self.text_edit.paste()
 
     def edit_paste_special(self) -> None:
+        """Offer clipboard conversion choices before inserting content into the active editor."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -128,9 +143,11 @@ class EditOpsMixin:
             self.text_edit.insert_text(converted)
 
     def edit_select_all(self) -> None:
+        """Execute the `edit_select_all` workflow."""
         self.text_edit.select_all()
 
     def edit_delete(self) -> None:
+        """Execute the `edit_delete` workflow."""
         if self.text_edit.has_selection():
             self.text_edit.replace_selection("")
             return
@@ -142,9 +159,11 @@ class EditOpsMixin:
             self.text_edit.set_selection_by_index(idx, idx)
 
     def edit_time_date(self) -> None:
+        """Execute the `edit_time_date` workflow."""
         self.text_edit.insert_text(datetime.now().strftime("%H:%M %d/%m/%Y"))
 
     def _do_find(self, text: str, backward: bool = False) -> bool:
+        """Find the next or previous occurrence of text and select it in the editor."""
         if not text:
             return False
         source = self.text_edit.get_text()
@@ -168,9 +187,11 @@ class EditOpsMixin:
         return True
 
     def edit_find(self) -> None:
+        """Execute the `edit_find` workflow."""
         self.show_search_panel()
 
     def edit_find_next(self) -> None:
+        """Jump to the next match using the current search panel text or last search term."""
         if hasattr(self, "search_toolbar") and self.search_toolbar.isVisible():
             text = self.search_input.text().strip()
             if text:
@@ -182,6 +203,7 @@ class EditOpsMixin:
             QMessageBox.information(self, "Pypad", f'Cannot find "{self.last_search_text}".')
 
     def edit_find_previous(self) -> None:
+        """Jump to the previous match using the current search panel text or last search term."""
         if hasattr(self, "search_toolbar") and self.search_toolbar.isVisible():
             text = self.search_input.text().strip()
             if text:
@@ -193,10 +215,13 @@ class EditOpsMixin:
             QMessageBox.information(self, "Pypad", f'Cannot find "{self.last_search_text}".')
 
     def edit_replace(self) -> None:
+        """Run a simple find-and-replace workflow over the active document."""
         from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QLineEdit, QGridLayout
 
         class ReplaceDialog(QDialog):
+            """Dialog class that implements the `ReplaceDialog` workflow."""
             def __init__(self, parent=None, last_search: str | None = None) -> None:
+                """Initialize the `edit_ops` state for this instance."""
                 super().__init__(parent)
                 self.setWindowTitle("Replace")
                 self.find_edit = QLineEdit(self)
@@ -221,6 +246,7 @@ class EditOpsMixin:
                 layout.addWidget(buttons, 2, 0, 1, 2)
 
             def get_values(self) -> tuple[str, str]:
+                """Return the value produced by `get_values`."""
                 return self.find_edit.text(), self.replace_edit.text()
 
         dlg = ReplaceDialog(self, self.last_search_text)
@@ -247,10 +273,13 @@ class EditOpsMixin:
             QMessageBox.information(self, "Pypad", f'Cannot find "{find_text}".')
 
     def edit_regex_replace_preview(self) -> None:
+        """Preview and apply regex replacements across the document or current selection."""
         from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QLineEdit, QGridLayout
 
         class RegexReplaceDialog(QDialog):
+            """Dialog class that implements the `RegexReplaceDialog` workflow."""
             def __init__(self, parent=None, seed: str | None = None, has_selection: bool = False) -> None:
+                """Initialize the `edit_ops` state for this instance."""
                 super().__init__(parent)
                 self.setWindowTitle("Regex Replace Preview")
                 self.resize(780, 520)
@@ -291,12 +320,14 @@ class EditOpsMixin:
                 self._last_regex: re.Pattern[str] | None = None
 
             def _build_flags(self) -> int:
+                """Internal helper for `_build_flags`."""
                 flags = 0 if self.case_checkbox.isChecked() else re.IGNORECASE
                 if self.multiline_checkbox.isChecked():
                     flags |= re.MULTILINE
                 return flags
 
             def preview_requested(self) -> None:
+                """Execute the `preview_requested` workflow."""
                 pattern = self.find_edit.text()
                 repl = self.replace_edit.text()
                 source = self._source_text_for_preview()
@@ -340,6 +371,7 @@ class EditOpsMixin:
                 self._last_regex = rx
 
             def _source_text_for_preview(self) -> str:
+                """Internal helper for `_source_text_for_preview`."""
                 if self.selection_only_checkbox.isChecked():
                     return self.parent().text_edit.selected_text()  # type: ignore[union-attr]
                 return self.parent().text_edit.get_text()  # type: ignore[union-attr]
@@ -380,10 +412,13 @@ class EditOpsMixin:
             QMessageBox.information(self, "Regex Replace Preview", "No matches in document.")
 
     def edit_regex_filter_preview(self) -> None:
+        """Preview regex replacements filtered by include/exclude line patterns before applying them."""
         from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QLineEdit, QGridLayout
 
         class RegexFilterDialog(QDialog):
+            """Dialog class that implements the `RegexFilterDialog` workflow."""
             def __init__(self, parent=None, seed: str | None = None, has_selection: bool = False) -> None:
+                """Initialize the `edit_ops` state for this instance."""
                 super().__init__(parent)
                 self.setWindowTitle("Regex Include/Exclude Preview")
                 self.resize(820, 560)
@@ -430,17 +465,20 @@ class EditOpsMixin:
                 buttons.rejected.connect(self.reject)
 
             def _flags(self) -> int:
+                """Internal helper for `_flags`."""
                 flags = 0 if self.case_checkbox.isChecked() else re.IGNORECASE
                 if self.multiline_checkbox.isChecked():
                     flags |= re.MULTILINE
                 return flags
 
             def _source_text(self) -> str:
+                """Internal helper for `_source_text`."""
                 if self.selection_only_checkbox.isChecked():
                     return self.parent().text_edit.selected_text()  # type: ignore[union-attr]
                 return self.parent().text_edit.get_text()  # type: ignore[union-attr]
 
             def preview_requested(self) -> None:
+                """Execute the `preview_requested` workflow."""
                 pattern = self.find_edit.text()
                 source = self._source_text()
                 if not pattern:
@@ -517,6 +555,7 @@ class EditOpsMixin:
         )
 
     def edit_search_bing(self) -> None:
+        """Send the current selection or last search term to the configured web search provider."""
         text = self.text_edit.selected_text() or (self.last_search_text or "")
         if not text:
             QMessageBox.information(self, "Pypad", "Please select some text or use Find first.")
@@ -525,6 +564,7 @@ class EditOpsMixin:
         webbrowser.open(url)
 
     def show_search_panel(self) -> None:
+        """Reveal the inline search toolbar and seed it with the current selection when possible."""
         if not hasattr(self, "search_toolbar"):
             return
         self.settings["show_find_panel"] = True
@@ -545,6 +585,7 @@ class EditOpsMixin:
         self._on_search_text_changed()
 
     def hide_search_panel(self) -> None:
+        """Hide the inline search toolbar and clear any active search highlighting."""
         if not hasattr(self, "search_toolbar"):
             return
         self.settings["show_find_panel"] = False
@@ -560,6 +601,7 @@ class EditOpsMixin:
         self._clear_search_highlights()
 
     def _on_search_text_changed(self) -> None:
+        """Update highlight state and stored search text when the search query changes."""
         tab = self.active_tab()
         if tab is not None and tab.large_file:
             self._clear_search_highlights()
@@ -576,6 +618,7 @@ class EditOpsMixin:
         self.update_action_states()
 
     def _clear_search_highlights(self) -> None:
+        """Remove transient highlight overlays created by the inline search panel."""
         tab = self.active_tab()
         if tab is not None:
             if not tab.text_edit.is_native_scintilla and hasattr(tab.text_edit.widget, "clear_background_overlays"):
@@ -584,6 +627,7 @@ class EditOpsMixin:
                 tab.text_edit.widget.setExtraSelections([])
 
     def _apply_search_highlights(self, query: str) -> None:
+        """Highlight all matches for the active inline-search query in non-native editors."""
         tab = self.active_tab()
         if tab is None:
             return

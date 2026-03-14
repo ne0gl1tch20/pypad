@@ -1,3 +1,8 @@
+"""Define the main application window and coordinate the subsystems that make up the desktop editor.
+
+This module belongs to the main-window orchestration layer that ties together menus, actions, state, and dialogs. It helps explain how `pypad.ui.main_window` is structured and where this file fits into the runtime workflow.
+"""
+
 import getpass
 import base64
 import hashlib
@@ -89,6 +94,7 @@ from .edit_ops import EditOpsMixin
 from .view_ops import ViewOpsMixin
 from .misc import MiscMixin
 class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin, QMainWindow):
+    """Main application window that assembles controllers, docks, tabs, and startup flow."""
     windows_by_id: dict[int, "Notepad"] = {}
     system_style_name: str | None = None
     templates: dict[str, str] = {
@@ -99,16 +105,19 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
 
     @staticmethod
     def _demo_templates_root() -> Path:
+        """Return the packaged demo-template directory used by onboarding features."""
         return Path(__file__).resolve().parents[4] / "templates" / "demo_pack"
 
     @staticmethod
     def _demo_display_name(path: Path) -> str:
+        """Convert a template filename into a readable menu label."""
         stem = path.stem.strip()
         stem = stem.lstrip("0123456789._- ").strip()
         cleaned = stem.replace("_", " ").replace("-", " ").strip()
         return " ".join(part.capitalize() for part in cleaned.split()) or "Demo"
 
     def _load_demo_templates(self) -> None:
+        """Populate the template catalog with built-ins plus demo-pack Markdown files."""
         self.templates = dict(type(self).templates)
         root = self._demo_templates_root()
         if not root.exists() or not root.is_dir():
@@ -122,6 +131,7 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
             self.templates[name] = text
 
     def _apply_startup_preview_theme(self) -> None:
+        """Apply a lightweight stylesheet early so startup UI matches the saved theme."""
         app = QApplication.instance()
         tokens = build_tokens_from_settings(self.settings)
         effective_dark = resolve_dark_mode_from_settings(self.settings)
@@ -136,6 +146,7 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
         self._last_applied_main_qss = qss
 
     def __init__(self) -> None:
+        """Initialize the main window, attach subsystems, and stage deferred startup work."""
         super().__init__()
         self.setUpdatesEnabled(False)
         self._startup_ui_ready = False
@@ -146,6 +157,7 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
         startup_stages: list[tuple[str, int]] = []
 
         def _mark_startup_stage(name: str) -> None:
+            """Internal helper for `_mark_startup_stage`."""
             elapsed_ms = int((time.perf_counter() - startup_t0) * 1000)
             startup_stages.append((name, elapsed_ms))
             try:
@@ -424,10 +436,12 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
 
         # Finish startup on the next event-loop tick so the main window can appear sooner.
         def _finish_startup_sequence() -> None:
+            """Internal helper for `_finish_startup_sequence`."""
             deferred_start = time.perf_counter()
             deferred_marks: list[tuple[str, int]] = []
 
             def _mark_deferred(name: str) -> None:
+                """Internal helper for `_mark_deferred`."""
                 deferred_marks.append((name, int((time.perf_counter() - deferred_start) * 1000)))
 
             if not self._startup_first_paint_ready:
@@ -519,6 +533,7 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
 
     @Slot(bool, str)
     def _on_update_availability_changed(self, available: bool, version: str) -> None:
+        """Reflect updater state in the menu action that advertises available releases."""
         action = getattr(self, "update_available_menu_action", None)
         if action is None:
             return
@@ -533,16 +548,19 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
         action.setVisible(False)
 
     def focusInEvent(self, event: QEvent) -> None:  # type: ignore[override]
+        """Forward focus-gained notifications into the plugin event pipeline."""
         super().focusInEvent(event)
         if hasattr(self, "_emit_plugin_event"):
             self._emit_plugin_event("window_focus", tab=self.active_tab())
 
     def focusOutEvent(self, event: QEvent) -> None:  # type: ignore[override]
+        """Forward focus-lost notifications into the plugin event pipeline."""
         super().focusOutEvent(event)
         if hasattr(self, "_emit_plugin_event"):
             self._emit_plugin_event("window_blur", tab=self.active_tab())
 
     def _collect_startup_items(self) -> tuple[list[str], list[str]]:
+        """Parse process arguments into existing file and folder paths for startup opening."""
         app = QApplication.instance()
         if app is None:
             return [], []
@@ -577,6 +595,7 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
         return files, folders
 
     def _open_startup_items(self, files: list[str], folders: list[str]) -> None:
+        """Open startup files and optionally adopt the first folder as the workspace root."""
         if folders:
             workspace_root = folders[0]
             self.settings["workspace_root"] = workspace_root

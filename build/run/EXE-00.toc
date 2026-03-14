@@ -3,7 +3,7 @@
  False,
  True,
  'C:\\Users\\user\\AppData\\Roaming\\Python\\Python312\\site-packages\\PyInstaller\\bootloader\\images\\icon-windowed.ico',
- versioninfo.VSVersionInfo(ffi=versioninfo.FixedFileInfo(filevers=(1, 8, 0, 0), prodvers=(1, 8, 0, 0), mask=0x3f, flags=0x0, OS=0x40004, fileType=1, subtype=0x0, date=(0, 0)), kids=[versioninfo.StringFileInfo([versioninfo.StringTable('040904B0', [versioninfo.StringStruct('CompanyName', 'ne0gl1tch20'), versioninfo.StringStruct('FileDescription', 'Pypad'), versioninfo.StringStruct('FileVersion', '1.8.0.0'), versioninfo.StringStruct('InternalName', 'pypad'), versioninfo.StringStruct('OriginalFilename', 'run.exe'), versioninfo.StringStruct('ProductName', 'Pypad'), versioninfo.StringStruct('ProductVersion', '1.8.0.0')])]), versioninfo.VarFileInfo([versioninfo.VarStruct('Translation', [1033, 1200])])]),
+ versioninfo.VSVersionInfo(ffi=versioninfo.FixedFileInfo(filevers=(1, 8, 1, 0), prodvers=(1, 8, 1, 0), mask=0x3f, flags=0x0, OS=0x40004, fileType=1, subtype=0x0, date=(0, 0)), kids=[versioninfo.StringFileInfo([versioninfo.StringTable('040904B0', [versioninfo.StringStruct('CompanyName', 'ne0gl1tch20'), versioninfo.StringStruct('FileDescription', 'Pypad'), versioninfo.StringStruct('FileVersion', '1.8.1.0'), versioninfo.StringStruct('InternalName', 'pypad'), versioninfo.StringStruct('OriginalFilename', 'run.exe'), versioninfo.StringStruct('ProductName', 'Pypad'), versioninfo.StringStruct('ProductVersion', '1.8.1.0')])]), versioninfo.VarFileInfo([versioninfo.VarStruct('Translation', [1033, 1200])])]),
  False,
  False,
  b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<assembly xmlns='
@@ -73,7 +73,7 @@
  [],
  False,
  False,
- 1773415787,
+ 1773492397,
  [('runw.exe',
    'C:\\Users\\user\\AppData\\Roaming\\Python\\Python312\\site-packages\\PyInstaller\\bootloader\\Windows-64bit-intel\\runw.exe',
    'EXECUTABLE')],

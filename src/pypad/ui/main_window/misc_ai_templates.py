@@ -1,3 +1,8 @@
+"""Store AI prompt templates and helper logic used by the main window when launching AI workflows.
+
+This module belongs to the main-window orchestration layer that ties together menus, actions, state, and dialogs. It helps explain how `pypad.ui.main_window` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -7,10 +12,14 @@ from PySide6.QtWidgets import QInputDialog, QMessageBox
 
 
 class MiscAiTemplatesMixin:
+    """Mixin that provides the `MiscAiTemplatesMixin` behavior set."""
     if TYPE_CHECKING:
-        def __getattr__(self, name: str) -> Any: ...
+        def __getattr__(self, name: str) -> Any:
+            """Satisfy static type checkers for runtime-resolved window attributes."""
+            ...
 
     def _ai_templates(self) -> dict[str, str]:
+        """Internal helper for `_ai_templates`."""
         templates = self.settings.get("ai_prompt_templates", {})
         if not isinstance(templates, dict):
             templates = {}
@@ -26,6 +35,7 @@ class MiscAiTemplatesMixin:
         return merged
 
     def _render_ai_template(self, template: str, tab) -> str:
+        """Internal helper for `_render_ai_template`."""
         text = tab.text_edit.get_text()
         selection = tab.text_edit.selected_text() or text[:5000]
         file_name = str(tab.current_file or "Untitled")
@@ -54,6 +64,7 @@ class MiscAiTemplatesMixin:
         )
 
     def run_ai_prompt_template(self) -> None:
+        """Execute the `run_ai_prompt_template` workflow."""
         templates = self._ai_templates()
         names = sorted(templates.keys())
         if not names:
@@ -71,6 +82,7 @@ class MiscAiTemplatesMixin:
         self._send_ai_chat_prompt(prompt=rendered, visible_prompt=f"Template: {name}")
 
     def save_ai_prompt_template(self) -> None:
+        """Save data handled by `save_ai_prompt_template`."""
         name, ok = QInputDialog.getText(self, "Save AI Template", "Template name:")
         if not ok or not name.strip():
             return
@@ -90,6 +102,7 @@ class MiscAiTemplatesMixin:
         self.show_status_message(f'Saved AI template "{name.strip()}".', 3000)
 
     def toggle_ai_private_mode(self, checked: bool) -> None:
+        """Toggle the state controlled by `toggle_ai_private_mode`."""
         self.settings["ai_private_mode"] = bool(checked)
         if checked:
             self.toggle_ai_chat_panel(False)

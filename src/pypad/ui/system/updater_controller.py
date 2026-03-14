@@ -1,3 +1,8 @@
+"""Coordinate update checks, user prompts, and download or release-note flows in the UI.
+
+This module belongs to the system-integration layer for autosave, reminders, updates, and recovery. It helps explain how `pypad.ui.system` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 
 import ctypes
@@ -25,6 +30,7 @@ from pypad.services.updater_helpers import UpdateInfo, is_newer_version, parse_u
 _LOGGER = get_logger(__name__)
 
 def _read_app_version() -> str:
+    """Read the packaged application version string used for update comparisons."""
     version_file = resolve_asset_path("version.txt")
     if version_file is None:
         return "v?.?.?"
@@ -42,15 +48,18 @@ CHECK_WATCHDOG_SEC = 6
 
 
 class _UpdateCheckWorker(QObject):
+    """Background worker that fetches and parses the update feed on a separate thread."""
     finished = Signal(object)
     failed = Signal(str)
     status = Signal(str)
 
     def __init__(self, feed_url: str) -> None:
+        """Initialize the `updater_controller` state for this instance."""
         super().__init__()
         self.feed_url = feed_url
 
     def run(self) -> None:
+        """Download the update feed, parse it, and emit structured metadata or an error."""
         _LOGGER.debug("UpdateCheckWorker.run start feed_url=%s", self.feed_url)
         self.status.emit(f"Worker started for feed: {self.feed_url}")
         try:
@@ -92,16 +101,19 @@ class _UpdateCheckWorker(QObject):
 
 
 class _UpdateDownloadWorker(QObject):
+    """Background worker that downloads an installer file to a local capsule path."""
     finished = Signal(str)
     failed = Signal(str)
     status = Signal(str)
 
     def __init__(self, download_url: str, destination: str) -> None:
+        """Initialize the `updater_controller` state for this instance."""
         super().__init__()
         self.download_url = download_url
         self.destination = destination
 
     def run(self) -> None:
+        """Download the update payload and write it to the requested destination path."""
         _LOGGER.debug("UpdateDownloadWorker.run start url=%s dest=%s", self.download_url, self.destination)
         self.status.emit(f"Worker started for download: {self.download_url}")
         try:
@@ -137,9 +149,11 @@ class _UpdateDownloadWorker(QObject):
 
 
 class UpdaterController(QObject):
+    """Coordinate update checking, validation, download, and installer handoff for the UI."""
     update_availability_changed = Signal(bool, str)
 
     def __init__(self, window) -> None:
+        """Initialize updater state, worker tracking, and pending installer cleanup."""
         super().__init__(window)
         self.window = window
         self._threads: list[QThread] = []
@@ -167,6 +181,7 @@ class UpdaterController(QObject):
         _LOGGER.debug("UpdaterController initialized pending_state=%s", pending_state)
 
     def _log_update(self, message: str) -> None:
+        """Route updater diagnostics to structured logging and the window event log."""
         _LOGGER.debug("UpdaterController event: %s", message)
         if hasattr(self.window, "log_event"):
             try:
@@ -177,6 +192,7 @@ class UpdaterController(QObject):
         print(f"[Updater] {message}")
 
     def check_for_updates(self, manual: bool = True) -> None:
+        """Start an asynchronous update-feed check unless one is already running."""
         _LOGGER.debug("check_for_updates called manual=%s in_progress=%s", manual, self._check_in_progress)
         if self._check_in_progress:
             self._log_update("Update check requested while another check is already running.")
@@ -233,6 +249,7 @@ class UpdaterController(QObject):
         QTimer.singleShot(CHECK_WATCHDOG_SEC * 1000, lambda cid=check_id: self._on_check_watchdog_timeout(cid))
 
     def _on_checked(self, _thread: QThread, info: object, check_id: int) -> None:
+        """Process a successful feed fetch, validate metadata, and prompt when updates exist."""
         if check_id in self._timed_out_check_ids:
             self._timed_out_check_ids.discard(check_id)
             self._log_update(f"Ignoring late successful result for timed-out check (id={check_id}).")
@@ -329,6 +346,7 @@ class UpdaterController(QObject):
         self._update_available_box = box
 
         def _on_finished(_result: int, dialog=box, dl_btn=download_btn, update_info=info) -> None:
+            """Internal helper for `_on_finished`."""
             clicked = dialog.clickedButton()
             self._update_available_box = None
             if clicked == dl_btn:
@@ -342,6 +360,7 @@ class UpdaterController(QObject):
         box.open()
 
     def _on_check_failed(self, _thread: QThread, message: str, check_id: int) -> None:
+        """Handle a failed update check while guarding against stale or timed-out results."""
         if check_id in self._timed_out_check_ids:
             self._timed_out_check_ids.discard(check_id)
             self._log_update(f"Ignoring late failed result for timed-out check (id={check_id}): {message}")
@@ -362,6 +381,7 @@ class UpdaterController(QObject):
             )
 
     def _on_check_watchdog_timeout(self, check_id: int) -> None:
+        """Abort the active check when it exceeds the watchdog budget."""
         if not self._check_in_progress:
             return
         if check_id != self._active_check_id:
@@ -389,6 +409,7 @@ class UpdaterController(QObject):
             )
 
     def _show_checking_progress(self, feed_url: str) -> None:
+        """Show a modal indeterminate progress dialog for a user-initiated update check."""
         self._close_checking_progress()
         dlg = create_themed_progress_dialog(self.window, title="Checking for Updates")
         dlg.setLabelText(
@@ -409,10 +430,12 @@ class UpdaterController(QObject):
         QTimer.singleShot(1200, self._refresh_progress_waiting_text)
 
     def _on_check_worker_status(self, message: str) -> None:
+        """Forward worker status messages into the updater logging channel."""
         _LOGGER.debug("UpdaterController._on_check_worker_status %s", message)
         self._log_update(f"[CheckWorker] {message}")
 
     def _on_check_worker_finished(self, info: object) -> None:
+        """Internal helper for `_on_check_worker_finished`."""
         worker = self.sender()
         if not isinstance(worker, _UpdateCheckWorker):
             return
@@ -424,6 +447,7 @@ class UpdaterController(QObject):
         self._on_checked(thread, info, check_id)
 
     def _on_check_worker_failed(self, message: str) -> None:
+        """Internal helper for `_on_check_worker_failed`."""
         worker = self.sender()
         if not isinstance(worker, _UpdateCheckWorker):
             return
@@ -435,6 +459,7 @@ class UpdaterController(QObject):
         self._on_check_failed(thread, message, check_id)
 
     def _refresh_progress_waiting_text(self) -> None:
+        """Update the progress dialog text when a check is taking longer than expected."""
         dlg = self._progress_dialog
         if dlg is None:
             return
@@ -446,6 +471,7 @@ class UpdaterController(QObject):
         self._log_update("Updated progress dialog label to 'Still checking...'.")
 
     def _close_checking_progress(self) -> None:
+        """Close and dispose of the current progress dialog if one is visible."""
         dlg = self._progress_dialog
         self._progress_dialog = None
         if dlg is None:
@@ -458,6 +484,7 @@ class UpdaterController(QObject):
             pass
 
     def download_update(self, info: UpdateInfo | None = None) -> None:
+        """Start downloading the selected update payload to a temporary installer capsule."""
         update = info or self._last_info
         _LOGGER.debug("download_update called has_info=%s has_last=%s", info is not None, self._last_info is not None)
         if update is None or not update.download_url:
@@ -495,6 +522,7 @@ class UpdaterController(QObject):
         _LOGGER.debug("download_update thread started dest=%s", destination)
 
     def _on_download_finished(self, _thread: QThread, path: str) -> None:
+        """Verify the downloaded installer, persist capsule state, and offer to open it."""
         _LOGGER.debug("_on_download_finished path=%s", path)
         hash_error = self._verify_download_hash(path, self._pending_download_sha256)
         if hash_error:
@@ -533,6 +561,7 @@ class UpdaterController(QObject):
             self._log_update("User closed update-downloaded dialog without opening installer.")
 
     def _on_download_failed(self, _thread: QThread, message: str) -> None:
+        """Report a failed update download to the user and the event log."""
         _LOGGER.debug("_on_download_failed message=%s", message)
         self._log_update(f"Update download failed: {message}")
         self.window.show_status_message("Update download failed.", 4000)
@@ -543,10 +572,12 @@ class UpdaterController(QObject):
         )
 
     def _on_download_worker_status(self, message: str) -> None:
+        """Forward download-worker status messages into the updater logging channel."""
         _LOGGER.debug("UpdaterController._on_download_worker_status %s", message)
         self._log_update(f"[DownloadWorker] {message}")
 
     def _on_download_worker_finished(self, path: str) -> None:
+        """Internal helper for `_on_download_worker_finished`."""
         worker = self.sender()
         if not isinstance(worker, _UpdateDownloadWorker):
             return
@@ -557,6 +588,7 @@ class UpdaterController(QObject):
         self._on_download_finished(thread, path)
 
     def _on_download_worker_failed(self, message: str) -> None:
+        """Internal helper for `_on_download_worker_failed`."""
         worker = self.sender()
         if not isinstance(worker, _UpdateDownloadWorker):
             return
@@ -567,6 +599,7 @@ class UpdaterController(QObject):
         self._on_download_failed(thread, message)
 
     def _open_path(self, path: str) -> bool:
+        """Launch the downloaded installer with elevation on Windows when possible."""
         try:
             if os.name == "nt":
                 self._log_update(f"Opening installer as administrator via ShellExecuteW runas: {path}")
@@ -594,6 +627,7 @@ class UpdaterController(QObject):
             return False
 
     def _build_capsule_destination(self, download_url: str) -> str:
+        """Construct a temporary local file path used to store a downloaded installer."""
         filename = Path(download_url.split("?")[0]).name or "pypad-update.bin"
         capsule_dir = Path(tempfile.gettempdir()) / "pypad"
         capsule_dir.mkdir(parents=True, exist_ok=True)
@@ -601,6 +635,7 @@ class UpdaterController(QObject):
         return str(capsule_dir / base)
 
     def _persist_pending_update_capsule(self, path: str, version: str) -> None:
+        """Persist downloaded-installer metadata so the app can reconcile it after restart."""
         self.window.settings["pending_update_installer_path"] = path
         self.window.settings["pending_update_version"] = version
         save_settings = getattr(self.window, "save_settings_to_disk", None)
@@ -611,6 +646,7 @@ class UpdaterController(QObject):
                 self._log_update(f"Failed to persist pending update capsule metadata: {exc}")
 
     def _clear_pending_update_capsule(self) -> None:
+        """Remove persisted metadata about a previously downloaded installer capsule."""
         self.window.settings.pop("pending_update_installer_path", None)
         self.window.settings.pop("pending_update_version", None)
         save_settings = getattr(self.window, "save_settings_to_disk", None)
@@ -621,6 +657,7 @@ class UpdaterController(QObject):
                 self._log_update(f"Failed to clear pending update capsule metadata: {exc}")
 
     def _cleanup_pending_update_capsule(self) -> None:
+        """Delete stale pending installers once the app is at or beyond the downloaded version."""
         path_raw = str(self.window.settings.get("pending_update_installer_path", "") or "").strip()
         version_raw = str(self.window.settings.get("pending_update_version", "") or "").strip()
         if not path_raw:
@@ -638,6 +675,7 @@ class UpdaterController(QObject):
             self._clear_pending_update_capsule()
 
     def _pending_capsule_state_text(self) -> str:
+        """Return a compact diagnostic summary of any persisted pending installer state."""
         path_raw = str(self.window.settings.get("pending_update_installer_path", "") or "").strip()
         version_raw = str(self.window.settings.get("pending_update_version", "") or "").strip()
         if not path_raw:
@@ -645,6 +683,7 @@ class UpdaterController(QObject):
         return f"version={version_raw or 'unknown'} path={path_raw}"
 
     def _cleanup_thread(self, thread: QThread) -> None:
+        """Remove finished worker bookkeeping and release the Qt thread object."""
         self._workers.pop(thread, None)
         for worker, meta in list(self._check_workers.items()):
             if meta[0] is thread:
@@ -660,11 +699,13 @@ class UpdaterController(QObject):
         thread.deleteLater()
 
     def _on_thread_finished(self) -> None:
+        """React to Qt thread shutdown by routing cleanup through the shared helper."""
         thread = self.sender()
         if isinstance(thread, QThread):
             self._cleanup_thread(thread)
 
     def _show_error_with_details(self, title: str, summary: str, details: str) -> None:
+        """Show a themed critical message box with expandable technical details."""
         box = create_themed_message_box(
             self.window,
             title=title,
@@ -677,6 +718,7 @@ class UpdaterController(QObject):
         box.exec()
 
     def _validate_update_metadata(self, info: UpdateInfo) -> str | None:
+        """Validate feed metadata integrity requirements before offering an update."""
         digest = str(info.sha256 or "").strip().lower()
         if not re.fullmatch(r"[0-9a-f]{64}", digest):
             return "Feed must provide a valid 64-char SHA256 digest for the installer."
@@ -696,6 +738,7 @@ class UpdaterController(QObject):
         return None
 
     def _verify_download_hash(self, path: str, expected_sha256: str) -> str | None:
+        """Compute the installer hash and compare it against the expected SHA256 digest."""
         expected = str(expected_sha256 or "").strip().lower()
         if not re.fullmatch(r"[0-9a-f]{64}", expected):
             return "Expected SHA256 is missing or malformed."

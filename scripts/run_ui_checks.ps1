@@ -1,3 +1,14 @@
+<#
+.SYNOPSIS
+Runs the repository's grouped UI verification test suites.
+
+.DESCRIPTION
+This helper script wraps the project's pytest-based UI checks into named groups so
+contributors can run fast theme checks, runtime smoke coverage, visual regression
+checks, or the full set from one entry point. It also sets the environment
+variables required by the headless Qt and visual-baseline test paths.
+#>
+
 param(
     [switch]$Fast,
     [switch]$Runtime,
@@ -10,6 +21,10 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 function Invoke-PytestGroup {
+    <#
+    .SYNOPSIS
+    Runs a named pytest group and fails immediately if it exits non-zero.
+    #>
     param(
         [Parameter(Mandatory = $true)][string]$Name,
         [Parameter(Mandatory = $true)][string[]]$Args

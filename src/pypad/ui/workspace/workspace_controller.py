@@ -1,3 +1,8 @@
+"""Coordinate workspace state, file listings, and workspace-driven actions from the UI.
+
+This module belongs to the workspace browsing and project workflow UI layer. It helps explain how `pypad.ui.workspace` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 
 import threading
@@ -19,7 +24,9 @@ from pypad.ui.workspace.workspace_dialog import WorkspaceFilesDialog, WorkspaceS
 
 
 class WorkspaceController:
+    """Manage workspace roots, indexing, search, and bulk file operations for the UI."""
     def __init__(self, window) -> None:
+        """Bind the controller to the main window and initialize workspace index state."""
         self.window = window
         self._index_lock = threading.Lock()
         self._index_files: list[str] = []
@@ -30,6 +37,7 @@ class WorkspaceController:
 
     @staticmethod
     def _read_text_with_fallback(path: str, preferred_encoding: str = "utf-8") -> str | None:
+        """Read text using several encodings so workspace actions tolerate mixed file sets."""
         encodings = [str(preferred_encoding or "utf-8"), "utf-8", "utf-8-sig", "cp1252", "latin-1"]
         seen: set[str] = set()
         for enc in encodings:
@@ -43,6 +51,7 @@ class WorkspaceController:
         return None
 
     def insert_media_files(self) -> None:
+        """Open a picker and insert selected media paths into the active document."""
         tab = self.window.active_tab()
         if tab is None:
             return
@@ -57,6 +66,7 @@ class WorkspaceController:
         self.insert_media_paths(paths)
 
     def insert_media_paths(self, paths: list[str]) -> None:
+        """Insert paths directly, using Markdown syntax when the active tab is Markdown."""
         tab = self.window.active_tab()
         if tab is None:
             return
@@ -75,6 +85,7 @@ class WorkspaceController:
                 tab.text_edit.insert_text(f"{path}\n")
 
     def open_workspace_folder(self) -> None:
+        """Let the user choose a workspace root and trigger index and dock refresh work."""
         root = QFileDialog.getExistingDirectory(
             self.window,
             "Select Workspace Folder",
@@ -92,6 +103,7 @@ class WorkspaceController:
             self.window._refresh_workspace_dock()
 
     def workspace_root(self) -> str | None:
+        """Return the configured workspace root only when it still exists on disk."""
         root = str(self.window.settings.get("workspace_root", "") or "").strip()
         if not root:
             return None
@@ -100,6 +112,7 @@ class WorkspaceController:
         return root
 
     def workspace_files(self) -> list[str]:
+        """Return indexed workspace files, falling back to a direct scan during warm-up."""
         root = self.workspace_root()
         if not root:
             return []
@@ -118,15 +131,18 @@ class WorkspaceController:
         )
 
     def _allowed_suffixes(self) -> set[str]:
+        """List file types that workspace scans treat as relevant document or code files."""
         return {".txt", ".md", ".markdown", ".mdown", ".py", ".json", ".js", ".ts", ".encnote"}
 
     def _build_index_key(self, root: str) -> str:
+        """Build a cache key that invalidates the index when root or scan settings change."""
         show_hidden = bool(self.window.settings.get("workspace_show_hidden_files", False))
         follow_symlinks = bool(self.window.settings.get("workspace_follow_symlinks", False))
         max_scan = max(1000, int(self.window.settings.get("workspace_max_scan_files", 25000) or 25000))
         return f"{Path(root).resolve()}|hidden={int(show_hidden)}|symlinks={int(follow_symlinks)}|max={max_scan}"
 
     def _start_background_scan(self, *, force: bool = False) -> None:
+        """Start a background workspace scan unless the current index is already valid."""
         root = self.workspace_root()
         if not root:
             return
@@ -142,6 +158,7 @@ class WorkspaceController:
         self.window.show_status_message("Indexing workspace in background...", 2000)
 
         def worker() -> None:
+            """Execute the `worker` workflow."""
             try:
                 files = collect_workspace_files(
                     root=root,
@@ -160,6 +177,7 @@ class WorkspaceController:
         threading.Thread(target=worker, name="workspace-indexer", daemon=True).start()
 
     def show_workspace_files(self) -> None:
+        """Open the workspace file browser dialog and load the selected file."""
         root = self.workspace_root()
         if not root:
             QMessageBox.information(self.window, "Workspace", "Please set a workspace folder first.")
@@ -173,6 +191,7 @@ class WorkspaceController:
             self.window._open_file_path(dlg.selected_path)
 
     def search_workspace(self) -> None:
+        """Run a multi-file search over the workspace and present the matching results."""
         root = self.workspace_root()
         if not root:
             QMessageBox.information(self.window, "Workspace", "Please set a workspace folder first.")
@@ -180,7 +199,9 @@ class WorkspaceController:
         from PySide6.QtWidgets import QCheckBox, QDialogButtonBox, QGridLayout, QLabel, QLineEdit
 
         class FindInFilesDialog(QDialog):
+            """Dialog class that implements the `FindInFilesDialog` workflow."""
             def __init__(self, parent=None) -> None:
+                """Initialize the `workspace_controller` state for this instance."""
                 super().__init__(parent)
                 self.setWindowTitle("Find in Files")
                 self.find_edit = QLineEdit(self)
@@ -213,6 +234,7 @@ class WorkspaceController:
                 layout.addWidget(buttons, 6, 0, 1, 2)
 
             def values(self) -> tuple[str, bool, bool, bool, list[str], list[str], int]:
+                """Execute the `values` workflow."""
                 max_results = 800
                 try:
                     max_results = max(50, min(5000, int(self.max_results_edit.text().strip() or "800")))
@@ -285,6 +307,7 @@ class WorkspaceController:
                     tab.text_edit.set_cursor_position(max(0, dlg.selected_line - 1), 0)
 
     def replace_in_files(self) -> None:
+        """Preview and apply bulk replacements across workspace files, with rollback support."""
         root = self.workspace_root()
         if not root:
             QMessageBox.information(self.window, "Workspace", "Please set a workspace folder first.")
@@ -305,7 +328,9 @@ class WorkspaceController:
         )
 
         class ReplaceDialog(QDialog):
+            """Dialog class that implements the `ReplaceDialog` workflow."""
             def __init__(self, parent=None) -> None:
+                """Initialize the `workspace_controller` state for this instance."""
                 super().__init__(parent)
                 self.setWindowTitle("Replace in Files")
                 self.find_edit = QLineEdit(self)
@@ -344,6 +369,7 @@ class WorkspaceController:
                 layout.addWidget(buttons, 6, 0, 1, 2)
 
             def values(self) -> tuple[str, str, bool, bool, bool, list[str], list[str]]:
+                """Execute the `values` workflow."""
                 return (
                     self.find_edit.text(),
                     self.replace_edit.text(),
@@ -355,7 +381,9 @@ class WorkspaceController:
                 )
 
         class PreviewDialog(QDialog):
+            """Dialog class that implements the `PreviewDialog` workflow."""
             def __init__(self, parent, changes: list[dict]) -> None:
+                """Initialize the `workspace_controller` state for this instance."""
                 super().__init__(parent)
                 self.setWindowTitle("Replace Preview")
                 self.resize(980, 680)
@@ -382,6 +410,7 @@ class WorkspaceController:
                     self.file_list.setCurrentRow(0)
 
             def _show_diff(self, row: int) -> None:
+                """Internal helper for `_show_diff`."""
                 if row < 0 or row >= len(self._changes):
                     self.diff_view.clear()
                     return
@@ -541,6 +570,7 @@ class WorkspaceController:
                 QMessageBox.warning(self.window, "Replace in Files", "Rollback failed or restored no files.")
 
     def _create_replace_snapshot(self, planned_changes: list[dict]) -> str:
+        """Save original file contents into a zip snapshot that can be used for rollback."""
         configured = str(self.window.settings.get("backup_output_dir", "") or "").strip()
         out_dir = Path(configured) if configured else (Path(__file__).resolve().parents[3] / "backups")
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -561,6 +591,7 @@ class WorkspaceController:
         return str(snapshot)
 
     def _restore_replace_snapshot(self, snapshot_path: str) -> int:
+        """Restore files from a previously created replace snapshot archive."""
         path = Path(snapshot_path)
         if not path.exists():
             return 0
@@ -590,6 +621,7 @@ class WorkspaceController:
         return restored
 
     def handle_dropped_urls(self, local_paths: list[str]) -> bool:
+        """Handle drag-and-drop paths by inserting media or opening files when appropriate."""
         if not local_paths:
             return False
         media_ext = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".svg", ".pdf"}

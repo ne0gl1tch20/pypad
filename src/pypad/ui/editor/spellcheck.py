@@ -1,3 +1,8 @@
+"""Provide spellchecking helpers and state used by the text editor experience.
+
+This module belongs to the editor widget and text-manipulation UI layer. It helps explain how `pypad.ui.editor` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 
 import re
@@ -14,6 +19,7 @@ WORD_RE = re.compile(r"\b[A-Za-z][A-Za-z'_-]{1,}\b")
 
 
 def iter_words(text: str) -> list[tuple[str, int, int]]:
+    """Execute the `iter_words` workflow."""
     rows: list[tuple[str, int, int]] = []
     for match in WORD_RE.finditer(str(text or "")):
         rows.append((match.group(0), match.start(), match.end()))
@@ -21,6 +27,7 @@ def iter_words(text: str) -> list[tuple[str, int, int]]:
 
 
 def word_span_at(text: str, index: int) -> tuple[str, int, int] | None:
+    """Execute the `word_span_at` workflow."""
     probe = str(text or "")
     cursor = max(0, min(len(probe), int(index)))
     for word, start, end in iter_words(probe):
@@ -31,6 +38,7 @@ def word_span_at(text: str, index: int) -> tuple[str, int, int] | None:
 
 @lru_cache(maxsize=8)
 def _spellchecker_for_language(language: str):
+    """Internal helper for `_spellchecker_for_language`."""
     if SpellChecker is None:
         return None
     normalized = str(language or "en").strip().lower() or "en"
@@ -44,10 +52,12 @@ def _spellchecker_for_language(language: str):
 
 
 def spellcheck_available() -> bool:
+    """Execute the `spellcheck_available` workflow."""
     return SpellChecker is not None
 
 
 def _dictionary_words(engine) -> list[str]:
+    """Internal helper for `_dictionary_words`."""
     word_frequency = getattr(engine, "word_frequency", None)
     if word_frequency is None:
         return []
@@ -69,6 +79,7 @@ def _dictionary_words(engine) -> list[str]:
 
 
 def _safe_candidates(engine, word: str) -> list[str]:
+    """Internal helper for `_safe_candidates`."""
     try:
         raw = engine.candidates(word)
     except Exception:
@@ -120,6 +131,7 @@ def unknown_words(
     language: str = "en",
     custom_words: list[str] | set[str] | tuple[str, ...] | None = None,
 ) -> list[dict[str, object]]:
+    """Execute the `unknown_words` workflow."""
     engine = _spellchecker_for_language(language)
     if engine is None:
         return []
@@ -149,6 +161,7 @@ def suggestions_for_word(
     language: str = "en",
     custom_words: list[str] | set[str] | tuple[str, ...] | None = None,
 ) -> list[str]:
+    """Execute the `suggestions_for_word` workflow."""
     engine = _spellchecker_for_language(language)
     probe = str(word or "").strip()
     if engine is None or not probe:

@@ -1,9 +1,15 @@
+"""Implement cursor movement and editing command handlers for the Scintilla compatibility layer.
+
+This module belongs to the Scintilla compatibility layer used when native QScintilla is unavailable. It helps explain how `pypad.ui.editor.scintilla_compat` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 
 from PySide6.QtGui import QTextCursor
 
 
 def handle_movement_edit_command(editor, msg: int, args: tuple[int, ...]) -> int | None:
+    """Execute the `handle_movement_edit_command` workflow."""
     if msg == int(editor.SCI_GETCURLINE):
         cur = editor.textCursor()
         block = cur.block()

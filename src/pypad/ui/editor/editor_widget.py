@@ -1,3 +1,8 @@
+"""Wrap the active text editing backend so the rest of the app can work against one consistent editor interface.
+
+This module belongs to the editor widget and text-manipulation UI layer. It helps explain how `pypad.ui.editor` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 
 from PySide6.QtCore import QObject, Signal
@@ -14,6 +19,7 @@ except Exception:  # noqa: BLE001
 
 
 class EditorWidget(QObject):
+    """Backend-neutral editor wrapper that presents one API over native and compat editors."""
     textChanged = Signal()
     cursorPositionChanged = Signal()
     modificationChanged = Signal(bool)
@@ -24,6 +30,7 @@ class EditorWidget(QObject):
     scintillaNotification = Signal(dict)
 
     def __init__(self, parent=None) -> None:
+        """Create the best available editor backend and normalize its signals."""
         super().__init__(parent)
         self._native_scintilla = QsciScintilla is not None
         if QsciScintilla is not None:
@@ -38,13 +45,16 @@ class EditorWidget(QObject):
 
     @property
     def is_scintilla(self) -> bool:
+        """Return whether the wrapped backend exposes the Scintilla-style API surface."""
         return self._is_scintilla
 
     @property
     def is_native_scintilla(self) -> bool:
+        """Return whether the backend is the real QScintilla widget rather than the compat layer."""
         return self._native_scintilla
 
     def _wire_scintilla_signals(self) -> None:
+        """Connect backend signals into the wrapper's normalized signal set."""
         w = self.widget
         if hasattr(w, "textChanged"):
             w.textChanged.connect(self._emit_text_changed)
@@ -60,6 +70,7 @@ class EditorWidget(QObject):
             w.scnNotify.connect(self._emit_scintilla_notification)
 
     def _send_scintilla(self, command_name: str, *args: int) -> bool:
+        """Dispatch a named Scintilla command to either native or compatibility backends."""
         if not self._is_scintilla:
             return False
         if QsciScintilla is None and hasattr(self.widget, "send_scintilla_named"):
@@ -75,6 +86,7 @@ class EditorWidget(QObject):
         return True
 
     def _wire_qtextedit_signals(self) -> None:
+        """Internal helper for `_wire_qtextedit_signals`."""
         w = self.widget
         w.textChanged.connect(self._emit_text_changed)
         w.cursorPositionChanged.connect(self._emit_cursor_changed)
@@ -86,34 +98,41 @@ class EditorWidget(QObject):
         w.document().modificationChanged.connect(self.modificationChanged)
 
     def _emit_text_changed(self) -> None:
+        """Forward text-change events and refresh dependent selection state."""
         self.textChanged.emit()
         self._emit_selection_changed()
 
     def _emit_cursor_changed(self) -> None:
+        """Internal helper for `_emit_cursor_changed`."""
         self.cursorPositionChanged.emit()
         self._emit_selection_changed()
 
     def _emit_selection_changed(self) -> None:
+        """Emit normalized selection signals and copy availability state."""
         has_sel = self.has_selection()
         self.copyAvailable.emit(has_sel)
         self.selectionChanged.emit()
 
     def _emit_scintilla_notification(self, payload: dict) -> None:
+        """Internal helper for `_emit_scintilla_notification`."""
         self.scintillaNotification.emit(dict(payload or {}))
 
     # ---- text access ----
     def get_text(self) -> str:
+        """Return the full document text from the active backend."""
         if self._is_scintilla:
             return self.widget.text()
         return self.widget.toPlainText()
 
     def set_text(self, text: str) -> None:
+        """Replace the full document text in the active backend."""
         if self._is_scintilla:
             self.widget.setText(text)
         else:
             self.widget.setPlainText(text)
 
     def insert_text(self, text: str) -> None:
+        """Insert text at the current caret position."""
         if self._is_scintilla:
             line, index = self.widget.getCursorPosition()
             self.widget.insertAt(text, line, index)
@@ -124,16 +143,19 @@ class EditorWidget(QObject):
 
     # ---- selection ----
     def has_selection(self) -> bool:
+        """Execute the `has_selection` workflow."""
         if self._is_scintilla:
             return self.widget.hasSelectedText()
         return self.widget.textCursor().hasSelection()
 
     def selected_text(self) -> str:
+        """Execute the `selected_text` workflow."""
         if self._is_scintilla:
             return self.widget.selectedText()
         return self.widget.textCursor().selectedText().replace("\u2029", "\n")
 
     def replace_selection(self, text: str) -> None:
+        """Execute the `replace_selection` workflow."""
         if self._is_scintilla:
             self.widget.replaceSelectedText(text)
         else:
@@ -141,6 +163,7 @@ class EditorWidget(QObject):
             cursor.insertText(text)
 
     def clear_selection(self) -> None:
+        """Execute the `clear_selection` workflow."""
         if self._is_scintilla:
             line, index = self.widget.getCursorPosition()
             self.widget.setSelection(line, index, line, index)
@@ -151,6 +174,7 @@ class EditorWidget(QObject):
 
     # ---- cursor ----
     def cursor_position(self) -> tuple[int, int]:
+        """Execute the `cursor_position` workflow."""
         if self._is_scintilla:
             line, index = self.widget.getCursorPosition()
             return line, index
@@ -158,6 +182,7 @@ class EditorWidget(QObject):
         return cursor.blockNumber(), cursor.columnNumber()
 
     def set_cursor_position(self, line: int, index: int) -> None:
+        """Update state handled by `set_cursor_position`."""
         if self._is_scintilla:
             self.widget.setCursorPosition(line, index)
             return
@@ -166,16 +191,19 @@ class EditorWidget(QObject):
         self.widget.setTextCursor(cursor)
 
     def get_line_text(self, line: int) -> str:
+        """Return the value produced by `get_line_text`."""
         if self._is_scintilla:
             return self.widget.text(line)
         block = self.widget.document().findBlockByNumber(line)
         return block.text() if block.isValid() else ""
 
     def current_line_text(self) -> str:
+        """Execute the `current_line_text` workflow."""
         line, _ = self.cursor_position()
         return self.get_line_text(line)
 
     def replace_line(self, line: int, text: str) -> None:
+        """Execute the `replace_line` workflow."""
         if self._is_scintilla:
             current = self.widget.text(line)
             self.widget.setSelection(line, 0, line, len(current))
@@ -190,6 +218,7 @@ class EditorWidget(QObject):
         cursor.insertText(text)
 
     def selection_range(self) -> tuple[int, int, int, int] | None:
+        """Return the active selection as line/column bounds, if a selection exists."""
         if self._is_scintilla:
             if not self.widget.hasSelectedText():
                 return None
@@ -209,12 +238,14 @@ class EditorWidget(QObject):
         )
 
     def index_from_line_col(self, line: int, col: int) -> int:
+        """Execute the `index_from_line_col` workflow."""
         lines = self.get_text().splitlines(keepends=True)
         if line <= 0:
             return max(0, col)
         return sum(len(lines[i]) for i in range(min(line, len(lines)))) + col
 
     def line_col_from_index(self, index: int) -> tuple[int, int]:
+        """Execute the `line_col_from_index` workflow."""
         if index <= 0:
             return 0, 0
         text = self.get_text()
@@ -233,10 +264,12 @@ class EditorWidget(QObject):
         return max(0, len(lines) - 1), max(0, index - total)
 
     def cursor_index(self) -> int:
+        """Execute the `cursor_index` workflow."""
         line, col = self.cursor_position()
         return self.index_from_line_col(line, col)
 
     def set_selection_by_index(self, start: int, end: int) -> None:
+        """Select a text range expressed in absolute character offsets."""
         if end < start:
             start, end = end, start
         line1, col1 = self.line_col_from_index(start)
@@ -251,35 +284,44 @@ class EditorWidget(QObject):
 
     # ---- editing ----
     def undo(self) -> None:
+        """Execute the `undo` workflow."""
         self.widget.undo()
 
     def redo(self) -> None:
+        """Execute the `redo` workflow."""
         self.widget.redo()
 
     def cut(self) -> None:
+        """Execute the `cut` workflow."""
         self.widget.cut()
 
     def copy(self) -> None:
+        """Execute the `copy` workflow."""
         self.widget.copy()
 
     def paste(self) -> None:
+        """Execute the `paste` workflow."""
         self.widget.paste()
 
     def select_all(self) -> None:
+        """Execute the `select_all` workflow."""
         self.widget.selectAll()
 
     def is_modified(self) -> bool:
+        """Execute the `is_modified` workflow."""
         if self._is_scintilla:
             return bool(self.widget.isModified())
         return bool(self.widget.document().isModified())
 
     def set_modified(self, value: bool) -> None:
+        """Update state handled by `set_modified`."""
         if self._is_scintilla:
             self.widget.setModified(value)
         else:
             self.widget.document().setModified(value)
 
     def is_undo_available(self) -> bool:
+        """Execute the `is_undo_available` workflow."""
         if self._is_scintilla and hasattr(self.widget, "isUndoAvailable"):
             return bool(self.widget.isUndoAvailable())
         if not self._is_scintilla:
@@ -287,6 +329,7 @@ class EditorWidget(QObject):
         return False
 
     def is_redo_available(self) -> bool:
+        """Execute the `is_redo_available` workflow."""
         if self._is_scintilla and hasattr(self.widget, "isRedoAvailable"):
             return bool(self.widget.isRedoAvailable())
         if not self._is_scintilla:
@@ -294,20 +337,25 @@ class EditorWidget(QObject):
         return False
 
     def set_read_only(self, read_only: bool) -> None:
+        """Update state handled by `set_read_only`."""
         self.widget.setReadOnly(read_only)
 
     def is_read_only(self) -> bool:
+        """Execute the `is_read_only` workflow."""
         return bool(self.widget.isReadOnly())
 
     def set_font(self, font: QFont) -> None:
+        """Update state handled by `set_font`."""
         self.widget.setFont(font)
 
     def current_font(self) -> QFont:
+        """Execute the `current_font` workflow."""
         if self._is_scintilla:
             return self.widget.font()
         return self.widget.currentFont()
 
     def set_wrap_enabled(self, enabled: bool) -> None:
+        """Enable or disable visual word wrapping in the active backend."""
         if self._is_scintilla:
             wrap_word = getattr(QsciScintilla, "WrapWord", getattr(self.widget, "WrapWord", 1))
             wrap_none = getattr(QsciScintilla, "WrapNone", getattr(self.widget, "WrapNone", 0))
@@ -316,6 +364,7 @@ class EditorWidget(QObject):
             self.widget.setLineWrapMode(QTextEdit.WidgetWidth if enabled else QTextEdit.NoWrap)
 
     def set_margin_padding(self, *, left: int, right: int) -> None:
+        """Update state handled by `set_margin_padding`."""
         if not self._is_scintilla:
             return
         left_px = max(0, int(left))
@@ -326,6 +375,7 @@ class EditorWidget(QObject):
             self.widget.setMarginRight(right_px)
 
     def set_line_numbers_visible(self, visible: bool) -> None:
+        """Update state handled by `set_line_numbers_visible`."""
         if not self._is_scintilla or not hasattr(self.widget, "setMarginWidth"):
             return
         backup_attr = "_pypad_margin_state_backup"
@@ -409,6 +459,7 @@ class EditorWidget(QObject):
                 pass
 
     def configure_indentation(self, *, tab_width: int, use_tabs: bool) -> None:
+        """Execute the `configure_indentation` workflow."""
         width = max(1, int(tab_width))
         if self._is_scintilla:
             if hasattr(self.widget, "setTabWidth"):
@@ -422,6 +473,7 @@ class EditorWidget(QObject):
         self.widget.setTabStopDistance(max(8.0, metrics.horizontalAdvance(" ") * float(width)))
 
     def set_line_number_width(self, *, mode: str, width_px: int) -> None:
+        """Update state handled by `set_line_number_width`."""
         if not self._is_scintilla or not hasattr(self.widget, "setMarginWidth"):
             return
         normalized = str(mode or "dynamic").strip().lower()
@@ -434,6 +486,7 @@ class EditorWidget(QObject):
             return
 
     def set_caret_width(self, width_px: int) -> None:
+        """Update state handled by `set_caret_width`."""
         width = max(1, int(width_px))
         if self._is_scintilla:
             if not self._send_scintilla("SCI_SETCARETWIDTH", width) and hasattr(self.widget, "setCaretWidth"):
@@ -443,6 +496,7 @@ class EditorWidget(QObject):
             self.widget.setCursorWidth(width)
 
     def set_highlight_current_line(self, enabled: bool) -> None:
+        """Update state handled by `set_highlight_current_line`."""
         if self._is_scintilla:
             flag = 1 if bool(enabled) else 0
             if not self._send_scintilla("SCI_SETCARETLINEVISIBLE", flag) and hasattr(self.widget, "setCaretLineVisible"):
@@ -450,6 +504,7 @@ class EditorWidget(QObject):
 
     @staticmethod
     def _scintilla_rgb_int(color: str) -> int:
+        """Internal helper for `_scintilla_rgb_int`."""
         qc = QColor(str(color))
         if not qc.isValid():
             qc = QColor("#000000")
@@ -467,6 +522,7 @@ class EditorWidget(QObject):
         gutter_bg: str,
         gutter_fg: str,
     ) -> None:
+        """Apply runtime theme colors to the backend using its most stable styling path."""
         if not self._is_scintilla:
             self.widget.setStyleSheet(
                 "QTextEdit, QPlainTextEdit {"
@@ -544,6 +600,7 @@ class EditorWidget(QObject):
             pass
 
     def zoom_in(self, steps: int) -> None:
+        """Execute the `zoom_in` workflow."""
         if self._is_scintilla:
             for _ in range(abs(steps)):
                 self.widget.zoomIn(1 if steps > 0 else -1)
@@ -551,6 +608,7 @@ class EditorWidget(QObject):
             self.widget.zoomIn(steps)
 
     def delete_backspace(self) -> None:
+        """Execute the `delete_backspace` workflow."""
         if self._is_scintilla:
             if hasattr(self.widget, "deleteBack"):
                 self.widget.deleteBack()
@@ -561,6 +619,7 @@ class EditorWidget(QObject):
         cursor.deletePreviousChar()
 
     def delete_delete(self) -> None:
+        """Execute the `delete_delete` workflow."""
         if self._is_scintilla:
             if hasattr(self.widget, "deleteChar"):
                 self.widget.deleteChar()
@@ -569,6 +628,7 @@ class EditorWidget(QObject):
         cursor.deleteChar()
 
     def set_column_mode(self, enabled: bool) -> None:
+        """Update state handled by `set_column_mode`."""
         if not self._is_scintilla:
             return
         mode = getattr(QsciScintilla, "SC_SEL_RECTANGLE", 1) if enabled else getattr(QsciScintilla, "SC_SEL_STREAM", 0)
@@ -579,6 +639,7 @@ class EditorWidget(QObject):
             self.widget.setRectangularSelectionModifier(modifier)
 
     def set_multi_caret(self, enabled: bool) -> None:
+        """Update state handled by `set_multi_caret`."""
         if not self._is_scintilla:
             return
         if self._send_scintilla("SCI_SETMULTIPLESELECTION", int(enabled)):
@@ -593,6 +654,7 @@ class EditorWidget(QObject):
             self.widget.setMultiPaste(enabled)
 
     def set_code_folding(self, enabled: bool) -> None:
+        """Update state handled by `set_code_folding`."""
         if not self._is_scintilla:
             return
         if hasattr(self.widget, "setFolding"):
@@ -602,6 +664,7 @@ class EditorWidget(QObject):
             self.widget.setFolding(style)
 
     def set_show_space_tab(self, enabled: bool) -> None:
+        """Update state handled by `set_show_space_tab`."""
         if not self._is_scintilla:
             return
         mode_visible = getattr(QsciScintilla, "SCWS_VISIBLEALWAYS", 1)
@@ -609,16 +672,19 @@ class EditorWidget(QObject):
         self._send_scintilla("SCI_SETVIEWWS", mode_visible if enabled else mode_hidden)
 
     def set_show_eol(self, enabled: bool) -> None:
+        """Update state handled by `set_show_eol`."""
         if not self._is_scintilla:
             return
         self._send_scintilla("SCI_SETVIEWEOL", int(enabled))
 
     def set_show_control_chars(self, enabled: bool) -> None:
+        """Update state handled by `set_show_control_chars`."""
         if not self._is_scintilla:
             return
         self._send_scintilla("SCI_SETCONTROLCHARSYMBOL", 183 if enabled else 0)
 
     def set_show_indent_guides(self, enabled: bool) -> None:
+        """Update state handled by `set_show_indent_guides`."""
         if not self._is_scintilla:
             return
         mode = 1 if enabled else 0
@@ -626,12 +692,14 @@ class EditorWidget(QObject):
             self.widget.setIndentationGuides(enabled)
 
     def set_show_wrap_symbol(self, enabled: bool) -> None:
+        """Update state handled by `set_show_wrap_symbol`."""
         if not self._is_scintilla:
             return
         end_flag = getattr(QsciScintilla, "SC_WRAPVISUALFLAG_END", 1)
         self._send_scintilla("SCI_SETWRAPVISUALFLAGS", end_flag if enabled else 0)
 
     def set_auto_completion_mode(self, mode: str, threshold: int = 1) -> None:
+        """Update state handled by `set_auto_completion_mode`."""
         if not self._is_scintilla:
             return
         mode = (mode or "all").lower()
@@ -656,6 +724,7 @@ class EditorWidget(QObject):
             self.widget.setAutoCompletionUseSingle(True)
 
     def set_auto_completion_words(self, words: list[str]) -> None:
+        """Update state handled by `set_auto_completion_words`."""
         if not self._is_scintilla:
             return
         if QsciAPIs is None:
@@ -691,6 +760,7 @@ class EditorWidget(QObject):
             return
 
     def fold_all(self, expand: bool) -> None:
+        """Execute the `fold_all` workflow."""
         if not self._is_scintilla:
             return
         if hasattr(self.widget, "foldAll"):
@@ -703,6 +773,7 @@ class EditorWidget(QObject):
         self._send_scintilla("SCI_FOLDALL", action)
 
     def fold_current(self, expand: bool) -> None:
+        """Execute the `fold_current` workflow."""
         if not self._is_scintilla:
             return
         line, _ = self.cursor_position()
@@ -710,6 +781,7 @@ class EditorWidget(QObject):
         self._send_scintilla("SCI_FOLDLINE", line, action)
 
     def fold_level(self, level: int, expand: bool) -> None:
+        """Execute the `fold_level` workflow."""
         if not self._is_scintilla:
             return
         if QsciScintilla is None:
@@ -731,6 +803,7 @@ class EditorWidget(QObject):
                 self._send_scintilla("SCI_FOLDLINE", line, action)
 
     def _line_count(self) -> int:
+        """Internal helper for `_line_count`."""
         if self._is_scintilla and hasattr(self.widget, "lines"):
             try:
                 return max(1, int(self.widget.lines()))
@@ -739,6 +812,7 @@ class EditorWidget(QObject):
         return max(1, len(self.get_text().splitlines()) or 1)
 
     def hide_line_range(self, start_line: int, end_line: int) -> bool:
+        """Execute the `hide_line_range` workflow."""
         if not self._is_scintilla:
             return False
         if hasattr(self.widget, "hide_lines"):
@@ -751,6 +825,7 @@ class EditorWidget(QObject):
         return bool(self._send_scintilla("SCI_HIDELINES", lo, hi))
 
     def show_all_lines(self) -> bool:
+        """Execute the `show_all_lines` workflow."""
         if not self._is_scintilla:
             return False
         if hasattr(self.widget, "show_all_hidden_lines"):

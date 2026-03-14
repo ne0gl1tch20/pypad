@@ -1,3 +1,5 @@
+"""Audit the repository's Scintilla compatibility surface and print a JSON summary."""
+
 from __future__ import annotations
 
 import json
@@ -14,6 +16,8 @@ from pypad.ui.editor.scintilla_compat.audit import build_audit_report
 
 
 def main() -> int:
+    """Build an audit report for the repo and emit a machine-readable summary."""
+
     report = build_audit_report(ROOT)
     payload = {
         "repo_complete": report.repo_complete,

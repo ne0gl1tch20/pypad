@@ -1,3 +1,8 @@
+"""Support update checks, release metadata handling, and related network or version-comparison utilities.
+
+This module belongs to the shared service layer that supports multiple UI workflows. It helps explain how `pypad.services` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 
 import hmac
@@ -8,6 +13,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class UpdateInfo:
+    """Class that implements the `UpdateInfo` runtime behavior."""
     version: str
     title: str
     changelog: str
@@ -18,6 +24,7 @@ class UpdateInfo:
 
 
 def parse_update_feed(xml_text: str) -> UpdateInfo | None:
+    """Execute the `parse_update_feed` workflow."""
     try:
         root = ET.fromstring(xml_text)
     except ET.ParseError:
@@ -53,6 +60,7 @@ def parse_update_feed(xml_text: str) -> UpdateInfo | None:
 
 
 def _parse_plaintext_feed(text: str) -> UpdateInfo | None:
+    """Internal helper for `_parse_plaintext_feed`."""
     raw = (text or "").strip()
     if not raw:
         return None
@@ -92,16 +100,19 @@ def _parse_plaintext_feed(text: str) -> UpdateInfo | None:
 
 
 def is_newer_version(remote: str, current: str) -> bool:
+    """Execute the `is_newer_version` workflow."""
     if not remote.strip():
         return False
     return _version_key(remote) > _version_key(current)
 
 
 def _local(tag: str) -> str:
+    """Internal helper for `_local`."""
     return tag.split("}", 1)[-1]
 
 
 def _first_text(parent: ET.Element, candidates: set[str]) -> str | None:
+    """Internal helper for `_first_text`."""
     lowered = {name.lower() for name in candidates}
     for child in parent.iter():
         if _local(child.tag).lower() in lowered:
@@ -112,6 +123,7 @@ def _first_text(parent: ET.Element, candidates: set[str]) -> str | None:
 
 
 def _extract_version(node: ET.Element) -> str | None:
+    """Internal helper for `_extract_version`."""
     for child in node.iter():
         local = _local(child.tag).lower()
         if local in {"version", "shortversionstring", "appversion"}:
@@ -126,6 +138,7 @@ def _extract_version(node: ET.Element) -> str | None:
 
 
 def _extract_download_url(node: ET.Element) -> str | None:
+    """Internal helper for `_extract_download_url`."""
     for child in node.iter():
         local = _local(child.tag).lower()
         if local == "enclosure":
@@ -142,11 +155,13 @@ def _extract_download_url(node: ET.Element) -> str | None:
 
 
 def _version_tuple(version: str) -> tuple[int, ...]:
+    """Internal helper for `_version_tuple`."""
     parts = [int(piece) for piece in re.findall(r"\d+", version)]
     return tuple(parts) if parts else (0,)
 
 
 def _version_key(version: str) -> tuple[tuple[int, ...], int, str]:
+    """Internal helper for `_version_key`."""
     value = str(version or "").strip().lower()
     prerelease_match = re.search(r"(?:-|\.)(?:alpha|beta|rc|pre|preview)", value)
     numeric_source = value[: prerelease_match.start()] if prerelease_match else value
@@ -157,6 +172,7 @@ def _version_key(version: str) -> tuple[tuple[int, ...], int, str]:
 
 
 def metadata_signature_payload(info: UpdateInfo) -> bytes:
+    """Execute the `metadata_signature_payload` workflow."""
     return "|".join(
         [
             info.version.strip(),
@@ -168,6 +184,7 @@ def metadata_signature_payload(info: UpdateInfo) -> bytes:
 
 
 def verify_metadata_signature(info: UpdateInfo, signing_key: str) -> bool:
+    """Execute the `verify_metadata_signature` workflow."""
     key = (signing_key or "").strip()
     if not key or not info.signature.strip():
         return False

@@ -1,3 +1,8 @@
+"""Support quick-open behavior and related glue code in the main-window layer.
+
+This module belongs to the main-window orchestration layer that ties together menus, actions, state, and dialogs. It helps explain how `pypad.ui.main_window` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 
 import os
@@ -19,10 +24,14 @@ _LOGGER = get_logger(__name__)
 
 
 class MiscQuickOpenMixin:
+    """Mixin that provides the `MiscQuickOpenMixin` behavior set."""
     if TYPE_CHECKING:
-        def __getattr__(self, name: str) -> Any: ...
+        def __getattr__(self, name: str) -> Any:
+            """Satisfy static type checkers for runtime-resolved window attributes."""
+            ...
 
     def _quick_open_entries(self) -> list[QuickOpenEntry]:
+        """Internal helper for `_quick_open_entries`."""
         entries: list[QuickOpenEntry] = []
         seen_paths: set[str] = set()
 
@@ -75,6 +84,7 @@ class MiscQuickOpenMixin:
         return entries
 
     def _quick_open_workspace_entries_cached(self) -> list[QuickOpenEntry]:
+        """Internal helper for `_quick_open_workspace_entries_cached`."""
         root = str(self._workspace_root() or "").strip()
         if not root:
             return []
@@ -124,6 +134,7 @@ class MiscQuickOpenMixin:
         return cache_items
 
     def _schedule_quick_open_index_refresh(self) -> None:
+        """Internal helper for `_schedule_quick_open_index_refresh`."""
         if bool(getattr(self, "_quick_open_indexing", False)):
             return
         root = str(self._workspace_root() or "").strip()
@@ -132,6 +143,7 @@ class MiscQuickOpenMixin:
         self._quick_open_indexing = True
 
         def _build() -> list[QuickOpenEntry]:
+            """Internal helper for `_build`."""
             out: list[QuickOpenEntry] = []
             try:
                 root_path = Path(root)
@@ -164,9 +176,11 @@ class MiscQuickOpenMixin:
             return out
 
         def _worker() -> None:
+            """Internal helper for `_worker`."""
             items = _build()
 
             def _apply() -> None:
+                """Internal helper for `_apply`."""
                 self._quick_open_workspace_cache = items
                 self._quick_open_cache_root = root
                 self._quick_open_cache_built_at = time.time()
@@ -197,6 +211,7 @@ class MiscQuickOpenMixin:
         threading.Thread(target=_worker, name="pypad-quick-open-index", daemon=True).start()
 
     def _quick_open_current_symbols(self) -> list[QuickOpenEntry]:
+        """Internal helper for `_quick_open_current_symbols`."""
         tab = self.active_tab()
         if tab is None:
             return []
@@ -220,6 +235,7 @@ class MiscQuickOpenMixin:
         ]
 
     def _schedule_workspace_symbol_index_refresh(self) -> None:
+        """Internal helper for `_schedule_workspace_symbol_index_refresh`."""
         if bool(getattr(self, "_quick_open_workspace_symbol_indexing", False)):
             return
         root = str(self._workspace_root() or "").strip()
@@ -228,6 +244,7 @@ class MiscQuickOpenMixin:
         self._quick_open_workspace_symbol_indexing = True
 
         def _guess_lang(path: str) -> str:
+            """Internal helper for `_guess_lang`."""
             suffix = Path(path).suffix.lower()
             return {
                 ".py": "python",
@@ -237,6 +254,7 @@ class MiscQuickOpenMixin:
             }.get(suffix, "plain")
 
         def _build() -> list[QuickOpenEntry]:
+            """Internal helper for `_build`."""
             out: list[QuickOpenEntry] = []
             file_entries = list(getattr(self, "_quick_open_workspace_cache", []) or [])
             if not file_entries:
@@ -277,9 +295,11 @@ class MiscQuickOpenMixin:
             return out
 
         def _worker() -> None:
+            """Internal helper for `_worker`."""
             items = _build()
 
             def _apply() -> None:
+                """Internal helper for `_apply`."""
                 self._quick_open_workspace_symbol_cache = items
                 self._quick_open_workspace_symbol_cache_root = root
                 self._quick_open_workspace_symbol_cache_built_at = time.time()
@@ -311,6 +331,7 @@ class MiscQuickOpenMixin:
         threading.Thread(target=_worker, name="pypad-quick-open-symbol-index", daemon=True).start()
 
     def _quick_open_workspace_symbols_cached(self) -> list[QuickOpenEntry]:
+        """Internal helper for `_quick_open_workspace_symbols_cached`."""
         root = str(self._workspace_root() or "").strip()
         if not root:
             return []
@@ -361,6 +382,7 @@ class MiscQuickOpenMixin:
         return cache_items
 
     def _quick_open_status_text(self) -> str:
+        """Internal helper for `_quick_open_status_text`."""
         parts: list[str] = []
         if bool(getattr(self, "_quick_open_indexing", False)):
             parts.append("Indexing workspace...")
@@ -371,6 +393,7 @@ class MiscQuickOpenMixin:
         return " | ".join(parts)
 
     def _quick_open_apply_selection(self, entry: QuickOpenEntry, *, line: int | None, col: int | None) -> None:
+        """Internal helper for `_quick_open_apply_selection`."""
         if entry.kind == "open_tab":
             target_idx = entry.tab_index
             if isinstance(target_idx, int) and 0 <= target_idx < self.tab_widget.count():
@@ -401,6 +424,7 @@ class MiscQuickOpenMixin:
                 tab.text_edit.set_cursor_position(max(0, line - 1), max(0, (col or 1) - 1))
 
     def open_quick_open(self) -> None:
+        """Open the UI or resource handled by `open_quick_open`."""
         if hasattr(self, "_onboarding_mark_step"):
             self._onboarding_mark_step("used_quick_open")
         current_label = ""
@@ -433,6 +457,7 @@ class MiscQuickOpenMixin:
             self._maybe_show_next_unlock_prompt()
 
     def open_command_palette(self, initial_query: str = "") -> None:
+        """Open the UI or resource handled by `open_command_palette`."""
         if hasattr(self, "_onboarding_mark_step"):
             self._onboarding_mark_step("used_command_palette")
         actions: list[PaletteItem] = []

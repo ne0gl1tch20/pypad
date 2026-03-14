@@ -1,3 +1,8 @@
+"""Collect helpers for authoring workflows such as inserting structured content and editing document elements.
+
+This module belongs to the document authoring, fidelity, and review UI layer. It helps explain how `pypad.ui.document` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 
 import html
@@ -18,6 +23,7 @@ from PySide6.QtWidgets import (
 
 @dataclass
 class PageLayoutConfig:
+    """Structured page-layout settings used by print and page-layout view features."""
     margin_left_mm: int = 18
     margin_top_mm: int = 18
     margin_right_mm: int = 18
@@ -29,6 +35,7 @@ class PageLayoutConfig:
 
     @classmethod
     def from_settings(cls, settings: dict[str, Any]) -> "PageLayoutConfig":
+        """Build a layout config object from the persisted settings dictionary."""
         return cls(
             margin_left_mm=max(5, int(settings.get("page_layout_margin_left_mm", 18))),
             margin_top_mm=max(5, int(settings.get("page_layout_margin_top_mm", 18))),
@@ -41,6 +48,7 @@ class PageLayoutConfig:
         )
 
     def apply_to_settings(self, settings: dict[str, Any]) -> None:
+        """Write this layout config back into the mutable settings dictionary."""
         settings["page_layout_margin_left_mm"] = int(self.margin_left_mm)
         settings["page_layout_margin_top_mm"] = int(self.margin_top_mm)
         settings["page_layout_margin_right_mm"] = int(self.margin_right_mm)
@@ -52,7 +60,9 @@ class PageLayoutConfig:
 
 
 class PageLayoutDialog(QDialog):
+    """Dialog for editing page margins, header/footer text, and layout-view toggles."""
     def __init__(self, parent, config: PageLayoutConfig) -> None:
+        """Build the page-layout editor dialog from an initial config object."""
         super().__init__(parent)
         self.setWindowTitle("Page Layout")
         self.resize(460, 280)
@@ -107,6 +117,7 @@ class PageLayoutDialog(QDialog):
 
     @property
     def config(self) -> PageLayoutConfig:
+        """Return the current dialog state as a fresh `PageLayoutConfig` instance."""
         return PageLayoutConfig(
             margin_left_mm=int(self.left_spin.value()),
             margin_top_mm=int(self.top_spin.value()),
@@ -120,6 +131,7 @@ class PageLayoutDialog(QDialog):
 
 
 def _split_keep_newline(line: str) -> tuple[str, str]:
+    """Split a line into its content and trailing newline sequence."""
     if line.endswith("\r\n"):
         return line[:-2], "\r\n"
     if line.endswith("\n"):
@@ -128,6 +140,7 @@ def _split_keep_newline(line: str) -> tuple[str, str]:
 
 
 def _strip_block_prefix(text: str) -> str:
+    """Remove common Markdown block prefixes before applying a replacement block style."""
     out = re.sub(r"^\s{0,3}#{1,6}\s+", "", text)
     out = re.sub(r"^\s{0,3}>\s+", "", out)
     out = re.sub(r"^\s{0,3}(\d+\.\s+|- \[ \]\s+|- \s+)", "", out)
@@ -140,6 +153,7 @@ def apply_style_to_text(
     selection_range: tuple[int, int, int, int] | None,
     cursor_line: int,
 ) -> str:
+    """Apply a block-level authoring style to the selected lines or current cursor line."""
     lines = text.splitlines(keepends=True)
     if not lines:
         lines = [""]
@@ -160,6 +174,7 @@ def apply_style_to_text(
         return "".join(lines)
 
     def make_prefix(content: str) -> str:
+        """Execute the `make_prefix` workflow."""
         if key == "heading1":
             return f"# {content}"
         if key == "heading2":
@@ -185,6 +200,7 @@ def apply_style_to_text(
 
 
 def extract_markdown_headings(text: str) -> list[tuple[int, str]]:
+    """Extract heading levels and titles from Markdown text."""
     headings: list[tuple[int, str]] = []
     for line in text.splitlines():
         m = re.match(r"^\s{0,3}(#{1,6})\s+(.+?)\s*$", line)
@@ -198,7 +214,9 @@ def extract_markdown_headings(text: str) -> list[tuple[int, str]]:
 
 
 def build_markdown_toc(headings: list[tuple[int, str]]) -> str:
+    """Build a nested Markdown table of contents from heading tuples."""
     def slugify(s: str) -> str:
+        """Execute the `slugify` workflow."""
         slug = re.sub(r"[^a-zA-Z0-9\s-]", "", s).strip().lower()
         return re.sub(r"\s+", "-", slug)
 
@@ -210,6 +228,7 @@ def build_markdown_toc(headings: list[tuple[int, str]]) -> str:
 
 
 def build_ruler_text(current_col_1based: int, width: int = 100) -> str:
+    """Build an ASCII ruler string with the current column marked for layout view."""
     width = max(20, int(width))
     current_col_1based = max(1, int(current_col_1based))
     marks: list[str] = []
@@ -226,6 +245,7 @@ def build_ruler_text(current_col_1based: int, width: int = 100) -> str:
 
 
 def build_layout_html(text: str, cfg: PageLayoutConfig, *, font_family: str, font_pt: float) -> str:
+    """Render plain document text into page-layout HTML for preview and print-friendly display."""
     token = "__NP_PAGE_BREAK__"
     prepared = text.replace("\f", token).replace("[[PAGE_BREAK]]", token)
     escaped = html.escape(prepared)

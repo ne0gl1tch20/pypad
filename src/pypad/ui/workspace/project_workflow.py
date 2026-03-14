@@ -1,3 +1,8 @@
+"""Define project and workspace workflow helpers that organize multi-file work inside the application.
+
+This module belongs to the workspace browsing and project workflow UI layer. It helps explain how `pypad.ui.workspace` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 
 import difflib
@@ -8,6 +13,7 @@ from pathlib import Path
 
 @dataclass
 class DiffStats:
+    """Class that implements the `DiffStats` runtime behavior."""
     added: int
     removed: int
     hunks: int
@@ -15,6 +21,7 @@ class DiffStats:
 
 @dataclass
 class LargeFilePreview:
+    """Class that implements the `LargeFilePreview` runtime behavior."""
     text: str
     is_partial: bool
     total_lines: int
@@ -22,6 +29,7 @@ class LargeFilePreview:
 
 
 def _normalize_for_diff(line: str, *, ignore_whitespace: bool) -> str:
+    """Internal helper for `_normalize_for_diff`."""
     if not ignore_whitespace:
         return line
     return re.sub(r"\s+", " ", line).strip()
@@ -35,6 +43,7 @@ def build_unified_diff_text(
     to_label: str,
     ignore_whitespace: bool = False,
 ) -> str:
+    """Build and return the value produced by `build_unified_diff_text`."""
     left_lines = left_text.splitlines()
     right_lines = right_text.splitlines()
     if ignore_whitespace:
@@ -52,6 +61,7 @@ def build_unified_diff_text(
 
 
 def diff_stats_from_patch(patch_text: str) -> DiffStats:
+    """Execute the `diff_stats_from_patch` workflow."""
     added = 0
     removed = 0
     hunks = 0
@@ -69,6 +79,7 @@ def diff_stats_from_patch(patch_text: str) -> DiffStats:
 
 
 def apply_unified_patch_to_text(original_text: str, patch_text: str) -> str:
+    """Apply the changes or settings handled by `apply_unified_patch_to_text`."""
     src_lines = original_text.splitlines()
     out_lines: list[str] = []
     src_index = 0
@@ -110,6 +121,7 @@ def read_text_with_large_file_preview(
     head_lines: int = 2000,
     tail_lines: int = 250,
 ) -> LargeFilePreview:
+    """Execute the `read_text_with_large_file_preview` workflow."""
     p = Path(path)
     size_kb = int(p.stat().st_size / 1024)
     if size_kb < max(1, int(fast_threshold_kb)):

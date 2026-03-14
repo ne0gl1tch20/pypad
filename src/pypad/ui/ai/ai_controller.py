@@ -1,3 +1,8 @@
+"""Coordinate AI requests, prompt assembly, response handling, and UI integration for AI features.
+
+This module belongs to the AI-assisted editing and collaboration UI layer. It helps explain how `pypad.ui.ai` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 
 import os
@@ -46,6 +51,7 @@ _LOGGER = get_logger(__name__)
 
 
 def sanitize_prompt_text(prompt: str, settings: dict) -> tuple[str, list[str]]:
+    """Apply configurable redaction rules to a prompt before it is sent to the model."""
     redacted = prompt
     changes: list[str] = []
     if bool(settings.get("ai_send_redact_emails", False)):
@@ -72,16 +78,19 @@ def sanitize_prompt_text(prompt: str, settings: dict) -> tuple[str, list[str]]:
 
 
 class _AIWorker(QObject):
+    """Background worker that performs one non-streaming AI request on a QThread."""
     finished = Signal(str)
     failed = Signal(str)
 
     def __init__(self, prompt: str, api_key: str, model: str) -> None:
+        """Initialize the `ai_controller` state for this instance."""
         super().__init__()
         self.prompt = prompt
         self.api_key = api_key
         self.model = model
 
     def run(self) -> None:
+        """Execute the request and emit either the final text or a failure message."""
         try:
             result = _generate_sync(self.prompt, self.api_key, self.model)
         except Exception as exc:  # noqa: BLE001
@@ -91,12 +100,14 @@ class _AIWorker(QObject):
 
 
 class _AIStreamWorker(QObject):
+    """Background worker that emits streaming AI output chunks until completion or cancel."""
     chunk = Signal(str)
     finished = Signal(str)
     cancelled = Signal(str)
     failed = Signal(str)
 
     def __init__(self, prompt: str, api_key: str, model: str) -> None:
+        """Initialize the `ai_controller` state for this instance."""
         super().__init__()
         self.prompt = prompt
         self.api_key = api_key
@@ -104,10 +115,12 @@ class _AIStreamWorker(QObject):
         self._cancel_requested = False
 
     def cancel(self) -> None:
+        """Mark the active stream for cooperative cancellation."""
         _LOGGER.debug("AI stream worker cancel requested model=%s prompt_chars=%d", self.model, len(self.prompt))
         self._cancel_requested = True
 
     def run(self) -> None:
+        """Drive the streaming generator and forward chunks through Qt signals."""
         _LOGGER.debug("AI stream worker run start model=%s prompt_chars=%d", self.model, len(self.prompt))
         try:
             parts: list[str] = []
@@ -134,6 +147,7 @@ class _AIStreamWorker(QObject):
 
 
 def _generate_sync(prompt: str, api_key: str, model: str) -> str:
+    """Generate a full response using the preferred SDK with a compatibility fallback."""
     if not api_key:
         raise RuntimeError(MISSING_API_KEY_MESSAGE)
     if not model.strip():
@@ -173,6 +187,7 @@ def _generate_sync(prompt: str, api_key: str, model: str) -> str:
 
 
 def _split_for_live_ui(text: str) -> Iterator[str]:
+    """Break plain text into small chunks so fallback streaming still feels incremental."""
     words = text.split()
     if not words:
         return
@@ -192,6 +207,7 @@ def _split_for_live_ui(text: str) -> Iterator[str]:
 
 
 def _generate_stream(prompt: str, api_key: str, model: str) -> Iterator[str]:
+    """Yield streamed chunks, or simulate streaming when only sync generation succeeds."""
     if not api_key:
         raise RuntimeError(MISSING_API_KEY_MESSAGE)
     if not model.strip():
@@ -222,7 +238,9 @@ def _generate_stream(prompt: str, api_key: str, model: str) -> Iterator[str]:
 
 
 class AIResultDialog(QDialog):
+    """Modal dialog for inspecting, copying, or inserting generated AI output."""
     def __init__(self, parent, title: str, text: str) -> None:
+        """Initialize the `ai_controller` state for this instance."""
         super().__init__(parent)
         self.setWindowTitle(title)
         self.resize(760, 520)
@@ -253,9 +271,11 @@ class AIResultDialog(QDialog):
         self.replace_btn.clicked.connect(self._replace_selection)
 
     def _copy_text(self) -> None:
+        """Internal helper for `_copy_text`."""
         QApplication.clipboard().setText(self.output.toPlainText())
 
     def _insert_text(self) -> None:
+        """Internal helper for `_insert_text`."""
         parent = self.parent()
         tab = parent.active_tab() if parent else None
         if tab is None:
@@ -263,6 +283,7 @@ class AIResultDialog(QDialog):
         tab.text_edit.insert_text(self.output.toPlainText())
 
     def _replace_selection(self) -> None:
+        """Internal helper for `_replace_selection`."""
         parent = self.parent()
         tab = parent.active_tab() if parent else None
         if tab is None:
@@ -271,7 +292,9 @@ class AIResultDialog(QDialog):
 
 
 class AIRedactionPreviewDialog(QDialog):
+    """Preview prompt redactions so the user can confirm what will be sent to AI."""
     def __init__(self, parent, action_title: str, changes: list[str], original: str, redacted: str) -> None:
+        """Initialize the `ai_controller` state for this instance."""
         super().__init__(parent)
         self.setWindowTitle("AI Prompt Redaction Preview")
         self.resize(920, 620)
@@ -301,7 +324,9 @@ class AIRedactionPreviewDialog(QDialog):
 
 
 class AIController:
+    """Coordinate AI prompt assembly, request execution, and UI result handling."""
     def __init__(self, window) -> None:
+        """Bind the controller to the main window and initialize request-scoped caches."""
         self.window = window
         self._threads: list[QThread] = []
         self._active_stream_worker: _AIStreamWorker | None = None
@@ -314,6 +339,7 @@ class AIController:
         self._connectivity_cache_checked_at = 0.0
 
     def _log_ai(self, message: str) -> None:
+        """Write verbose AI diagnostics only when the related setting is enabled."""
         if not bool(self.window.settings.get("ai_verbose_logging", False)):
             return
         logger = getattr(self.window, "log_event", None)
@@ -321,6 +347,7 @@ class AIController:
             logger("Info", f"[AI] {message}")
 
     def _build_app_metadata_block(self) -> str:
+        """Build a compact metadata block describing the current app instance."""
         app_name = str(QApplication.applicationName() or "Pypad").strip() or "Pypad"
         version = "v?.?.?"
         try:
@@ -344,6 +371,7 @@ class AIController:
         )
 
     def _build_app_knowledge_block(self) -> str:
+        """Build and cache the optional product-knowledge appendix attached to prompts."""
         mode = str(self.window.settings.get("ai_knowledge_mode", "compact") or "compact").strip().lower()
         include_appendix = bool(self.window.settings.get("ai_include_ui_action_appendix", False))
         if mode == "full":
@@ -375,6 +403,7 @@ class AIController:
         return block
 
     def _build_advanced_personality_block(self) -> str:
+        """Return the optional advanced personality block configured by the user."""
         personality = str(self.window.settings.get("ai_personality_advanced", "") or "").strip()
         if not personality:
             return ""
@@ -385,6 +414,7 @@ class AIController:
         )
 
     def _build_runtime_context_block(self) -> str:
+        """Describe the active file, workspace, and selection so prompts can be contextual."""
         tab = self.window.active_tab() if hasattr(self.window, "active_tab") else None
         file_name = "Untitled"
         is_markdown = False
@@ -413,6 +443,7 @@ class AIController:
         )
 
     def _api_key(self) -> str:
+        """Resolve the API key from settings or the environment based on storage policy."""
         storage_mode = str(self.window.settings.get("ai_key_storage_mode", "settings") or "settings").strip().lower()
         configured = str(self.window.settings.get("gemini_api_key", "") or "").strip()
         if storage_mode != "env_only" and configured:
@@ -420,12 +451,15 @@ class AIController:
         return str(os.getenv("GEMINI_API_KEY", "")).strip()
 
     def _model(self) -> str:
+        """Return the configured model name with a stable default."""
         return str(self.window.settings.get("ai_model", "gemini-3-flash-preview") or "gemini-3-flash-preview")
 
     def _ai_private_mode_enabled(self) -> bool:
+        """Internal helper for `_ai_private_mode_enabled`."""
         return bool(self.window.settings.get("ai_private_mode", False))
 
     def _guard_ai_private_mode(self, title: str) -> bool:
+        """Block AI actions when private mode is active and explain why to the user."""
         if not self._ai_private_mode_enabled():
             return False
         QMessageBox.information(
@@ -437,9 +471,11 @@ class AIController:
 
     @staticmethod
     def _estimate_tokens(text: str) -> int:
+        """Internal helper for `_estimate_tokens`."""
         return max(1, int(len(text) / 4)) if text else 0
 
     def _record_ai_metrics(self, *, action: str, prompt: str, response: str, model: str) -> None:
+        """Persist lightweight usage metrics and action history for completed AI requests."""
         tokens = self._estimate_tokens(prompt) + self._estimate_tokens(response)
         rate = float(self.window.settings.get("ai_estimated_cost_per_1k_tokens", 0.0005) or 0.0005)
         est_cost = (tokens / 1000.0) * rate
@@ -469,6 +505,7 @@ class AIController:
             self.window.save_settings_to_disk()
 
     def _prepare_prompt_for_send(self, prompt: str, action_title: str) -> str | None:
+        """Assemble metadata/context blocks and run redaction checks before sending."""
         candidate = prompt.strip()
         if not candidate:
             self._log_ai(f"prepare prompt skipped (empty) action={action_title!r}")
@@ -515,6 +552,7 @@ class AIController:
 
     @staticmethod
     def _probe_internet_connection(timeout_sec: float = 0.25) -> bool:
+        """Perform a quick socket probe used to fail fast when the machine is offline."""
         try:
             sock = socket.create_connection(("1.1.1.1", 53), timeout=timeout_sec)
             sock.close()
@@ -523,6 +561,7 @@ class AIController:
             return False
 
     def _has_internet_connection(self, timeout_sec: float = 0.25, cache_ttl_sec: float = 5.0) -> bool:
+        """Reuse recent connectivity checks so repeated AI actions do not probe every time."""
         now = datetime.now().timestamp()
         if self._connectivity_cache_ok and (now - self._connectivity_cache_checked_at) <= cache_ttl_sec:
             return True
@@ -542,6 +581,7 @@ class AIController:
         *,
         debug_correlation_id: str | None = None,
     ) -> None:
+        """Run a streaming AI request and marshal callbacks back onto the UI thread."""
         self._ai_request_counter += 1
         request_id = self._ai_request_counter
         if not self._has_internet_connection():
@@ -575,10 +615,13 @@ class AIController:
         def _run_ui(action: Callable[[], None]) -> None:
             # Stream worker signals are connected to Python callables; without an explicit
             # receiver object Qt may invoke them on the worker thread. Marshal to UI thread.
+            """Internal helper for `_run_ui`."""
             QTimer.singleShot(0, self.window, action)
 
         def _dispatch_chunk(piece: str) -> None:
+            """Internal helper for `_dispatch_chunk`."""
             def _apply() -> None:
+                """Internal helper for `_apply`."""
                 _LOGGER.debug(
                     "AIController stream callback on_chunk action=%r id=%d chars=%d",
                     action_name,
@@ -592,7 +635,9 @@ class AIController:
             _run_ui(_apply)
 
         def _dispatch_done(text: str) -> None:
+            """Internal helper for `_dispatch_done`."""
             def _apply() -> None:
+                """Internal helper for `_apply`."""
                 _LOGGER.debug(
                     "AIController stream callback on_done action=%r id=%d cid=%r chars=%d",
                     action_name,
@@ -605,7 +650,9 @@ class AIController:
             _run_ui(_apply)
 
         def _dispatch_error(message: str) -> None:
+            """Internal helper for `_dispatch_error`."""
             def _apply() -> None:
+                """Internal helper for `_apply`."""
                 _LOGGER.debug(
                     "AIController stream callback on_error action=%r id=%d cid=%r message_len=%d",
                     action_name,
@@ -648,7 +695,9 @@ class AIController:
         worker.failed.connect(_dispatch_error)
         if on_cancel is not None:
             def _dispatch_cancel(text: str) -> None:
+                """Internal helper for `_dispatch_cancel`."""
                 def _apply() -> None:
+                    """Internal helper for `_apply`."""
                     _LOGGER.debug(
                         "AIController stream callback on_cancel action=%r id=%d cid=%r chars=%d",
                         action_name,
@@ -681,6 +730,7 @@ class AIController:
         thread.start()
 
     def _insert_generated_text(self, text: str) -> bool:
+        """Insert generated text into the active tab, adding spacing when needed."""
         tab = self.window.active_tab()
         if tab is None:
             return False
@@ -699,6 +749,7 @@ class AIController:
         on_result: Callable[[str], None] | None = None,
         on_error: Callable[[str], None] | None = None,
     ) -> None:
+        """Run a one-shot AI request and route completion to a dialog or callback."""
         self._ai_request_counter += 1
         request_id = self._ai_request_counter
         if not self._has_internet_connection():
@@ -755,6 +806,7 @@ class AIController:
         thread.start()
 
     def _cleanup_thread(self, thread: QThread) -> None:
+        """Remove completed worker threads from controller state and reset status UI."""
         if thread in self._threads:
             self._threads.remove(thread)
         if thread is self._active_stream_thread:
@@ -772,6 +824,7 @@ class AIController:
         auto_insert: bool,
         on_result: Callable[[str], None] | None = None,
     ) -> None:
+        """Handle successful non-streaming completions and optionally insert the output."""
         self._log_ai(f"result delivered title={title!r} chars={len(text)} auto_insert={auto_insert}")
         if on_result is not None:
             on_result(text)
@@ -782,6 +835,7 @@ class AIController:
         dialog.exec()
 
     def _on_error(self, _thread: QThread, message: str, action_title: str, model: str) -> None:
+        """Convert worker failures into a detailed user-facing error dialog."""
         self._log_ai(f"error action={action_title!r} model={model!r} message={message!r}")
         self._show_error_with_details(
             title="Error Generating Text",
@@ -790,6 +844,7 @@ class AIController:
         )
 
     def _show_error_with_details(self, title: str, summary: str, details: str) -> None:
+        """Display a critical message box with expandable technical details."""
         box = QMessageBox(self.window)
         box.setWindowTitle(title)
         box.setIcon(QMessageBox.Critical)
@@ -800,6 +855,7 @@ class AIController:
         box.exec()
 
     def ask_ai(self) -> None:
+        """Open the main AI entry point, preferring the chat dock when available."""
         if self._guard_ai_private_mode("Ask AI"):
             return
         if hasattr(self.window, "toggle_ai_chat_panel"):
@@ -811,6 +867,7 @@ class AIController:
         self._start_generation(prompt, "AI Response", action_name="Ask AI")
 
     def explain_selection(self) -> None:
+        """Ask the model to explain the current text selection."""
         if self._guard_ai_private_mode("Explain Selection"):
             return
         tab = self.window.active_tab()
@@ -824,6 +881,7 @@ class AIController:
         self._start_generation(prompt, "AI Explanation", action_name="Explain Selection")
 
     def generate_to_tab(self) -> None:
+        """Prompt for free-form generation and insert the result into the current tab."""
         if self._guard_ai_private_mode("Generate Text"):
             return
         tab = self.window.active_tab()
@@ -836,6 +894,7 @@ class AIController:
         self._start_generation(prompt, "Generated Text", action_name="Generate To Tab", auto_insert=True)
 
     def rewrite_selection(self, mode: str) -> None:
+        """Stream an AI rewrite for the current selection, with preview/approval support."""
         if self._guard_ai_private_mode("AI Rewrite"):
             return
         tab = self.window.active_tab()
@@ -870,9 +929,11 @@ class AIController:
         progress.canceled.connect(self.cancel_active_chat_request)
 
         def _run_ui(action: Callable[[], None]) -> None:
+            """Internal helper for `_run_ui`."""
             QTimer.singleShot(0, self.window, action)
 
         def on_rewrite_result(result: str) -> None:
+            """Execute the `on_rewrite_result` workflow."""
             progress.close()
             progress.deleteLater()
             requires_approval = bool(self.window.settings.get("ai_rewrite_require_approval", True))
@@ -888,7 +949,9 @@ class AIController:
             self.window.show_status_message("AI rewrite applied (copied to clipboard).", 3000)
 
         def on_rewrite_error(message: str) -> None:
+            """Execute the `on_rewrite_error` workflow."""
             def _apply() -> None:
+                """Internal helper for `_apply`."""
                 progress.close()
                 progress.deleteLater()
                 model = self._model()
@@ -899,11 +962,14 @@ class AIController:
         chunks: list[str] = []
 
         def on_chunk(piece: str) -> None:
+            """Execute the `on_chunk` workflow."""
             if piece:
                 chunks.append(piece)
 
         def on_cancel(partial: str) -> None:
+            """Execute the `on_cancel` workflow."""
             def _apply() -> None:
+                """Internal helper for `_apply`."""
                 progress.close()
                 progress.deleteLater()
                 self.window.show_status_message("AI rewrite canceled.", 3000)
@@ -911,6 +977,7 @@ class AIController:
             _run_ui(_apply)
 
         def on_done(text: str) -> None:
+            """Execute the `on_done` workflow."""
             if not text and chunks:
                 text = "".join(chunks).strip()
             _run_ui(lambda: on_rewrite_result(text))
@@ -925,6 +992,7 @@ class AIController:
         )
 
     def ask_about_context(self) -> None:
+        """Ask a question about the active file using its current contents as context."""
         if self._guard_ai_private_mode("Ask About File"):
             return
         tab = self.window.active_tab()
@@ -955,6 +1023,7 @@ class AIController:
         *,
         debug_correlation_id: str | None = None,
     ) -> None:
+        """Submit a chat-style AI request whose output is consumed incrementally by the caller."""
         if self._guard_ai_private_mode("AI Chat"):
             return
         _LOGGER.debug(
@@ -974,6 +1043,7 @@ class AIController:
         )
 
     def cancel_active_chat_request(self) -> bool:
+        """Request cancellation of the active streaming chat job, if one exists."""
         if self._active_stream_worker is None:
             _LOGGER.debug("AIController.cancel_active_chat_request no active stream")
             return False

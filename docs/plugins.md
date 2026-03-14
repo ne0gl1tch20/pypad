@@ -131,6 +131,7 @@ If `update_url` is set, Plugin Manager update checks expect a JSON object contai
 - `plugins/example_save_snapshot_trail/`
 - `plugins/example_action_searcher/`
 
+For the runtime architecture and full load lifecycle, see `docs/plugin_runtime.md`.
 For full method and hook references, see `docs/plugin_api.md`.
 
 ## Online Plugins

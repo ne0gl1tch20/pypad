@@ -1,7 +1,13 @@
+"""Handle compatibility-layer state transitions that do not fit into the core editing command groups.
+
+This module belongs to the Scintilla compatibility layer used when native QScintilla is unavailable. It helps explain how `pypad.ui.editor.scintilla_compat` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 
 
 def handle_extra_state_command(editor, msg: int, args: tuple[int, ...]) -> int | None:
+    """Execute the `handle_extra_state_command` workflow."""
     if msg == int(editor.SCI_SETWHITESPACEFORE):
         value = int(args[0]) if args else 0
         editor._whitespace_fore = editor._qcolor_from_scintilla_rgb(value)

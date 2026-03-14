@@ -1,3 +1,8 @@
+"""Implement the main settings dialog and the logic that maps stored preferences into editable controls.
+
+This module belongs to the main-window orchestration layer that ties together menus, actions, state, and dialogs. It helps explain how `pypad.ui.main_window` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 
 import json
@@ -70,7 +75,9 @@ _LOGGER = get_logger(__name__)
 
 
 class SettingsDialog(QDialog):
+    """Preferences dialog that maps persisted settings onto editable Qt controls."""
     def __init__(self, parent: "Notepad", settings: dict, initial_section: str | None = None) -> None:
+        """Build the settings UI, load current values, and optionally focus a starting section."""
         super().__init__(parent)
         self.setWindowTitle("Preferences")
         self.resize(980, 700)
@@ -179,6 +186,7 @@ class SettingsDialog(QDialog):
             QTimer.singleShot(0, lambda: self.focus_section(self._initial_section))
 
     def reload_from_settings(self, settings: dict, initial_section: str | None = None) -> None:
+        """Refresh the dialog from a new settings snapshot, preserving reusable dialog state."""
         self._settings = migrate_settings(dict(settings))
         self._ensure_notepadpp_pages_built()
         self._initial_section = str(initial_section or "").strip()
@@ -197,12 +205,14 @@ class SettingsDialog(QDialog):
             QTimer.singleShot(0, lambda: self.focus_section(self._initial_section))
 
     def prepare_for_open(self) -> None:
+        """Refresh theme-sensitive styling before showing a cached dialog instance."""
         # Public pre-open hook for cached dialog reuse. Keeps visual theme in sync
         # with current state before exec() without exposing internal helpers.
         self._apply_dialog_theme()
 
     @staticmethod
     def _normalize_hex(value: str, fallback: str) -> str:
+        """Normalize a color string into a safe hex value or return the fallback."""
         text = (value or "").strip()
         if not text:
             return fallback
@@ -216,10 +226,12 @@ class SettingsDialog(QDialog):
 
     @staticmethod
     def _normalize_route_key(value: str) -> str:
+        """Normalize section names into stable route keys for navigation and deep links."""
         normalized = re.sub(r"[^a-z0-9]+", "-", str(value or "").strip().lower())
         return normalized.strip("-")
 
     def _add_category(self, name: str, page: QWidget) -> int:
+        """Wrap a settings page in scrollable chrome and register it in the navigation list."""
         page.setMaximumWidth(int(getattr(self, "_settings_page_content_max_width", 720)))
         page.setObjectName("settingsPageBody")
         page.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -271,12 +283,14 @@ class SettingsDialog(QDialog):
 
     @staticmethod
     def _clean_nav_title(name: str) -> str:
+        """Internal helper for `_clean_nav_title`."""
         text = str(name or "").strip()
         if text.startswith("N++ "):
             return text.replace("N++ ", "", 1)
         return text
 
     def _format_nav_item_text(self, idx: int, count: int = 0, *, query_active: bool = False) -> str:
+        """Internal helper for `_format_nav_item_text`."""
         if idx < 0 or idx >= len(self._nav_base_labels):
             return ""
         base = self._nav_base_labels[idx]
@@ -290,6 +304,7 @@ class SettingsDialog(QDialog):
         return f"{header}\n{base}{suffix}" if header else f"{base}{suffix}"
 
     def _page_description_for_name(self, name: str) -> str:
+        """Internal helper for `_page_description_for_name`."""
         text = str(name or "")
         key = self._normalize_route_key(text.replace("N++", ""))
         descriptions = {
@@ -336,6 +351,7 @@ class SettingsDialog(QDialog):
         return descriptions.get(key, "Settings page")
 
     def _on_nav_row_changed(self, row: int) -> None:
+        """Switch the visible page and update the header summary for the selected section."""
         if row < 0 or row >= self.settings_pages.count():
             return
         self.settings_pages.setCurrentIndex(row)
@@ -349,6 +365,7 @@ class SettingsDialog(QDialog):
         self._apply_settings_stack_palette(tokens.surface_bg, tokens.text)
 
     def _set_nav_scope(self, scope: str) -> None:
+        """Limit navigation and search results to PyPad pages, N++ pages, or all pages."""
         self._settings_nav_scope = scope if scope in {"all", "pypad", "npp"} else "all"
         if self._settings_nav_scope == "npp":
             self._ensure_notepadpp_pages_built()
@@ -358,6 +375,7 @@ class SettingsDialog(QDialog):
         self._apply_search_filter(self.settings_search_input.text())
 
     def _ensure_visible_nav_selection(self) -> None:
+        """Internal helper for `_ensure_visible_nav_selection`."""
         cur = self.settings_nav_list.currentRow()
         if 0 <= cur < self.settings_nav_list.count():
             item = self.settings_nav_list.item(cur)
@@ -370,12 +388,14 @@ class SettingsDialog(QDialog):
                 return
 
     def _register_route_aliases(self, idx: int, *aliases: str) -> None:
+        """Internal helper for `_register_route_aliases`."""
         for alias in aliases:
             key = self._normalize_route_key(alias)
             if key:
                 self._route_index_map[key] = idx
 
     def focus_section(self, section: str) -> bool:
+        """Focus a named settings section using its registered route aliases."""
         key = self._normalize_route_key(section)
         if not key:
             return False
@@ -394,9 +414,11 @@ class SettingsDialog(QDialog):
         return True
 
     def _register_search(self, category_idx: int, label: str, widget: QWidget) -> None:
+        """Internal helper for `_register_search`."""
         self._search_entries.append((category_idx, label.lower(), widget))
 
     def _add_combo(self, form: QFormLayout, category_idx: int, label: str, options: list[str]) -> QComboBox:
+        """Internal helper for `_add_combo`."""
         combo = QComboBox(form.parentWidget())
         combo.addItems(options)
         form.addRow(label, combo)
@@ -404,6 +426,7 @@ class SettingsDialog(QDialog):
         return combo
 
     def _add_check(self, layout: QVBoxLayout | QFormLayout, category_idx: int, label: str) -> QCheckBox:
+        """Internal helper for `_add_check`."""
         cb = QCheckBox(label, layout.parentWidget())
         if isinstance(layout, QFormLayout):
             layout.addRow(cb)
@@ -413,6 +436,7 @@ class SettingsDialog(QDialog):
         return cb
 
     def _add_spin(self, form: QFormLayout, category_idx: int, label: str, min_v: int, max_v: int) -> QSpinBox:
+        """Internal helper for `_add_spin`."""
         spin = QSpinBox(form.parentWidget())
         spin.setRange(min_v, max_v)
         form.addRow(label, spin)
@@ -420,6 +444,7 @@ class SettingsDialog(QDialog):
         return spin
 
     def _add_settings_section(self, parent_layout: QVBoxLayout, title: str, description: str = "") -> tuple[QGroupBox, QFormLayout]:
+        """Internal helper for `_add_settings_section`."""
         box = QGroupBox(title, parent_layout.parentWidget())
         box.setObjectName("settingsSectionGroup")
         box_layout = QVBoxLayout(box)
@@ -437,6 +462,7 @@ class SettingsDialog(QDialog):
         return box, form
 
     def _apply_non_stretch_settings_layout(self) -> None:
+        """Internal helper for `_apply_non_stretch_settings_layout`."""
         for form in self.findChildren(QFormLayout):
             try:
                 form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.FieldsStayAtSizeHint)
@@ -490,6 +516,7 @@ class SettingsDialog(QDialog):
         *,
         on_change=None,
     ) -> tuple[QLabel, QWidget]:
+        """Internal helper for `_build_color_row`."""
         holder = QWidget(parent)
         row = QHBoxLayout(holder)
         row.setContentsMargins(0, 0, 0, 0)
@@ -503,6 +530,7 @@ class SettingsDialog(QDialog):
         self._register_search(category_idx, label, preview)
 
         def apply_value(hex_value: str) -> None:
+            """Apply the changes or settings handled by `apply_value`."""
             if hex_value:
                 preview.setText(hex_value)
                 preview.setStyleSheet(f"background-color: {hex_value}; border: 1px solid #888; padding: 2px;")
@@ -515,6 +543,7 @@ class SettingsDialog(QDialog):
                 on_change()
 
         def pick_color() -> None:
+            """Execute the `pick_color` workflow."""
             current = preview.text() if preview.text() != "(auto)" else "#ffffff"
             color = QColorDialog.getColor(QColor(current), self, "Select Color")
             if color.isValid():
@@ -526,6 +555,7 @@ class SettingsDialog(QDialog):
 
     @staticmethod
     def _status_preview_label_for_key(key: str) -> str:
+        """Internal helper for `_status_preview_label_for_key`."""
         labels = {
             "status_show_position": "Ln 1, Col 1",
             "status_show_zoom": "100%",
@@ -543,6 +573,7 @@ class SettingsDialog(QDialog):
         return labels.get(key, key)
 
     def _refresh_status_layout_preview(self) -> None:
+        """Internal helper for `_refresh_status_layout_preview`."""
         preview = getattr(self, "status_layout_preview", None)
         if not isinstance(preview, QLabel):
             return
@@ -553,20 +584,24 @@ class SettingsDialog(QDialog):
         preview.setText("  |  ".join(tokens) if tokens else "(No status items selected)")
 
     def _sync_accessibility_controls_enabled(self) -> None:
+        """Internal helper for `_sync_accessibility_controls_enabled`."""
         rate_spin = getattr(self, "accessibility_cursor_blink_rate_spin", None)
         blink_toggle = getattr(self, "accessibility_cursor_blink_checkbox", None)
         if isinstance(rate_spin, QSpinBox) and isinstance(blink_toggle, QCheckBox):
             rate_spin.setEnabled(bool(blink_toggle.isChecked()))
 
     def _on_follow_system_theme_changed(self) -> None:
+        """Internal helper for `_on_follow_system_theme_changed`."""
         self._sync_theme_controls_enabled()
         self._apply_dialog_theme()
 
     def _sync_theme_controls_enabled(self) -> None:
+        """Internal helper for `_sync_theme_controls_enabled`."""
         follow = bool(getattr(self, "follow_system_theme_checkbox", None).isChecked())
         self.dark_checkbox.setEnabled(not follow)
 
     def _build_pages(self) -> None:
+        """Create the full settings surface and register its searchable controls."""
         # Appearance
         appearance = QWidget(self)
         appearance_layout = QVBoxLayout(appearance)
@@ -1232,6 +1267,7 @@ class SettingsDialog(QDialog):
         # Built lazily on first N++ scope/route usage to keep initial dialog open fast.
 
     def _ensure_notepadpp_pages_built(self) -> None:
+        """Lazily build the heavier Notepad++ compatibility pages on first use."""
         if bool(getattr(self, "_npp_pages_built", False)):
             return
         try:
@@ -1245,6 +1281,7 @@ class SettingsDialog(QDialog):
             _LOGGER.exception("Failed building N++ compatibility pages lazily")
 
     def _apply_search_filter(self, text: str) -> None:
+        """Filter the navigation list and highlight matching controls based on the search query."""
         query = text.strip().lower()
         for widget in self._highlighted_widgets:
             widget.setStyleSheet("")
@@ -1271,6 +1308,7 @@ class SettingsDialog(QDialog):
         self._ensure_visible_nav_selection()
 
     def _set_color_label(self, label: QLabel, value: str) -> None:
+        """Internal helper for `_set_color_label`."""
         if value:
             label.setText(value)
             label.setStyleSheet(f"background-color: {value}; border: 1px solid #888; padding: 2px;")
@@ -1279,6 +1317,7 @@ class SettingsDialog(QDialog):
             label.setStyleSheet("")
 
     def _apply_dialog_theme(self) -> None:
+        """Apply token-driven dialog styling using the current preview settings."""
         preview_settings = dict(self._settings)
         preview_settings["dark_mode"] = bool(self.dark_checkbox.isChecked())
         preview_settings["follow_system_theme"] = bool(self.follow_system_theme_checkbox.isChecked())
@@ -1306,6 +1345,7 @@ class SettingsDialog(QDialog):
         self._apply_settings_stack_palette(tokens.surface_bg, tokens.text)
 
     def _apply_settings_stack_direct_style(self, surface_bg: str, text: str, text_muted: str) -> None:
+        """Internal helper for `_apply_settings_stack_direct_style`."""
         if not hasattr(self, "settings_pages"):
             return
         host_style = (
@@ -1336,12 +1376,14 @@ class SettingsDialog(QDialog):
             scroll.viewport().setStyleSheet(scroll_style)
 
     def _apply_settings_stack_palette(self, surface_bg: str, text: str) -> None:
+        """Internal helper for `_apply_settings_stack_palette`."""
         bg = QColor(surface_bg)
         fg = QColor(text)
         if not bg.isValid() or not fg.isValid():
             return
 
         def _apply_palette(widget: QWidget | None) -> None:
+            """Internal helper for `_apply_palette`."""
             if not isinstance(widget, QWidget):
                 return
             pal = widget.palette()
@@ -1364,6 +1406,7 @@ class SettingsDialog(QDialog):
                     _apply_palette(scroll.viewport())
 
     def _theme_probe_preview_settings(self) -> dict:
+        """Collect enough in-dialog state to preview the effective theme before saving."""
         preview_settings = dict(self._settings)
         if hasattr(self, "dark_checkbox"):
             preview_settings["dark_mode"] = bool(self.dark_checkbox.isChecked())
@@ -1387,6 +1430,7 @@ class SettingsDialog(QDialog):
         return preview_settings
 
     def _log_theme_probe(self, stage: str) -> None:
+        """Internal helper for `_log_theme_probe`."""
         try:
             tokens = build_tokens_from_settings(self._theme_probe_preview_settings())
             host = self.settings_pages.currentWidget() if hasattr(self, "settings_pages") else None
@@ -1395,6 +1439,7 @@ class SettingsDialog(QDialog):
             body = host.findChild(QWidget, "settingsPageBody") if isinstance(host, QWidget) else None
 
             def _palette_snapshot(widget: QWidget | None) -> str:
+                """Internal helper for `_palette_snapshot`."""
                 if not isinstance(widget, QWidget):
                     return "n/a"
                 pal = widget.palette()
@@ -1420,6 +1465,7 @@ class SettingsDialog(QDialog):
             _LOGGER.warning("[SettingsThemeProbe] stage=%s failed: %s", stage, exc)
 
     def showEvent(self, event: QShowEvent) -> None:
+        """Execute the `showEvent` workflow."""
         super().showEvent(event)
         if not self._theme_probe_logged_open:
             self._theme_probe_logged_open = True
@@ -1428,12 +1474,14 @@ class SettingsDialog(QDialog):
             QTimer.singleShot(600, lambda: self._log_theme_probe("post_600ms"))
 
     def paintEvent(self, event: QPaintEvent) -> None:
+        """Execute the `paintEvent` workflow."""
         super().paintEvent(event)
         if not self._theme_probe_logged_first_paint:
             self._theme_probe_logged_first_paint = True
             self._log_theme_probe("first_paint")
 
     def _npp_dark_mode_preference_combo(self) -> QComboBox | None:
+        """Internal helper for `_npp_dark_mode_preference_combo`."""
         controls = getattr(self, "_npp_pref_controls", {})
         if not isinstance(controls, dict):
             return None
@@ -1444,6 +1492,7 @@ class SettingsDialog(QDialog):
         return widget if isinstance(widget, QComboBox) else None
 
     def _sync_dark_checkbox_from_npp_preference(self) -> None:
+        """Internal helper for `_sync_dark_checkbox_from_npp_preference`."""
         combo = self._npp_dark_mode_preference_combo()
         if combo is None:
             return
@@ -1459,10 +1508,12 @@ class SettingsDialog(QDialog):
         self._apply_dialog_theme()
 
     def _label_color_value(self, label: QLabel) -> str:
+        """Internal helper for `_label_color_value`."""
         text = label.text().strip()
         return "" if text == "(auto)" else text
 
     def _style_token_label(self, token: str) -> QLabel:
+        """Internal helper for `_style_token_label`."""
         mapping = {
             "keyword": self.scintilla_style_keyword_label,
             "string": self.scintilla_style_string_label,
@@ -1472,6 +1523,7 @@ class SettingsDialog(QDialog):
         return mapping[token]
 
     def _effective_scintilla_style_color(self, token: str, language: str) -> str:
+        """Internal helper for `_effective_scintilla_style_color`."""
         theme_name = str(self.scintilla_style_theme_combo.currentText() or "default").strip().lower()
         theme = SYNTAX_THEME_PRESETS.get(theme_name, SYNTAX_THEME_PRESETS.get("default", {}))
         fallback = str(theme.get(token, "#000000"))
@@ -1488,6 +1540,7 @@ class SettingsDialog(QDialog):
         return fallback
 
     def _refresh_scintilla_style_preview(self) -> None:
+        """Internal helper for `_refresh_scintilla_style_preview`."""
         preview = getattr(self, "scintilla_style_preview", None)
         if not isinstance(preview, QTextEdit):
             return
@@ -1548,6 +1601,7 @@ class SettingsDialog(QDialog):
         )
 
     def _load_scintilla_style_language_controls(self, language: str) -> None:
+        """Internal helper for `_load_scintilla_style_language_controls`."""
         lang = str(language or "python").strip().lower() or "python"
         token_map = self._scintilla_style_overrides_working.get(lang, {})
         for token in ("keyword", "string", "comment", "number"):
@@ -1555,6 +1609,7 @@ class SettingsDialog(QDialog):
         self._refresh_scintilla_style_preview()
 
     def _capture_current_scintilla_style_language_controls(self) -> None:
+        """Internal helper for `_capture_current_scintilla_style_language_controls`."""
         lang = str(getattr(self, "_scintilla_style_current_language", "python") or "python").strip().lower() or "python"
         token_map: dict[str, str] = {}
         for token in ("keyword", "string", "comment", "number"):
@@ -1567,11 +1622,13 @@ class SettingsDialog(QDialog):
             self._scintilla_style_overrides_working.pop(lang, None)
 
     def _on_scintilla_style_language_changed(self, language: str) -> None:
+        """Internal helper for `_on_scintilla_style_language_changed`."""
         self._capture_current_scintilla_style_language_controls()
         self._scintilla_style_current_language = str(language or "python").strip().lower() or "python"
         self._load_scintilla_style_language_controls(self._scintilla_style_current_language)
 
     def _reset_scintilla_style_language_overrides(self) -> None:
+        """Internal helper for `_reset_scintilla_style_language_overrides`."""
         self._capture_current_scintilla_style_language_controls()
         lang = str(self.scintilla_style_language_combo.currentText() or "python").strip().lower() or "python"
         self._scintilla_style_overrides_working.pop(lang, None)
@@ -1579,12 +1636,14 @@ class SettingsDialog(QDialog):
         self._load_scintilla_style_language_controls(lang)
 
     def _clear_scintilla_style_overrides(self) -> None:
+        """Internal helper for `_clear_scintilla_style_overrides`."""
         self._scintilla_style_overrides_working = {}
         lang = str(self.scintilla_style_language_combo.currentText() or "python").strip().lower() or "python"
         self._scintilla_style_current_language = lang
         self._load_scintilla_style_language_controls(lang)
 
     def _load_scintilla_profile_controls(self, profile: ScintillaProfile) -> None:
+        """Populate the Scintilla-related controls from a normalized profile object."""
         self.scintilla_wrap_mode_combo.setCurrentText(profile.wrap_mode)
         self.scintilla_auto_completion_mode_combo.setCurrentText(profile.auto_completion_mode)
         self.scintilla_auto_completion_threshold_spin.setValue(int(profile.auto_completion_threshold))
@@ -1616,6 +1675,7 @@ class SettingsDialog(QDialog):
         self._load_scintilla_style_language_controls(self._scintilla_style_current_language)
 
     def _collect_scintilla_profile_from_controls(self) -> ScintillaProfile:
+        """Read the Scintilla-related controls back into a normalized profile object."""
         self._capture_current_scintilla_style_language_controls()
         return ScintillaProfile(
             wrap_mode=self.scintilla_wrap_mode_combo.currentText(),
@@ -1647,6 +1707,7 @@ class SettingsDialog(QDialog):
         ).sanitized()
 
     def _load_controls_from_settings(self, s: dict) -> None:
+        """Populate every control in the dialog from a migrated settings dictionary."""
         self.dark_checkbox.setChecked(bool(s.get("dark_mode", False)))
         self.follow_system_theme_checkbox.setChecked(bool(s.get("follow_system_theme", False)))
         self._sync_theme_controls_enabled()
@@ -1814,6 +1875,7 @@ class SettingsDialog(QDialog):
         load_notepadpp_like_page_settings(self, s)
 
     def _collect_settings(self) -> dict:
+        """Read all dialog controls into a migrated settings payload ready to persist."""
         s = dict(self._settings)
         s["app_style"] = self.app_style_combo.currentText()
         s["dark_mode"] = self.dark_checkbox.isChecked()
@@ -1951,6 +2013,7 @@ class SettingsDialog(QDialog):
         return migrate_settings(s)
 
     def _apply_to_memory(self) -> bool:
+        """Validate page inputs and commit the current dialog state into in-memory settings."""
         errors = validate_notepadpp_like_page_inputs(self)
         if errors:
             focus_first_invalid_notepadpp_like_input(self)
@@ -1960,12 +2023,14 @@ class SettingsDialog(QDialog):
         return True
 
     def _accept_with_apply(self) -> None:
+        """Validate and accept the dialog only when the edited settings are consistent."""
         if not self._apply_to_memory():
             return
         self.accept()
 
 
     def _reset_controls_to_defaults(self) -> None:
+        """Reset the dialog controls to application defaults after user confirmation."""
         confirm = QMessageBox.question(
             self,
             "Restore Defaults",
@@ -1979,6 +2044,7 @@ class SettingsDialog(QDialog):
         self._load_controls_from_settings(defaults)
 
     def _reset_onboarding_tips_history(self) -> None:
+        """Internal helper for `_reset_onboarding_tips_history`."""
         state = self._settings.get("onboarding_state")
         if not isinstance(state, dict):
             state = {}
@@ -1992,6 +2058,7 @@ class SettingsDialog(QDialog):
         )
 
     def _reset_onboarding_progress(self) -> None:
+        """Internal helper for `_reset_onboarding_progress`."""
         confirm = QMessageBox.question(
             self,
             "Reset Onboarding Progress",
@@ -2006,6 +2073,7 @@ class SettingsDialog(QDialog):
         QMessageBox.information(self, "Onboarding", "Onboarding progress reset.")
 
     def _restart_onboarding_tour_now(self) -> None:
+        """Persist the current settings and immediately relaunch the onboarding tutorial."""
         if not self._apply_to_memory():
             return
         self._settings["welcome_tutorial_seen"] = False
@@ -2016,9 +2084,11 @@ class SettingsDialog(QDialog):
         self._load_controls_from_settings(self._settings)
 
     def get_settings(self) -> dict:
+        """Return a copy of the dialog's current in-memory settings snapshot."""
         return dict(self._settings)
 
     def _export_profile(self) -> None:
+        """Export the current settings payload to a JSON profile file."""
         path, _ = themed_file_dialog_get_save_file_name(self, "Export Profile", "", "Settings Files (*.json);;All Files (*.*)")
         if not path:
             return
@@ -2030,6 +2100,7 @@ class SettingsDialog(QDialog):
             QMessageBox.critical(self, "Export Profile Failed", f"Could not export profile:\n{exc}")
 
     def _import_profile(self) -> None:
+        """Import a JSON profile file and repopulate the dialog from it."""
         path, _ = themed_file_dialog_get_open_file_name(self, "Import Profile", "", "Settings Files (*.json);;All Files (*.*)")
         if not path:
             return
@@ -2045,12 +2116,15 @@ class SettingsDialog(QDialog):
         self._load_controls_from_settings(self._settings)
 
     def backup_settings(self) -> None:
+        """Execute the `backup_settings` workflow."""
         self._export_profile()
 
     def restore_settings(self) -> None:
+        """Execute the `restore_settings` workflow."""
         self._import_profile()
 
     def _export_scintilla_profile(self) -> None:
+        """Export only the Scintilla compatibility subset of settings to JSON."""
         path, _ = themed_file_dialog_get_save_file_name(
             self,
             "Export Scintilla Profile",
@@ -2067,6 +2141,7 @@ class SettingsDialog(QDialog):
             QMessageBox.critical(self, "Export Scintilla Profile Failed", f"Could not export profile:\n{exc}")
 
     def _import_scintilla_profile(self) -> None:
+        """Import a Scintilla profile JSON file into the related controls."""
         path, _ = themed_file_dialog_get_open_file_name(
             self,
             "Import Scintilla Profile",
@@ -2087,10 +2162,12 @@ class SettingsDialog(QDialog):
         self._load_scintilla_profile_controls(profile)
 
     def _reset_scintilla_profile_defaults(self) -> None:
+        """Internal helper for `_reset_scintilla_profile_defaults`."""
         defaults = self._parent_window._build_default_settings()
         self._load_scintilla_profile_controls(ScintillaProfile.from_settings(defaults))
 
     def _edit_with_settings_json(self) -> None:
+        """Persist current edits and hand off to the in-app raw settings JSON editor."""
         if not self._apply_to_memory():
             return
         self._parent_window.settings = self.get_settings()
@@ -2099,6 +2176,7 @@ class SettingsDialog(QDialog):
         QTimer.singleShot(0, self._parent_window.edit_settings_json_in_app)
 
     def _open_mapper_from_settings(self) -> None:
+        """Persist current edits, open the shortcut mapper, then reload dialog state."""
         if not self._apply_to_memory():
             return
         self._parent_window.settings = self.get_settings()
@@ -2107,12 +2185,14 @@ class SettingsDialog(QDialog):
         self._load_controls_from_settings(self._settings)
 
     def _pick_backup_output_dir(self) -> None:
+        """Internal helper for `_pick_backup_output_dir`."""
         start_dir = self.backup_output_dir_edit.text().strip() or ""
         picked = themed_file_dialog_get_existing_directory(self, "Choose Backup Output Folder", start_dir)
         if picked:
             self.backup_output_dir_edit.setText(picked)
 
     def _request_factory_reset(self) -> None:
+        """Mark the dialog so the caller can perform a full factory reset after close."""
         confirm = QMessageBox.question(
             self,
             "Factory Reset",
@@ -2126,6 +2206,7 @@ class SettingsDialog(QDialog):
         self.accept()
 
     def _clear_translation_cache(self) -> None:
+        """Internal helper for `_clear_translation_cache`."""
         if hasattr(self._parent_window, "clear_translation_cache"):
             self._parent_window.clear_translation_cache()
             QMessageBox.information(self, "Translation Cache", "Translation cache cleared.")

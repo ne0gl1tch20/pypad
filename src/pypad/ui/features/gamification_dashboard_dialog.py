@@ -1,3 +1,8 @@
+"""Show a dialog that summarizes gamification progress, stats, and available rewards or goals.
+
+This module belongs to the optional productivity and feature UI layer. It helps explain how `pypad.ui.features` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 
 from typing import Any
@@ -23,7 +28,9 @@ from pypad.ui.theme.dialog_theme import apply_dialog_theme_from_window
 
 
 class GamificationDashboardDialog(QDialog):
+    """Dialog class that implements the `GamificationDashboardDialog` workflow."""
     def __init__(self, window, gamification: GamificationSystem) -> None:
+        """Initialize the `gamification_dashboard_dialog` state for this instance."""
         super().__init__(window)
         self.window = window
         self.gamification = gamification
@@ -61,6 +68,7 @@ class GamificationDashboardDialog(QDialog):
         self.refresh()
 
     def _build_quests_tab(self) -> None:
+        """Internal helper for `_build_quests_tab`."""
         container = QWidget(self)
         layout = QVBoxLayout(container)
         self.quests_table.setColumnCount(5)
@@ -70,6 +78,7 @@ class GamificationDashboardDialog(QDialog):
         self.tabs.addTab(container, "Quests")
 
     def _build_skill_tree_tab(self) -> None:
+        """Internal helper for `_build_skill_tree_tab`."""
         container = QWidget(self)
         layout = QVBoxLayout(container)
         self.skill_table.setColumnCount(4)
@@ -79,12 +88,14 @@ class GamificationDashboardDialog(QDialog):
         self.tabs.addTab(container, "Skill Tree")
 
     def _build_companion_tab(self) -> None:
+        """Internal helper for `_build_companion_tab`."""
         container = QWidget(self)
         layout = QVBoxLayout(container)
         layout.addWidget(self.companion_text)
         self.tabs.addTab(container, "Companion")
 
     def _build_crafted_tools_tab(self) -> None:
+        """Internal helper for `_build_crafted_tools_tab`."""
         container = QWidget(self)
         layout = QVBoxLayout(container)
         layout.addWidget(self.crafted_list, 1)
@@ -103,6 +114,7 @@ class GamificationDashboardDialog(QDialog):
         self.tabs.addTab(container, "Crafted Tools")
 
     def _build_events_tab(self) -> None:
+        """Internal helper for `_build_events_tab`."""
         container = QWidget(self)
         layout = QVBoxLayout(container)
         help_text = QLabel(
@@ -119,6 +131,7 @@ class GamificationDashboardDialog(QDialog):
         self.tabs.addTab(container, "Seasonal Events")
 
     def _build_secrets_tab(self) -> None:
+        """Internal helper for `_build_secrets_tab`."""
         container = QWidget(self)
         layout = QVBoxLayout(container)
         help_text = QLabel(
@@ -134,6 +147,7 @@ class GamificationDashboardDialog(QDialog):
         self.tabs.addTab(container, "Secret Trails")
 
     def _build_routines_tab(self) -> None:
+        """Internal helper for `_build_routines_tab`."""
         container = QWidget(self)
         layout = QVBoxLayout(container)
         help_text = QLabel(
@@ -149,6 +163,7 @@ class GamificationDashboardDialog(QDialog):
         self.tabs.addTab(container, "Routines")
 
     def refresh(self) -> None:
+        """Execute the `refresh` workflow."""
         state = self.gamification.state()
         quests = self.gamification.quests_snapshot()
         self.header.setText(
@@ -255,12 +270,14 @@ class GamificationDashboardDialog(QDialog):
             self.routines_table.setItem(idx, 3, QTableWidgetItem(last_run or "-"))
 
     def _selected_tool_name(self) -> str:
+        """Internal helper for `_selected_tool_name`."""
         item = self.crafted_list.currentItem()
         if item is None:
             return ""
         return str(item.data(256) or "").strip()
 
     def _toggle_star(self) -> None:
+        """Internal helper for `_toggle_star`."""
         name = self._selected_tool_name()
         if not name:
             return
@@ -275,6 +292,7 @@ class GamificationDashboardDialog(QDialog):
         self.refresh()
 
     def _delete_selected(self) -> None:
+        """Internal helper for `_delete_selected`."""
         name = self._selected_tool_name()
         if not name:
             return

@@ -1,3 +1,8 @@
+"""Track session recovery information and restore editor state after crashes or unexpected exits.
+
+This module belongs to the system-integration layer for autosave, reminders, updates, and recovery. It helps explain how `pypad.ui.system` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 
 import json
@@ -7,6 +12,7 @@ from typing import Any
 
 
 def _atomic_write_json(path: Path, payload: object) -> None:
+    """Internal helper for `_atomic_write_json`."""
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -14,7 +20,9 @@ def _atomic_write_json(path: Path, payload: object) -> None:
 
 
 class RecoveryStateStore:
+    """State container that manages `RecoveryStateStore` data and persistence."""
     def __init__(self, base_dir: Path) -> None:
+        """Initialize the `session_recovery` state for this instance."""
         self.base_dir = base_dir
         self.base_dir.mkdir(parents=True, exist_ok=True)
         self.snapshot_path = self.base_dir / "crash_session_snapshot.json"
@@ -27,6 +35,7 @@ class RecoveryStateStore:
         active_file: str,
         workspace_root: str,
     ) -> None:
+        """Save data handled by `save_crash_snapshot`."""
         payload = {
             "saved_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "active_file": active_file,
@@ -36,6 +45,7 @@ class RecoveryStateStore:
         _atomic_write_json(self.snapshot_path, payload)
 
     def load_crash_snapshot(self) -> dict[str, Any] | None:
+        """Load data required by `load_crash_snapshot`."""
         if not self.snapshot_path.exists():
             return None
         try:
@@ -50,6 +60,7 @@ class RecoveryStateStore:
         return payload
 
     def clear_crash_snapshot(self) -> None:
+        """Execute the `clear_crash_snapshot` workflow."""
         try:
             if self.snapshot_path.exists():
                 self.snapshot_path.unlink()
@@ -57,6 +68,7 @@ class RecoveryStateStore:
             pass
 
     def load_local_history(self) -> dict[str, list[dict[str, str]]]:
+        """Load data required by `load_local_history`."""
         if not self.local_history_path.exists():
             return {}
         try:
@@ -88,9 +100,11 @@ class RecoveryStateStore:
         return out
 
     def save_local_history(self, payload: dict[str, list[dict[str, str]]]) -> None:
+        """Save data handled by `save_local_history`."""
         _atomic_write_json(self.local_history_path, payload)
 
     def prune_local_history(self, max_keys: int, max_entries_per_key: int) -> None:
+        """Execute the `prune_local_history` workflow."""
         data = self.load_local_history()
         if not data:
             return
@@ -107,6 +121,7 @@ class RecoveryStateStore:
 
 
 def local_history_key(file_path: str | None, autosave_id: str | None, title: str) -> str:
+    """Execute the `local_history_key` workflow."""
     if file_path:
         return f"file:{file_path}"
     if autosave_id:

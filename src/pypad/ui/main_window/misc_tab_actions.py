@@ -1,3 +1,8 @@
+"""Provide helper actions for tab management beyond the core open/save workflow.
+
+This module belongs to the main-window orchestration layer that ties together menus, actions, state, and dialogs. It helps explain how `pypad.ui.main_window` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 
 import os
@@ -13,10 +18,14 @@ from pypad.ui.editor.editor_tab import EditorTab
 
 
 class MiscTabActionsMixin:
+    """Mixin that provides the `MiscTabActionsMixin` behavior set."""
     if TYPE_CHECKING:
-        def __getattr__(self, name: str) -> Any: ...
+        def __getattr__(self, name: str) -> Any:
+            """Satisfy static type checkers for runtime-resolved window attributes."""
+            ...
 
     def _move_to_recycle_bin(self, path: str) -> bool:
+        """Internal helper for `_move_to_recycle_bin`."""
         try:
             import ctypes
             from ctypes import wintypes
@@ -30,6 +39,7 @@ class MiscTabActionsMixin:
         FOF_NOERRORUI = 0x0400
 
         class SHFILEOPSTRUCTW(ctypes.Structure):
+            """Class that implements the `SHFILEOPSTRUCTW` runtime behavior."""
             _fields_ = [
                 ("hwnd", wintypes.HWND),
                 ("wFunc", wintypes.UINT),
@@ -49,6 +59,7 @@ class MiscTabActionsMixin:
         return result == 0 and not bool(op.fAnyOperationsAborted)
 
     def show_tab_context_menu(self, index: int, global_pos: QPoint) -> None:
+        """Execute the `show_tab_context_menu` workflow."""
         tab = self._tab_at_index(index)
         if tab is None:
             return
@@ -198,6 +209,7 @@ class MiscTabActionsMixin:
                 self.set_tab_color(tab, color.name())
 
     def _open_recent_file(self, path: str) -> None:
+        """Internal helper for `_open_recent_file`."""
         if not Path(path).exists():
             QMessageBox.warning(self, "Recent Files", f"File not found:\n{path}")
             self.settings["recent_files"] = [p for p in self.settings.get("recent_files", []) if p != path]
@@ -206,6 +218,7 @@ class MiscTabActionsMixin:
         self._open_file_path(path)
 
     def toggle_pin_active_tab(self) -> None:
+        """Toggle the state controlled by `toggle_pin_active_tab`."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -222,6 +235,7 @@ class MiscTabActionsMixin:
         self.pin_tab_action.setText("&Unpin Tab" if tab.pinned else "&Pin Tab")
 
     def toggle_favorite_active_tab(self) -> None:
+        """Toggle the state controlled by `toggle_favorite_active_tab`."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -237,6 +251,7 @@ class MiscTabActionsMixin:
         self.favorite_tab_action.setText("&Unfavorite Tab" if tab.favorite else "&Favorite Tab")
 
     def edit_active_tab_tags(self) -> None:
+        """Execute the `edit_active_tab_tags` workflow."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -249,12 +264,14 @@ class MiscTabActionsMixin:
         self._refresh_tab_title(tab)
 
     def rename_active_tab_file(self) -> None:
+        """Execute the `rename_active_tab_file` workflow."""
         tab = self.active_tab()
         if tab is None:
             return
         self.rename_tab_file(tab)
 
     def move_active_tab_to_recycle_bin(self) -> None:
+        """Execute the `move_active_tab_to_recycle_bin` workflow."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -279,6 +296,7 @@ class MiscTabActionsMixin:
             QMessageBox.warning(self, "Move to Recycle Bin", "Could not move file to Recycle Bin.")
 
     def rename_tab_file(self, tab: EditorTab) -> None:
+        """Execute the `rename_tab_file` workflow."""
         if not tab.current_file:
             QMessageBox.information(
                 self,
@@ -322,6 +340,7 @@ class MiscTabActionsMixin:
         self.show_status_message(f'Renamed to "{new_path.name}"', 3000)
 
     def new_tab_from_template(self, template_name: str) -> None:
+        """Execute the `new_tab_from_template` workflow."""
         template = self.templates.get(template_name)
         if template is None:
             return
@@ -330,6 +349,7 @@ class MiscTabActionsMixin:
         self.update_window_title()
 
     def insert_template_into_active_tab(self, template_name: str) -> None:
+        """Execute the `insert_template_into_active_tab` workflow."""
         tab = self.active_tab()
         if tab is None:
             return

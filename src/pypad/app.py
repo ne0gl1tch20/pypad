@@ -1,3 +1,8 @@
+"""Create or reuse the Qt application object, configure logging, and construct the main window used by the desktop app.
+
+This module belongs to the top-level Pypad application package. It helps explain how `pypad` is structured and where this file fits into the runtime workflow.
+"""
+
 import sys
 import traceback
 from typing import Optional
@@ -12,6 +17,7 @@ LOGGER = get_logger(__name__)
 
 def main(existing_app: Optional[QApplication] = None) -> Notepad:
     # Use existing QApplication if passed (from run.py), otherwise create one
+    """Execute the `main` workflow."""
     owns_app = existing_app is None
     app = existing_app or QApplication(sys.argv)
     configure_app_logging(resolve_persisted_log_level(get_settings_file_path(), default="INFO"))
@@ -22,6 +28,7 @@ def main(existing_app: Optional[QApplication] = None) -> Notepad:
     LOGGER.info("Main window instance created")
 
     def _global_exception_hook(exc_type, exc_value, exc_tb) -> None:
+        """Internal helper for `_global_exception_hook`."""
         error_text = "".join(traceback.format_exception(exc_type, exc_value, exc_tb)).strip()
         LOGGER.exception("Unhandled exception routed to global hook", exc_info=(exc_type, exc_value, exc_tb))
         window.log_event("Error", error_text)

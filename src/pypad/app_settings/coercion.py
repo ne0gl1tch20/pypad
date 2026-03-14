@@ -1,3 +1,8 @@
+"""Normalize raw settings values into the concrete Python types expected by the rest of the application.
+
+This module belongs to the application settings layer that resolves defaults, storage paths, and preference migrations. It helps explain how `pypad.app_settings` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 
 from urllib.parse import urlsplit
@@ -7,6 +12,7 @@ from .notepadpp_prefs import coerce_notepadpp_prefs
 from .scintilla_profile import ScintillaProfile
 
 def coerce_bool(value, default: bool = False) -> bool:
+    """Execute the `coerce_bool` workflow."""
     if isinstance(value, bool):
         return value
     if isinstance(value, (int, float)):
@@ -21,6 +27,7 @@ def coerce_bool(value, default: bool = False) -> bool:
 
 
 def normalize_ui_visibility_settings(settings: dict) -> dict:
+    """Execute the `normalize_ui_visibility_settings` workflow."""
     settings["show_markdown_toolbar"] = coerce_bool(
         settings.get("show_markdown_toolbar", False),
         default=False,
@@ -37,11 +44,13 @@ def normalize_ui_visibility_settings(settings: dict) -> dict:
 
 
 def _coerce_enum(value: object, allowed: set[str], default: str) -> str:
+    """Internal helper for `_coerce_enum`."""
     text = str(value or "").strip().lower()
     return text if text in allowed else default
 
 
 def _coerce_int_clamped(value: object, default: int, min_value: int, max_value: int) -> int:
+    """Internal helper for `_coerce_int_clamped`."""
     try:
         num = int(value)  # type: ignore[arg-type]
     except Exception:
@@ -50,6 +59,7 @@ def _coerce_int_clamped(value: object, default: int, min_value: int, max_value: 
 
 
 def _coerce_hex(value: object, default: str) -> str:
+    """Internal helper for `_coerce_hex`."""
     text = str(value or "").strip()
     if not text:
         return default
@@ -63,12 +73,14 @@ def _coerce_hex(value: object, default: str) -> str:
 
 
 def _coerce_logging_level(value: object, default: str = "INFO") -> str:
+    """Internal helper for `_coerce_logging_level`."""
     allowed = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
     text = str(value or "").strip().upper()
     return text if text in allowed else default
 
 
 def _coerce_float_clamped(value: object, default: float, min_value: float, max_value: float) -> float:
+    """Internal helper for `_coerce_float_clamped`."""
     try:
         num = float(value)  # type: ignore[arg-type]
     except Exception:
@@ -77,6 +89,7 @@ def _coerce_float_clamped(value: object, default: float, min_value: float, max_v
 
 
 def _coerce_cmd_list(value: object, default: list[str]) -> list[str]:
+    """Internal helper for `_coerce_cmd_list`."""
     if isinstance(value, str):
         items = [part.strip() for part in value.split(",")]
         cleaned = [item for item in items if item]
@@ -88,6 +101,7 @@ def _coerce_cmd_list(value: object, default: list[str]) -> list[str]:
 
 
 def _sanitize_update_feed_url(value: object, default: str) -> str:
+    """Internal helper for `_sanitize_update_feed_url`."""
     raw = str(value or "").strip() or default
     if "neogl1tch20server" in raw or raw.endswith("/updates/notepad.xml"):
         raw = default
@@ -101,6 +115,7 @@ def _sanitize_update_feed_url(value: object, default: str) -> str:
 
 
 def migrate_settings(settings: dict) -> dict:
+    """Execute the `migrate_settings` workflow."""
     current = dict(settings)
     defaults = build_default_settings(default_style="Windows", font_family="Segoe UI", font_size=11)
     schema = _coerce_int_clamped(current.get("settings_schema_version", 1), 1, 1, 999)

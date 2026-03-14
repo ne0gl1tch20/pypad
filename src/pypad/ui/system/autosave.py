@@ -1,3 +1,8 @@
+"""Implement autosave storage and recovery dialogs so unsaved work can be restored after interruptions.
+
+This module belongs to the system-integration layer for autosave, reminders, updates, and recovery. It helps explain how `pypad.ui.system` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 
 import json
@@ -29,6 +34,7 @@ _LOGGER = get_logger(__name__)
 
 @dataclass
 class AutoSaveEntry:
+    """Metadata describing one autosaved document snapshot on disk."""
     autosave_id: str
     autosave_path: str
     original_path: str
@@ -37,7 +43,9 @@ class AutoSaveEntry:
 
 
 class AutoSaveStore:
+    """Persist autosave snapshots and the index that lets recovery dialogs find them."""
     def __init__(self, base_dir: Path) -> None:
+        """Prepare the autosave directory and initialize the in-memory entry index."""
         self.base_dir = base_dir
         self.base_dir.mkdir(parents=True, exist_ok=True)
         self.index_path = self.base_dir / "autosave_index.json"
@@ -45,6 +53,7 @@ class AutoSaveStore:
         _LOGGER.debug("AutoSaveStore initialized base_dir=%s index=%s", self.base_dir, self.index_path)
 
     def load(self) -> None:
+        """Load autosave metadata from disk, ignoring entries whose files no longer exist."""
         _LOGGER.debug("AutoSaveStore.load start index=%s", self.index_path)
         if not self.index_path.exists():
             self.entries = {}
@@ -76,6 +85,7 @@ class AutoSaveStore:
         _LOGGER.debug("AutoSaveStore.load complete entries=%d", len(self.entries))
 
     def save(self) -> None:
+        """Write the current autosave index to disk atomically."""
         data = [
             {
                 "autosave_id": e.autosave_id,
@@ -90,6 +100,7 @@ class AutoSaveStore:
         _LOGGER.debug("AutoSaveStore.save wrote index=%s entries=%d", self.index_path, len(data))
 
     def _atomic_write_text(self, path: Path, text: str) -> None:
+        """Safely write text by using a temporary file and atomic replace."""
         path.parent.mkdir(parents=True, exist_ok=True)
         fd, tmp_name = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=str(path.parent))
         try:
@@ -106,6 +117,7 @@ class AutoSaveStore:
                 pass
 
     def _quarantine_bad_index(self) -> None:
+        """Move a corrupt autosave index aside so it no longer blocks future loads."""
         if not self.index_path.exists():
             return
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -117,12 +129,15 @@ class AutoSaveStore:
             _LOGGER.exception("AutoSaveStore failed to quarantine corrupt index: %s", self.index_path)
 
     def new_id(self) -> str:
+        """Return a new unique autosave identifier."""
         return str(uuid.uuid4())
 
     def autosave_file(self, autosave_id: str) -> Path:
+        """Return the file path used to store one autosave snapshot."""
         return self.base_dir / f"{autosave_id}.autosave.txt"
 
     def upsert(self, autosave_id: str, autosave_path: str, original_path: str, title: str) -> None:
+        """Insert or update metadata for one autosaved document snapshot."""
         saved_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.entries[autosave_id] = AutoSaveEntry(
             autosave_id=autosave_id,
@@ -140,10 +155,12 @@ class AutoSaveStore:
         )
 
     def remove(self, autosave_id: str) -> None:
+        """Remove one autosave entry from the in-memory index."""
         self.entries.pop(autosave_id, None)
         _LOGGER.debug("AutoSaveStore.remove id=%s remaining=%d", autosave_id, len(self.entries))
 
     def prune_older_than_days(self, days: int) -> int:
+        """Delete autosave snapshots older than the configured age threshold."""
         days = max(1, int(days))
         _LOGGER.debug("AutoSaveStore.prune_older_than_days start days=%d entries=%d", days, len(self.entries))
         now = datetime.now()
@@ -172,7 +189,9 @@ class AutoSaveStore:
 
 
 class AutoSaveRecoveryDialog(QDialog):
+    """Dialog that previews recovered autosave snapshots and lets the user reopen or discard them."""
     def __init__(self, parent, entries: list[AutoSaveEntry]) -> None:
+        """Build the autosave recovery UI from the available recovery entries."""
         owner = parent
         super().__init__(owner)
         self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
@@ -233,12 +252,14 @@ class AutoSaveRecoveryDialog(QDialog):
         self._apply_theme_from_parent()
 
     def _apply_theme_from_parent(self) -> None:
+        """Apply dialog styling derived from the owning window's current theme settings."""
         parent = getattr(self, "_theme_parent", None) or self.parentWidget()
         settings = getattr(parent, "settings", {}) if parent is not None else {}
         tokens = build_tokens_from_settings(settings if isinstance(settings, dict) else {})
         self.setStyleSheet(build_dialog_theme_qss_from_tokens(tokens) + "\n" + build_autosave_dialog_qss(tokens))
 
     def _populate(self, entries: list[AutoSaveEntry]) -> None:
+        """Populate the recovery list widget from the supplied autosave entries."""
         for entry in entries:
             title = entry.title or "Untitled"
             label = f"{title} - {entry.saved_at}"
@@ -246,6 +267,7 @@ class AutoSaveRecoveryDialog(QDialog):
             item.setData(Qt.UserRole, entry.autosave_id)
 
     def _update_preview(self, current: QListWidgetItem | None, _prev: QListWidgetItem | None) -> None:
+        """Refresh the recovered text preview and diff view for the selected autosave entry."""
         if current is None:
             self.preview.clear()
             self.diff_view.clear()
@@ -279,6 +301,7 @@ class AutoSaveRecoveryDialog(QDialog):
             self.diff_view.setPlainText("(No on-disk file to compare)")
 
     def _accept_open(self) -> None:
+        """Accept the dialog with an instruction to reopen the selected recovery entries."""
         picked = self.list_widget.selectedItems()
         if not picked:
             current = self.list_widget.currentItem()
@@ -292,6 +315,7 @@ class AutoSaveRecoveryDialog(QDialog):
         self.accept()
 
     def _accept_discard(self) -> None:
+        """Accept the dialog with an instruction to discard the selected recovery entries."""
         picked = self.list_widget.selectedItems()
         if not picked:
             current = self.list_widget.currentItem()
@@ -306,9 +330,11 @@ class AutoSaveRecoveryDialog(QDialog):
 
     @property
     def selected_ids(self) -> list[str]:
+        """Return the autosave entry identifiers selected when the dialog was accepted."""
         return self._selected_ids
 
     @property
     def selected_action(self) -> str:
+        """Return whether the accepted action was `open` or `discard`."""
         return self._selected_action
 

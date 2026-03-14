@@ -1,3 +1,8 @@
+"""Manage per-file UI state such as dirty tracking, metadata, and restoration details.
+
+This module belongs to the main-window orchestration layer that ties together menus, actions, state, and dialogs. It helps explain how `pypad.ui.main_window` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 
 import os
@@ -10,10 +15,14 @@ from pypad.ui.editor.editor_tab import EditorTab
 
 
 class MiscFileStateMixin:
+    """Mixin that provides the `MiscFileStateMixin` behavior set."""
     if TYPE_CHECKING:
-        def __getattr__(self, name: str) -> Any: ...
+        def __getattr__(self, name: str) -> Any:
+            """Satisfy static type checkers for runtime-resolved window attributes."""
+            ...
 
     def _notify_large_file_mode(self, tab: EditorTab) -> None:
+        """Internal helper for `_notify_large_file_mode`."""
         if not tab.large_file:
             tab.large_file_notice_shown = False
             return
@@ -32,6 +41,7 @@ class MiscFileStateMixin:
             )
 
     def reload_tab_from_disk(self, tab: EditorTab) -> None:
+        """Execute the `reload_tab_from_disk` workflow."""
         if not tab.current_file:
             return
         if tab.text_edit.is_modified():
@@ -73,6 +83,7 @@ class MiscFileStateMixin:
         self.update_window_title()
 
     def _set_file_read_only(self, path: str, read_only: bool) -> bool:
+        """Internal helper for `_set_file_read_only`."""
         try:
             mode = os.stat(path).st_mode
             if read_only:
@@ -84,6 +95,7 @@ class MiscFileStateMixin:
             return False
 
     def toggle_tab_read_only(self, tab: EditorTab) -> None:
+        """Toggle the state controlled by `toggle_tab_read_only`."""
         if not tab.current_file:
             return
         new_state = not self._is_path_read_only(tab.current_file)
@@ -96,14 +108,17 @@ class MiscFileStateMixin:
         self.show_status_message("Read-only enabled" if tab.read_only else "Read-only disabled", 3000)
 
     def set_tab_color(self, tab: EditorTab, color_hex: str | None) -> None:
+        """Update state handled by `set_tab_color`."""
         tab.tab_color = color_hex
         self._apply_tab_color(tab)
         self._persist_file_metadata_for_tab(tab)
 
     def _update_path_references(self, old: str, new: str) -> None:
+        """Internal helper for `_update_path_references`."""
         if old == new:
             return
         def _replace_in_list(values: list[str]) -> list[str]:
+            """Internal helper for `_replace_in_list`."""
             return [new if p == old else p for p in values]
 
         self.settings["recent_files"] = _replace_in_list(self.settings.get("recent_files", []))

@@ -1,3 +1,8 @@
+"""Provide note-encryption helpers used by the security features in the user interface.
+
+This module belongs to the note privacy and security UI layer. It helps explain how `pypad.ui.security` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 
 import json
@@ -18,26 +23,32 @@ PBKDF2_ROUNDS = 200_000
 
 
 def _b64encode(data: bytes) -> str:
+    """Internal helper for `_b64encode`."""
     return b64encode_bytes(data)
 
 
 def _b64decode(data: str) -> bytes:
+    """Internal helper for `_b64decode`."""
     return b64decode_text(data)
 
 
 def _derive_key(password: str, salt: bytes) -> bytes:
+    """Internal helper for `_derive_key`."""
     return derive_key_pbkdf2(password, salt, rounds=PBKDF2_ROUNDS, dklen=32)
 
 
 def _keystream(key: bytes, nonce: bytes, length: int) -> bytes:
+    """Internal helper for `_keystream`."""
     return hmac_counter_keystream(key, nonce, length)
 
 
 def is_encrypted_payload(text: str) -> bool:
+    """Execute the `is_encrypted_payload` workflow."""
     return text.startswith(HEADER + "\n")
 
 
 def encrypt_text(plain_text: str, password: str) -> str:
+    """Execute the `encrypt_text` workflow."""
     salt = os.urandom(16)
     nonce = os.urandom(16)
     key = _derive_key(password, salt)
@@ -57,6 +68,7 @@ def encrypt_text(plain_text: str, password: str) -> str:
 
 
 def decrypt_text(payload_text: str, password: str) -> str:
+    """Execute the `decrypt_text` workflow."""
     if not is_encrypted_payload(payload_text):
         raise ValueError("Not an encrypted note payload")
     raw = payload_text.split("\n", 1)[1]

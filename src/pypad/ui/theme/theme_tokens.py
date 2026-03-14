@@ -1,3 +1,8 @@
+"""Build theme tokens and stylesheet fragments that drive the application visual design.
+
+This module belongs to the theme and asset resolution layer. It helps explain how `pypad.ui.theme` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
@@ -9,6 +14,7 @@ from PySide6.QtGui import QGuiApplication
 
 
 def _normalize_hex(value: object, fallback: str) -> str:
+    """Internal helper for `_normalize_hex`."""
     text = str(value or "").strip()
     if not text:
         return fallback
@@ -25,15 +31,18 @@ def _normalize_hex(value: object, fallback: str) -> str:
 
 
 def _hex_to_rgb(value: str) -> tuple[int, int, int]:
+    """Internal helper for `_hex_to_rgb`."""
     text = _normalize_hex(value, "#000000")
     return int(text[1:3], 16), int(text[3:5], 16), int(text[5:7], 16)
 
 
 def _rgb_to_hex(r: int, g: int, b: int) -> str:
+    """Internal helper for `_rgb_to_hex`."""
     return "#{:02x}{:02x}{:02x}".format(max(0, min(255, r)), max(0, min(255, g)), max(0, min(255, b)))
 
 
 def _mix(a: str, b: str, t: float) -> str:
+    """Internal helper for `_mix`."""
     ar, ag, ab = _hex_to_rgb(a)
     br, bg, bb = _hex_to_rgb(b)
     t = max(0.0, min(1.0, float(t)))
@@ -45,23 +54,28 @@ def _mix(a: str, b: str, t: float) -> str:
 
 
 def _lighten(color: str, amount: float) -> str:
+    """Internal helper for `_lighten`."""
     return _mix(color, "#ffffff", amount)
 
 
 def _darken(color: str, amount: float) -> str:
+    """Internal helper for `_darken`."""
     return _mix(color, "#000000", amount)
 
 
 def _relative_luma(color: str) -> float:
+    """Internal helper for `_relative_luma`."""
     r, g, b = _hex_to_rgb(color)
     return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255.0
 
 
 def _contrast_fg(bg: str, *, dark: str = "#111111", light: str = "#ffffff", threshold: float = 0.58) -> str:
+    """Internal helper for `_contrast_fg`."""
     return dark if _relative_luma(bg) >= threshold else light
 
 
 def resolve_dark_mode_from_settings(settings: dict[str, Any]) -> bool:
+    """Execute the `resolve_dark_mode_from_settings` workflow."""
     s = settings if isinstance(settings, dict) else {}
     if not bool(s.get("follow_system_theme", False)):
         return bool(s.get("dark_mode", False))
@@ -86,6 +100,7 @@ def resolve_dark_mode_from_settings(settings: dict[str, Any]) -> bool:
 
 @dataclass(frozen=True)
 class UIThemeTokens:
+    """Class that implements the `UIThemeTokens` runtime behavior."""
     dark_mode: bool
     theme_name: str
     density: str
@@ -131,6 +146,7 @@ class UIThemeTokens:
 
 
 def build_tokens_from_settings(settings: dict[str, Any]) -> UIThemeTokens:
+    """Build and return the value produced by `build_tokens_from_settings`."""
     s = settings if isinstance(settings, dict) else {}
     dark = resolve_dark_mode_from_settings(s)
     theme = str(s.get("theme", "Default") or "Default")
@@ -276,11 +292,13 @@ def build_tokens_from_settings(settings: dict[str, Any]) -> UIThemeTokens:
 
 
 def tokens_signature(tokens: UIThemeTokens) -> str:
+    """Execute the `tokens_signature` workflow."""
     payload = json.dumps(asdict(tokens), sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha1(payload).hexdigest()
 
 
 def tokens_to_css_vars_qss(tokens: UIThemeTokens) -> str:
+    """Execute the `tokens_to_css_vars_qss` workflow."""
     rows = asdict(tokens)
     lines = ["/* pypad theme tokens"]
     for key in sorted(rows):
@@ -290,6 +308,7 @@ def tokens_to_css_vars_qss(tokens: UIThemeTokens) -> str:
 
 
 def build_color_swatch_style(tokens: UIThemeTokens | None, value: str) -> str:
+    """Build and return the value produced by `build_color_swatch_style`."""
     val = str(value or "").strip()
     if not val:
         return ""
@@ -300,6 +319,7 @@ def build_color_swatch_style(tokens: UIThemeTokens | None, value: str) -> str:
 
 
 def build_dialog_theme_qss_from_tokens(tokens: UIThemeTokens) -> str:
+    """Build and return the value produced by `build_dialog_theme_qss_from_tokens`."""
     return f"""
         QDialog {{
             background: {tokens.panel_bg};
@@ -388,6 +408,7 @@ def build_dialog_theme_qss_from_tokens(tokens: UIThemeTokens) -> str:
 
 
 def build_tool_dialog_qss(tokens: UIThemeTokens) -> str:
+    """Build and return the value produced by `build_tool_dialog_qss`."""
     return f"""
         QGroupBox {{
             padding-top: {tokens.space_sm}px;
@@ -407,6 +428,7 @@ def build_tool_dialog_qss(tokens: UIThemeTokens) -> str:
 
 
 def build_quick_open_qss(tokens: UIThemeTokens) -> str:
+    """Build and return the value produced by `build_quick_open_qss`."""
     return f"""
         #quickOpenDialog {{ background: {tokens.panel_bg}; }}
         #quickOpenHeader {{ color: {tokens.text}; font-size: 13px; font-weight: 600; }}
@@ -451,6 +473,7 @@ def build_quick_open_qss(tokens: UIThemeTokens) -> str:
 
 
 def build_ai_chat_qss(tokens: UIThemeTokens) -> tuple[str, str]:
+    """Build and return the value produced by `build_ai_chat_qss`."""
     surface_bg = _mix(tokens.surface_bg, "#000000" if tokens.dark_mode else "#ffffff", 0.03)
     user_bg = _mix(tokens.accent, tokens.surface_bg, 0.68 if tokens.dark_mode else 0.82)
     user_border = _mix(tokens.accent, tokens.border, 0.35)
@@ -600,6 +623,7 @@ def build_ai_chat_qss(tokens: UIThemeTokens) -> tuple[str, str]:
 
 
 def build_settings_dialog_qss(tokens: UIThemeTokens) -> str:
+    """Build and return the value produced by `build_settings_dialog_qss`."""
     nav_selected_bg = _mix(tokens.accent, tokens.surface_bg, 0.20 if tokens.dark_mode else 0.30)
     nav_hover_bg = _mix(tokens.tab_hover_bg, tokens.surface_bg, 0.35 if tokens.dark_mode else 0.45)
     scope_bg = _mix(tokens.button_bg, tokens.surface_bg, 0.22 if tokens.dark_mode else 0.35)
@@ -747,6 +771,7 @@ def build_settings_dialog_qss(tokens: UIThemeTokens) -> str:
 
 
 def build_tutorial_dialog_qss(tokens: UIThemeTokens) -> str:
+    """Build and return the value produced by `build_tutorial_dialog_qss`."""
     card_bg = _mix(tokens.surface_bg, tokens.chrome_bg, 0.16)
     return f"""
         QDialog {{
@@ -770,6 +795,7 @@ def build_tutorial_dialog_qss(tokens: UIThemeTokens) -> str:
 
 
 def build_autosave_dialog_qss(tokens: UIThemeTokens) -> str:
+    """Build and return the value produced by `build_autosave_dialog_qss`."""
     return f"""
         QListWidget, QTextEdit {{
             background: {tokens.surface_bg};
@@ -795,6 +821,7 @@ def build_autosave_dialog_qss(tokens: UIThemeTokens) -> str:
 
 
 def build_workspace_dialog_qss(tokens: UIThemeTokens) -> str:
+    """Build and return the value produced by `build_workspace_dialog_qss`."""
     return f"""
         QListWidget, QTextEdit {{
             background: {tokens.surface_bg};
@@ -820,6 +847,7 @@ def build_workspace_dialog_qss(tokens: UIThemeTokens) -> str:
 
 
 def build_ai_edit_preview_dialog_qss(tokens: UIThemeTokens) -> str:
+    """Build and return the value produced by `build_ai_edit_preview_dialog_qss`."""
     return f"""
         QListWidget, QTextEdit {{
             background: {tokens.surface_bg};
@@ -847,6 +875,7 @@ def build_ai_edit_preview_dialog_qss(tokens: UIThemeTokens) -> str:
 
 
 def build_debug_logs_dialog_qss(tokens: UIThemeTokens) -> str:
+    """Build and return the value produced by `build_debug_logs_dialog_qss`."""
     return f"""
         QTextEdit {{
             background: {tokens.surface_bg};
@@ -865,6 +894,7 @@ def build_debug_logs_dialog_qss(tokens: UIThemeTokens) -> str:
 
 
 def build_main_window_qss(*, tokens: UIThemeTokens, tab_close_icon_url: str, close_button_visibility_qss: str = "") -> str:
+    """Build and return the value produced by `build_main_window_qss`."""
     tool_padding = f"{tokens.toolbar_pad_v}px {tokens.toolbar_pad_h}px"
     tab_close_bg = _mix("#d13438", tokens.chrome_bg, 0.18 if tokens.dark_mode else 0.10)
     tab_close_hover_bg = _mix("#e74856", tokens.chrome_bg, 0.15 if tokens.dark_mode else 0.08)
@@ -1123,6 +1153,7 @@ def build_main_window_qss(*, tokens: UIThemeTokens, tab_close_icon_url: str, clo
 
 
 def build_gamification_widget_qss(tokens: UIThemeTokens) -> str:
+    """Build and return the value produced by `build_gamification_widget_qss`."""
     card_bg = _mix(tokens.surface_bg, tokens.chrome_bg, 0.18 if tokens.dark_mode else 0.08)
     quest_bg = _mix(tokens.accent, tokens.surface_bg, 0.88 if tokens.dark_mode else 0.90)
     toast_border = _mix(tokens.accent, tokens.border, 0.45)

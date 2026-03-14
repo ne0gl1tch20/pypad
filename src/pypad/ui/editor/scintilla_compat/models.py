@@ -1,3 +1,8 @@
+"""Define structured data models shared by the Scintilla compatibility layer.
+
+This module belongs to the Scintilla compatibility layer used when native QScintilla is unavailable. It helps explain how `pypad.ui.editor.scintilla_compat` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -6,6 +11,7 @@ from typing import Any, Protocol
 
 @dataclass
 class FoldRegion:
+    """Class that implements the `FoldRegion` runtime behavior."""
     start: int
     end: int
     level: int
@@ -13,6 +19,7 @@ class FoldRegion:
 
 @dataclass
 class ColumnBlock:
+    """Class that implements the `ColumnBlock` runtime behavior."""
     line_lo: int
     line_hi: int
     col_lo: int
@@ -21,6 +28,7 @@ class ColumnBlock:
 
 @dataclass
 class HotspotRange:
+    """Class that implements the `HotspotRange` runtime behavior."""
     start: int
     end: int
     payload: str = ""
@@ -28,6 +36,7 @@ class HotspotRange:
 
 @dataclass
 class IndicatorRange:
+    """Class that implements the `IndicatorRange` runtime behavior."""
     start: int
     end: int
     payload: str = ""
@@ -36,6 +45,7 @@ class IndicatorRange:
 
 @dataclass
 class MultiSelectionRange:
+    """Class that implements the `MultiSelectionRange` runtime behavior."""
     anchor: int
     caret: int
     virtual_space_anchor: int = 0
@@ -43,15 +53,18 @@ class MultiSelectionRange:
 
     @property
     def start(self) -> int:
+        """Execute the `start` workflow."""
         return min(int(self.anchor), int(self.caret))
 
     @property
     def end(self) -> int:
+        """Execute the `end` workflow."""
         return max(int(self.anchor), int(self.caret))
 
 
 @dataclass
 class ScintillaNotification:
+    """Class that implements the `ScintillaNotification` runtime behavior."""
     code: str
     position: int = -1
     line: int = -1
@@ -72,6 +85,7 @@ class ScintillaEngineState:
 
     @classmethod
     def create_default(cls) -> "ScintillaEngineState":
+        """Create the objects or state required by `create_default`."""
         return cls(
             variables=[0] * 512,
             toggles=[False] * 128,
@@ -83,6 +97,7 @@ class ScintillaEngineState:
 
 @dataclass
 class UndoFrame:
+    """Class that implements the `UndoFrame` runtime behavior."""
     before_text: str
     after_text: str
     before_cursor: int
@@ -95,11 +110,14 @@ class UndoFrame:
 
 @dataclass
 class LexerWindow:
+    """Class that implements the `LexerWindow` runtime behavior."""
     start: int
     end: int
     prev_state: int = 0
 
 
 class CompatLexerProtocol(Protocol):
+    """Class that implements the `CompatLexerProtocol` runtime behavior."""
     def lex_incremental(self, text: str, start: int, end: int, prev_state: int = 0) -> tuple[list[tuple[int, int, int]], dict[int, FoldRegion], int]:
+        """Execute the `lex_incremental` workflow."""
         ...

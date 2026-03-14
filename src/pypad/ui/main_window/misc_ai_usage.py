@@ -1,3 +1,8 @@
+"""Track or present AI usage information from within the main-window experience.
+
+This module belongs to the main-window orchestration layer that ties together menus, actions, state, and dialogs. It helps explain how `pypad.ui.main_window` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
@@ -9,10 +14,14 @@ from pypad.ui.theme.dialog_theme import apply_dialog_theme_from_window
 
 
 class MiscAiUsageMixin:
+    """Mixin that provides the `MiscAiUsageMixin` behavior set."""
     if TYPE_CHECKING:
-        def __getattr__(self, name: str) -> Any: ...
+        def __getattr__(self, name: str) -> Any:
+            """Satisfy static type checkers for runtime-resolved window attributes."""
+            ...
 
     def record_ai_usage(self, *, tokens: int, estimated_cost: float) -> None:
+        """Execute the `record_ai_usage` workflow."""
         usage = getattr(self, "ai_usage_session", None)
         if not isinstance(usage, dict):
             usage = {"requests": 0, "tokens": 0, "estimated_cost": 0.0}
@@ -23,6 +32,7 @@ class MiscAiUsageMixin:
         self._refresh_ai_usage_label()
 
     def _refresh_ai_usage_label(self) -> None:
+        """Internal helper for `_refresh_ai_usage_label`."""
         label = getattr(self, "ai_usage_label", None)
         usage = getattr(self, "ai_usage_session", {})
         if label is None or not isinstance(usage, dict):
@@ -33,6 +43,7 @@ class MiscAiUsageMixin:
         label.setText(f"AI: {requests} req | ~{tokens} tok | ~${cost:.4f}")
 
     def show_ai_action_history(self) -> None:
+        """Execute the `show_ai_action_history` workflow."""
         history = self.settings.get("ai_action_history", [])
         if not isinstance(history, list):
             history = []
@@ -65,6 +76,7 @@ class MiscAiUsageMixin:
         dlg.exec()
 
     def show_ai_usage_summary(self) -> None:
+        """Execute the `show_ai_usage_summary` workflow."""
         usage = getattr(self, "ai_usage_session", {})
         requests = int(usage.get("requests", 0))
         tokens = int(usage.get("tokens", 0))

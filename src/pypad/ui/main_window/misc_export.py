@@ -1,3 +1,8 @@
+"""Provide shared export helpers used by the main window when generating alternate output formats.
+
+This module belongs to the main-window orchestration layer that ties together menus, actions, state, and dialogs. It helps explain how `pypad.ui.main_window` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -11,10 +16,14 @@ from pypad.ui.editor.editor_tab import EditorTab
 
 
 class MiscExportMixin:
+    """Mixin that provides the `MiscExportMixin` behavior set."""
     if TYPE_CHECKING:
-        def __getattr__(self, name: str) -> Any: ...
+        def __getattr__(self, name: str) -> Any:
+            """Satisfy static type checkers for runtime-resolved window attributes."""
+            ...
 
     def _export_document_html(self, tab: EditorTab) -> str:
+        """Internal helper for `_export_document_html`."""
         text = tab.text_edit.get_text()
         return render_text_to_html(
             text,
@@ -22,6 +31,7 @@ class MiscExportMixin:
         )
 
     def export_active_as_markdown(self) -> None:
+        """Execute the `export_active_as_markdown` workflow."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -41,6 +51,7 @@ class MiscExportMixin:
         self.show_status_message(f"Exported Markdown: {path}", 3000)
 
     def export_active_as_html(self) -> None:
+        """Execute the `export_active_as_html` workflow."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -60,6 +71,7 @@ class MiscExportMixin:
         self.show_status_message(f"Exported HTML: {path}", 3000)
 
     def export_active_as_docx(self) -> None:
+        """Execute the `export_active_as_docx` workflow."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -86,6 +98,7 @@ class MiscExportMixin:
         self.show_status_message(f"Exported DOCX: {path}", 3000)
 
     def export_active_as_odt(self) -> None:
+        """Execute the `export_active_as_odt` workflow."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -112,6 +125,7 @@ class MiscExportMixin:
         self.show_status_message(f"Exported ODT: {path}", 3000)
 
     def export_active_as_pdf(self) -> None:
+        """Execute the `export_active_as_pdf` workflow."""
         tab = self.active_tab()
         if tab is None:
             return

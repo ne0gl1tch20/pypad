@@ -1,3 +1,5 @@
+"""Generate the Windows version-info resource file from the canonical version string."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -10,6 +12,8 @@ OUT_PATH = ROOT / "assets" / "version_info.txt"
 
 
 def _parse_version(raw: str) -> tuple[int, int, int, int, str]:
+    """Parse the semantic version text into PyInstaller-friendly version parts."""
+
     text = raw.lstrip("\ufeff").strip()
     match = re.match(r"^\s*(\d+)\.(\d+)\.(\d+)", text)
     if not match:
@@ -20,6 +24,8 @@ def _parse_version(raw: str) -> tuple[int, int, int, int, str]:
 
 
 def main() -> None:
+    """Read the version file and write the formatted version-info resource output."""
+
     raw = VERSION_TXT.read_text(encoding="utf-8-sig")
     major, minor, patch, build, filever = _parse_version(raw)
     content = f"""VSVersionInfo(

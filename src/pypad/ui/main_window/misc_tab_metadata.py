@@ -1,3 +1,8 @@
+"""Track and manipulate metadata associated with open tabs and their presentation in the UI.
+
+This module belongs to the main-window orchestration layer that ties together menus, actions, state, and dialogs. It helps explain how `pypad.ui.main_window` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 
 import os
@@ -10,17 +15,22 @@ from pypad.ui.editor.editor_tab import EditorTab
 
 
 class MiscTabMetadataMixin:
+    """Mixin that provides the `MiscTabMetadataMixin` behavior set."""
     if TYPE_CHECKING:
-        def __getattr__(self, name: str) -> Any: ...
+        def __getattr__(self, name: str) -> Any:
+            """Satisfy static type checkers for runtime-resolved window attributes."""
+            ...
 
     @staticmethod
     def _is_path_read_only(path: str) -> bool:
+        """Internal helper for `_is_path_read_only`."""
         try:
             return not os.access(path, os.W_OK)
         except OSError:
             return False
 
     def _apply_tab_color(self, tab: EditorTab) -> None:
+        """Internal helper for `_apply_tab_color`."""
         index = self.tab_widget.indexOf(tab)
         if index < 0:
             return
@@ -35,6 +45,7 @@ class MiscTabMetadataMixin:
         bar.setTabTextColor(index, self.palette().color(QPalette.Text))
 
     def _color_swatch_icon(self, color_hex: str, size: int = 12) -> QIcon:
+        """Internal helper for `_color_swatch_icon`."""
         color = QColor(color_hex)
         if not color.isValid():
             return QIcon()
@@ -49,6 +60,7 @@ class MiscTabMetadataMixin:
         return QIcon(pixmap)
 
     def _apply_file_metadata_to_tab(self, tab: EditorTab) -> None:
+        """Internal helper for `_apply_file_metadata_to_tab`."""
         if not tab.current_file:
             tab.favorite = False
             tab.tags = []
@@ -79,6 +91,7 @@ class MiscTabMetadataMixin:
         self._refresh_tab_title(tab)
 
     def _persist_file_metadata_for_tab(self, tab: EditorTab) -> None:
+        """Internal helper for `_persist_file_metadata_for_tab`."""
         if not tab.current_file:
             return
         favorites = [p for p in self.settings.get("favorite_files", []) if isinstance(p, str)]

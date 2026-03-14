@@ -1,3 +1,8 @@
+"""Handle document fidelity logic so saved, exported, or converted output preserves expected formatting.
+
+This module belongs to the document authoring, fidelity, and review UI layer. It helps explain how `pypad.ui.document` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 
 from html import escape as html_escape
@@ -11,10 +16,12 @@ from PySide6.QtGui import QTextDocument
 
 
 class DocumentFidelityError(RuntimeError):
+    """Raised when a document import or export format cannot be processed safely."""
     pass
 
 
 def _local_name(tag: Any) -> str:
+    """Return the namespace-stripped local XML tag name."""
     text = str(tag or "")
     if "}" in text:
         return text.split("}", 1)[1]
@@ -22,6 +29,7 @@ def _local_name(tag: Any) -> str:
 
 
 def render_text_to_html(text: str, *, markdown_mode: bool) -> str:
+    """Render plain text or Markdown into HTML using Qt's document engine."""
     doc = QTextDocument()
     if markdown_mode or _looks_like_markdown(text):
         doc.setMarkdown(text)
@@ -31,6 +39,7 @@ def render_text_to_html(text: str, *, markdown_mode: bool) -> str:
 
 
 def _looks_like_markdown(text: str) -> bool:
+    """Heuristically detect whether text should be treated as Markdown."""
     if not text.strip():
         return False
     patterns = (
@@ -50,6 +59,7 @@ def _looks_like_markdown(text: str) -> bool:
 
 
 def render_markdown_to_mathjax_html(text: str, *, dark_mode: bool = False) -> str:
+    """Render Markdown into standalone HTML that includes MathJax support."""
     doc = QTextDocument()
     doc.setMarkdown(text)
     body_html = doc.toHtml()
@@ -92,6 +102,7 @@ def render_markdown_to_mathjax_html(text: str, *, dark_mode: bool = False) -> st
 
 
 def _read_text_file(path: Path, encoding: str) -> str:
+    """Read a text file with fallback decoding for import workflows."""
     try:
         return path.read_text(encoding=encoding)
     except Exception:
@@ -99,6 +110,7 @@ def _read_text_file(path: Path, encoding: str) -> str:
 
 
 def _docx_to_text(path: Path) -> str:
+    """Extract plain text content from a DOCX archive."""
     with zipfile.ZipFile(path, "r") as zf:
         try:
             xml_data = zf.read("word/document.xml")
@@ -126,6 +138,7 @@ def _docx_to_text(path: Path) -> str:
 
 
 def _odt_to_text(path: Path) -> str:
+    """Extract plain text content from an ODT archive."""
     with zipfile.ZipFile(path, "r") as zf:
         try:
             xml_data = zf.read("content.xml")
@@ -146,6 +159,7 @@ def _odt_to_text(path: Path) -> str:
 
 
 def _pdf_to_text(path: Path) -> str:
+    """Extract plain text from a PDF using the optional `pypdf` dependency."""
     try:
         from pypdf import PdfReader  # type: ignore[import-not-found]
     except Exception as exc:
@@ -161,6 +175,7 @@ def _pdf_to_text(path: Path) -> str:
 
 
 def import_document_text(path: str, *, encoding: str = "utf-8") -> tuple[str, bool]:
+    """Import a supported document format and return its text plus Markdown-mode hint."""
     file_path = Path(path)
     suffix = file_path.suffix.lower()
     if suffix in {".md", ".markdown", ".mdown", ".txt"}:
@@ -180,6 +195,7 @@ def import_document_text(path: str, *, encoding: str = "utf-8") -> tuple[str, bo
 
 
 def _docx_document_xml_from_text(text: str) -> str:
+    """Build a minimal DOCX `document.xml` payload from plain text lines."""
     lines = text.splitlines() or [""]
     xml_lines: list[str] = [
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
@@ -197,6 +213,7 @@ def _docx_document_xml_from_text(text: str) -> str:
 
 
 def _write_docx_from_text(path: Path, text: str) -> None:
+    """Write a minimal DOCX archive containing the supplied plain text content."""
     content_types = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
@@ -217,6 +234,7 @@ def _write_docx_from_text(path: Path, text: str) -> None:
 
 
 def _odt_content_xml_from_text(text: str) -> str:
+    """Build a minimal ODT `content.xml` payload from plain text lines."""
     lines = text.splitlines() or [""]
     body = "\n".join(f"      <text:p>{html_escape(line, quote=False)}</text:p>" for line in lines)
     return f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -234,6 +252,7 @@ def _odt_content_xml_from_text(text: str) -> str:
 
 
 def _write_odt_from_text(path: Path, text: str) -> None:
+    """Write a minimal ODT archive containing the supplied plain text content."""
     manifest = """<?xml version="1.0" encoding="UTF-8"?>
 <manifest:manifest xmlns:manifest="urn:oasis:names:tc:opendocument:xmlns:manifest:1.0" manifest:version="1.2">
   <manifest:file-entry manifest:full-path="/" manifest:media-type="application/vnd.oasis.opendocument.text"/>
@@ -262,6 +281,7 @@ def _write_odt_from_text(path: Path, text: str) -> None:
 
 
 def export_document_text(path: str, text: str, *, markdown_mode: bool) -> None:
+    """Export text to a supported document format, raising when fidelity support is unavailable."""
     file_path = Path(path)
     suffix = file_path.suffix.lower()
     if suffix in {".md", ".markdown", ".mdown", ".txt"}:
@@ -280,6 +300,7 @@ def export_document_text(path: str, text: str, *, markdown_mode: bool) -> None:
 
 
 def clipboard_paste_special_options(mime: Any) -> list[str]:
+    """Return the paste-special choices supported by the available clipboard MIME data."""
     options = ["Keep Formatting", "Text Only"]
     if mime is None:
         return options
@@ -293,6 +314,7 @@ def clipboard_paste_special_options(mime: Any) -> list[str]:
 
 
 def convert_clipboard_for_paste(mime: Any, choice: str) -> str:
+    """Convert clipboard MIME content into the representation requested by Paste Special."""
     if mime is None:
         return ""
     has_html = bool(getattr(mime, "hasHtml", lambda: False)())

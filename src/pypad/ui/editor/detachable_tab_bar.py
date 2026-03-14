@@ -1,13 +1,20 @@
+"""Define a custom tab bar that supports detaching, reordering, and managing editor tabs.
+
+This module belongs to the editor widget and text-manipulation UI layer. It helps explain how `pypad.ui.editor` is structured and where this file fits into the runtime workflow.
+"""
+
 from PySide6.QtCore import QPoint, Qt, QMimeData, Signal
 from PySide6.QtGui import QDrag, QColor, QPainter, QIcon
 from PySide6.QtWidgets import QApplication, QHBoxLayout, QLabel, QTabBar, QToolButton, QWidget
 
 class DetachableTabBar(QTabBar):
+    """Class that implements the `DetachableTabBar` runtime behavior."""
     detach_requested = Signal(int, QPoint)
     _tab_mime_type = "application/x-pypad-tab"
     _badge_size = 10
 
     def __init__(self, parent=None) -> None:
+        """Initialize the `detachable_tab_bar` state for this instance."""
         super().__init__(parent)
         self._drag_start_pos: QPoint | None = None
         self._drag_index = -1
@@ -18,10 +25,12 @@ class DetachableTabBar(QTabBar):
         self.setExpanding(False)
 
     def tabInserted(self, index: int) -> None:  # type: ignore[override]
+        """Execute the `tabInserted` workflow."""
         super().tabInserted(index)
         self._install_close_button(index)
 
     def _install_close_button(self, index: int) -> None:
+        """Internal helper for `_install_close_button`."""
         if index < 0:
             return
         existing = self.tabButton(index, QTabBar.RightSide)
@@ -70,10 +79,12 @@ class DetachableTabBar(QTabBar):
         self.setTabButton(index, QTabBar.RightSide, container)
 
     def refresh_tab_accessory(self, index: int) -> None:
+        """Execute the `refresh_tab_accessory` workflow."""
         self._install_close_button(index)
 
     @staticmethod
     def _style_close_button(button: QToolButton) -> None:
+        """Internal helper for `_style_close_button`."""
         button.setAutoRaise(True)
         button.setCursor(Qt.ArrowCursor)
         button.setToolTip("Close tab")
@@ -86,14 +97,17 @@ class DetachableTabBar(QTabBar):
         button.setFixedSize(12, 12)
 
     def _tab_is_pinned(self, index: int) -> bool:
+        """Internal helper for `_tab_is_pinned`."""
         tab = self._tab_obj(index)
         return bool(getattr(tab, "pinned", False))
 
     def _tab_is_favorite(self, index: int) -> bool:
+        """Internal helper for `_tab_is_favorite`."""
         tab = self._tab_obj(index)
         return bool(getattr(tab, "favorite", False))
 
     def _tab_obj(self, index: int):
+        """Internal helper for `_tab_obj`."""
         tab_widget = self.parentWidget()
         if tab_widget is None or not hasattr(tab_widget, "widget"):
             return None
@@ -103,6 +117,7 @@ class DetachableTabBar(QTabBar):
             return None
 
     def _set_pin_badge(self, label: QLabel | None, pinned: bool) -> None:
+        """Internal helper for `_set_pin_badge`."""
         if label is None:
             return
         if not pinned:
@@ -122,9 +137,11 @@ class DetachableTabBar(QTabBar):
         label.setToolTip("Pinned tab")
 
     def _pin_badge_icon(self, size: int = 10):
+        """Internal helper for `_pin_badge_icon`."""
         return self._named_badge_icon("tab-pin", size=size)
 
     def _set_favorite_badge(self, label: QLabel | None, favorite: bool) -> None:
+        """Internal helper for `_set_favorite_badge`."""
         if label is None:
             return
         if not favorite:
@@ -144,9 +161,11 @@ class DetachableTabBar(QTabBar):
         label.setToolTip("Favorite tab")
 
     def _favorite_badge_icon(self, size: int = 10):
+        """Internal helper for `_favorite_badge_icon`."""
         return self._named_badge_icon("tab-heart", size=size)
 
     def _named_badge_icon(self, name: str, size: int = 10) -> QIcon:
+        """Internal helper for `_named_badge_icon`."""
         host_window = self.window()
         icon_fn = getattr(host_window, "_svg_icon_colored", None)
         if callable(icon_fn):
@@ -157,11 +176,13 @@ class DetachableTabBar(QTabBar):
         return QIcon()
 
     def tabLayoutChange(self) -> None:  # type: ignore[override]
+        """Execute the `tabLayoutChange` workflow."""
         super().tabLayoutChange()
         for index in range(self.count()):
             self._install_close_button(index)
 
     def _emit_close_from_button(self) -> None:
+        """Internal helper for `_emit_close_from_button`."""
         button = self.sender()
         if not isinstance(button, QToolButton):
             return
@@ -171,12 +192,14 @@ class DetachableTabBar(QTabBar):
             self.tabCloseRequested.emit(index)
 
     def mousePressEvent(self, event) -> None:  # type: ignore[override]
+        """Execute the `mousePressEvent` workflow."""
         if event.button() == Qt.LeftButton:
             self._drag_start_pos = event.pos()
             self._drag_index = self.tabAt(event.pos())
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:  # type: ignore[override]
+        """Execute the `mouseMoveEvent` workflow."""
         if not self.detach_enabled:
             super().mouseMoveEvent(event)
             return
@@ -204,18 +227,21 @@ class DetachableTabBar(QTabBar):
         super().mouseMoveEvent(event)
 
     def dragEnterEvent(self, event) -> None:  # type: ignore[override]
+        """Execute the `dragEnterEvent` workflow."""
         if event.mimeData().hasFormat(self._tab_mime_type):
             event.acceptProposedAction()
             return
         super().dragEnterEvent(event)
 
     def dragMoveEvent(self, event) -> None:  # type: ignore[override]
+        """Execute the `dragMoveEvent` workflow."""
         if event.mimeData().hasFormat(self._tab_mime_type):
             event.acceptProposedAction()
             return
         super().dragMoveEvent(event)
 
     def dropEvent(self, event) -> None:  # type: ignore[override]
+        """Execute the `dropEvent` workflow."""
         if not event.mimeData().hasFormat(self._tab_mime_type):
             super().dropEvent(event)
             return
@@ -244,6 +270,7 @@ class DetachableTabBar(QTabBar):
         event.ignore()
 
     def mouseReleaseEvent(self, event) -> None:  # type: ignore[override]
+        """Execute the `mouseReleaseEvent` workflow."""
         if event.button() == Qt.MiddleButton:
             index = self.tabAt(event.pos())
             if index >= 0 and not self._tab_is_pinned(index):
@@ -261,6 +288,7 @@ class DetachableTabBar(QTabBar):
         super().mouseReleaseEvent(event)
 
     def paintEvent(self, event) -> None:  # type: ignore[override]
+        """Execute the `paintEvent` workflow."""
         super().paintEvent(event)
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing, True)
@@ -277,6 +305,7 @@ class DetachableTabBar(QTabBar):
         painter.end()
 
     def contextMenuEvent(self, event) -> None:  # type: ignore[override]
+        """Execute the `contextMenuEvent` workflow."""
         index = self.tabAt(event.pos())
         host_window = self.window()
         show_fn = getattr(host_window, "show_tab_context_menu", None)

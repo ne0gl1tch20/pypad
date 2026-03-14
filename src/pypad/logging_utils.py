@@ -1,3 +1,8 @@
+"""Configure the application logging pipeline and helper functions used to resolve, persist, and retrieve loggers.
+
+This module belongs to the top-level Pypad application package. It helps explain how `pypad` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -22,16 +27,20 @@ class _NullStream:
     encoding = "utf-8"
 
     def write(self, data) -> int:
+        """Execute the `write` workflow."""
         return len(str(data or ""))
 
     def flush(self) -> None:
+        """Execute the `flush` workflow."""
         return
 
     def isatty(self) -> bool:
+        """Execute the `isatty` workflow."""
         return False
 
 
 def _append_console_line(line: str) -> None:
+    """Internal helper for `_append_console_line`."""
     text = str(line or "").rstrip("\r\n")
     if not text:
         return
@@ -40,23 +49,28 @@ def _append_console_line(line: str) -> None:
 
 
 def get_console_log_lines() -> list[str]:
+    """Return the value produced by `get_console_log_lines`."""
     with _console_lock:
         return list(_console_lines)
 
 
 def clear_console_log_lines() -> None:
+    """Execute the `clear_console_log_lines` workflow."""
     with _console_lock:
         _console_lines.clear()
 
 
 class _ConsoleCaptureTee:
+    """Class that implements the `_ConsoleCaptureTee` runtime behavior."""
     def __init__(self, stream, *, label: str) -> None:
+        """Initialize the `logging_utils` state for this instance."""
         self._stream = stream
         self._label = label
         self._partial = ""
         self._pypad_console_capture_wrapper = True
 
     def write(self, data) -> int:
+        """Execute the `write` workflow."""
         text = str(data or "")
         if not text:
             return 0
@@ -78,6 +92,7 @@ class _ConsoleCaptureTee:
         return len(text)
 
     def flush(self) -> None:
+        """Execute the `flush` workflow."""
         try:
             stream = self._stream
             if stream is not None:
@@ -88,6 +103,7 @@ class _ConsoleCaptureTee:
             self._partial = ""
 
     def __getattr__(self, name: str):
+        """Internal helper for `__getattr__`."""
         stream = self._stream
         if stream is None:
             raise AttributeError(name)
@@ -95,6 +111,7 @@ class _ConsoleCaptureTee:
 
     @staticmethod
     def _safe_stream_write(stream, text: str) -> None:
+        """Internal helper for `_safe_stream_write`."""
         try:
             stream.write(text)
             return
@@ -105,7 +122,9 @@ class _ConsoleCaptureTee:
 
 
 class _CapturingStreamHandler(logging.StreamHandler):
+    """Class that implements the `_CapturingStreamHandler` runtime behavior."""
     def emit(self, record: logging.LogRecord) -> None:
+        """Execute the `emit` workflow."""
         try:
             rendered = self.format(record)
         except Exception:
@@ -128,7 +147,9 @@ class _CapturingStreamHandler(logging.StreamHandler):
 
 
 class _PypadLogFormatter(logging.Formatter):
+    """Class that implements the `_PypadLogFormatter` runtime behavior."""
     def format(self, record: logging.LogRecord) -> str:
+        """Execute the `format` workflow."""
         timestamp = datetime.fromtimestamp(record.created)
         time_text = timestamp.strftime("%H:%M:%S.%f")[:-3]
         date_text = f"{timestamp.month}/{timestamp.day}/{timestamp.year}"
@@ -145,15 +166,18 @@ class _PypadLogFormatter(logging.Formatter):
 
 
 def normalize_log_level_name(value: object, default: str = DEFAULT_LOG_LEVEL) -> str:
+    """Execute the `normalize_log_level_name` workflow."""
     text = str(value or "").strip().upper()
     return text if text in LOG_LEVEL_OPTIONS else str(default).strip().upper()
 
 
 def get_level_number(value: object, default: str = DEFAULT_LOG_LEVEL) -> int:
+    """Return the value produced by `get_level_number`."""
     return int(getattr(logging, normalize_log_level_name(value, default), logging.INFO))
 
 
 def configure_app_logging(level: object = DEFAULT_LOG_LEVEL) -> str:
+    """Execute the `configure_app_logging` workflow."""
     _install_console_capture()
     level_name = normalize_log_level_name(level)
     root_logger = logging.getLogger()
@@ -178,6 +202,7 @@ def resolve_persisted_log_level(
     *,
     default: str = DEFAULT_LOG_LEVEL,
 ) -> str:
+    """Execute the `resolve_persisted_log_level` workflow."""
     path = Path(settings_path) if settings_path else None
     if path is None or not path.exists():
         return normalize_log_level_name(default)
@@ -191,10 +216,12 @@ def resolve_persisted_log_level(
 
 
 def get_logger(name: str) -> logging.Logger:
+    """Return the value produced by `get_logger`."""
     return logging.getLogger(name)
 
 
 def _install_console_capture() -> None:
+    """Internal helper for `_install_console_capture`."""
     global _console_capture_installed
     if _console_capture_installed:
         return

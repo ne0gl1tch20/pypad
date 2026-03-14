@@ -1,3 +1,5 @@
+"""Rebuild the online plugin catalog from the manifests stored in the repo."""
+
 from __future__ import annotations
 
 import json
@@ -8,10 +10,14 @@ REPO_URL = "https://github.com/ne0gl1tch20/pypad"
 
 
 def _load_json(path: Path) -> dict:
+    """Load a JSON manifest while tolerating UTF-8 BOM-prefixed files."""
+
     return json.loads(path.read_text(encoding="utf-8-sig"))
 
 
 def _build_entry(plugin_dir: Path, plugin_meta: dict) -> dict[str, str]:
+    """Normalize a plugin manifest into the catalog entry schema."""
+
     plugin_id = str(plugin_meta.get("id", "")).strip()
     if not plugin_id:
         raise ValueError(f"Missing plugin id in {plugin_dir / 'plugin.json'}")
@@ -28,6 +34,8 @@ def _build_entry(plugin_dir: Path, plugin_meta: dict) -> dict[str, str]:
 
 
 def regenerate_catalog(repo_root: Path) -> int:
+    """Scan plugin manifests, rebuild the catalog file, and return the entry count."""
+
     online_plugins_dir = repo_root / "online_plugins"
     catalog_path = online_plugins_dir / "catalog.json"
     entries: list[dict[str, str]] = []

@@ -1,3 +1,8 @@
+"""Audit Scintilla compatibility behavior and expose diagnostic helpers for parity tracking.
+
+This module belongs to the Scintilla compatibility layer used when native QScintilla is unavailable. It helps explain how `pypad.ui.editor.scintilla_compat` is structured and where this file fits into the runtime workflow.
+"""
+
 from __future__ import annotations
 
 import json
@@ -16,6 +21,7 @@ _COMPAT_CUSTOM_ID_PATTERN = re.compile(
 
 @dataclass(frozen=True)
 class ScintillaCompatAuditReport:
+    """Class that implements the `ScintillaCompatAuditReport` runtime behavior."""
     compat_symbols: frozenset[str]
     repo_symbols: frozenset[str]
     repo_missing: tuple[str, ...]
@@ -25,15 +31,18 @@ class ScintillaCompatAuditReport:
 
     @property
     def repo_complete(self) -> bool:
+        """Execute the `repo_complete` workflow."""
         return not self.repo_missing
 
     @property
     def native_complete(self) -> bool:
+        """Execute the `native_complete` workflow."""
         return bool(self.native_symbols) and not self.native_missing
 
 
 @dataclass(frozen=True)
 class NativeQsciBaseline:
+    """Class that implements the `NativeQsciBaseline` runtime behavior."""
     generated_at: str
     symbol_count: int
     symbols: tuple[str, ...]
@@ -41,6 +50,7 @@ class NativeQsciBaseline:
 
 @dataclass(frozen=True)
 class ScintillaCompatContractBaseline:
+    """Class that implements the `ScintillaCompatContractBaseline` runtime behavior."""
     generated_at: str
     compat_symbol_count: int
     compat_symbols: tuple[str, ...]
@@ -48,10 +58,12 @@ class ScintillaCompatContractBaseline:
 
 
 def _repo_root() -> Path:
+    """Internal helper for `_repo_root`."""
     return Path(__file__).resolve().parents[5]
 
 
 def _iter_python_files(paths: Iterable[Path]) -> Iterable[Path]:
+    """Internal helper for `_iter_python_files`."""
     for root in paths:
         if not root.exists():
             continue
@@ -59,15 +71,18 @@ def _iter_python_files(paths: Iterable[Path]) -> Iterable[Path]:
 
 
 def _extract_symbols(text: str) -> frozenset[str]:
+    """Internal helper for `_extract_symbols`."""
     return frozenset(_SYMBOL_PATTERN.findall(text))
 
 
 def load_compat_symbols() -> frozenset[str]:
+    """Load data required by `load_compat_symbols`."""
     editor_path = Path(__file__).resolve().parent / "editor.py"
     return _extract_symbols(editor_path.read_text(encoding="utf-8"))
 
 
 def load_repo_symbols(root: Path | None = None) -> frozenset[str]:
+    """Load data required by `load_repo_symbols`."""
     root = root or _repo_root()
     found: set[str] = set()
     for path in _iter_python_files((root / "src", root / "tests")):
@@ -81,6 +96,7 @@ def load_repo_symbols(root: Path | None = None) -> frozenset[str]:
 
 
 def load_app_exclusive_symbols() -> tuple[str, ...]:
+    """Load data required by `load_app_exclusive_symbols`."""
     editor_path = Path(__file__).resolve().parent / "editor.py"
     text = editor_path.read_text(encoding="utf-8")
     names = sorted({name for name, _value in _COMPAT_CUSTOM_ID_PATTERN.findall(text)})
@@ -88,6 +104,7 @@ def load_app_exclusive_symbols() -> tuple[str, ...]:
 
 
 def load_native_qsci_symbols() -> frozenset[str]:
+    """Load data required by `load_native_qsci_symbols`."""
     try:
         from PySide6.Qsci import QsciScintilla  # type: ignore
     except Exception:
@@ -100,6 +117,7 @@ def load_native_qsci_symbols() -> frozenset[str]:
 
 
 def build_audit_report(root: Path | None = None) -> ScintillaCompatAuditReport:
+    """Build and return the value produced by `build_audit_report`."""
     compat_symbols = load_compat_symbols()
     repo_symbols = load_repo_symbols(root)
     native_symbols = load_native_qsci_symbols()
@@ -116,16 +134,19 @@ def build_audit_report(root: Path | None = None) -> ScintillaCompatAuditReport:
 
 
 def native_baseline_path(root: Path | None = None) -> Path:
+    """Execute the `native_baseline_path` workflow."""
     root = root or _repo_root()
     return root / "docs" / "scintilla_native_qsci_baseline.json"
 
 
 def contract_baseline_path(root: Path | None = None) -> Path:
+    """Execute the `contract_baseline_path` workflow."""
     root = root or _repo_root()
     return root / "docs" / "scintilla_compat_contract_baseline.json"
 
 
 def save_native_baseline(root: Path | None = None) -> Path:
+    """Save data handled by `save_native_baseline`."""
     from datetime import datetime, UTC
 
     root = root or _repo_root()
@@ -144,6 +165,7 @@ def save_native_baseline(root: Path | None = None) -> Path:
 
 
 def load_native_baseline(root: Path | None = None) -> NativeQsciBaseline | None:
+    """Load data required by `load_native_baseline`."""
     path = native_baseline_path(root)
     if not path.exists():
         return None
@@ -157,6 +179,7 @@ def load_native_baseline(root: Path | None = None) -> NativeQsciBaseline | None:
 
 
 def save_contract_baseline(root: Path | None = None) -> Path:
+    """Save data handled by `save_contract_baseline`."""
     from datetime import UTC, datetime
 
     root = root or _repo_root()
@@ -175,6 +198,7 @@ def save_contract_baseline(root: Path | None = None) -> Path:
 
 
 def load_contract_baseline(root: Path | None = None) -> ScintillaCompatContractBaseline | None:
+    """Load data required by `load_contract_baseline`."""
     path = contract_baseline_path(root)
     if not path.exists():
         return None
