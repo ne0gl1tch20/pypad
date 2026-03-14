@@ -317,6 +317,7 @@ if __name__ == "__main__":
         if startup_reported[0]:
             return
         startup_reported[0] = True
+        _startup_log("[Startup] App marked started; closing splash and releasing visibility gate.")
         if splash.isVisible():
             splash.finish(window)
         elapsed_ms = int((perf_counter() - startup_started_at) * 1000)
@@ -407,9 +408,17 @@ if __name__ == "__main__":
 
             def _poll() -> None:
                 try:
-                    ready = bool(
-                        getattr(window, "_startup_first_paint_ready", False)
-                        or getattr(window, "_startup_sequence_done", True)
+                    ready = (
+                        bool(app.property("app_started"))
+                        or bool(getattr(window, "_startup_sequence_done", False))
+                    ) and not bool(getattr(window, "_startup_hold_main_window_visible", False))
+                    LOGGER.debug(
+                        "Startup visibility poll ready=%s app_started=%s sequence_done=%s hold=%s waited_ms=%s",
+                        ready,
+                        bool(app.property("app_started")),
+                        bool(getattr(window, "_startup_sequence_done", False)),
+                        bool(getattr(window, "_startup_hold_main_window_visible", False)),
+                        waited["ms"],
                     )
                 except Exception:
                     ready = True

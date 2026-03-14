@@ -137,6 +137,13 @@ class EditorTab(QWidget):
         self.quiz_user_answers: dict[int, str] = {}
         self.quiz_score_result: dict[str, Any] | None = None
         self.quiz_original_text: str | None = None
+        self.typing_test_mode_enabled = False
+        self.typing_test_config: dict[str, Any] = {}
+        self.typing_test_source_text: str = ""
+        self.typing_test_original_text: str | None = None
+        self.typing_test_started_at: float | None = None
+        self.typing_test_finished = False
+        self.typing_test_result: dict[str, Any] | None = None
         self.media_mode_enabled = False
         self.media_path: str | None = None
 

@@ -1,234 +1,19 @@
 {
   "plugins": [
     {
-      "id": "example_action_bookmarks",
-      "name": "Example Action Bookmarks",
+      "id": "plugin_example_pack",
+      "name": "Plugin Example Pack",
       "author": "ne0gl1tch20",
-      "description": "Bookmark and replay favorite action IDs.",
+      "description": "An example plugin pack that shows how the plugin system works end to end.",
       "version": "1.0.0",
       "repo": "https://github.com/ne0gl1tch20/pypad",
-      "source": "online_plugins/example_action_bookmarks",
-      "homepage": "https://github.com/ne0gl1tch20/pypad"
-    },
-    {
-      "id": "example_action_macro",
-      "name": "Example Action Macro",
-      "author": "ne0gl1tch20",
-      "description": "Runs a small macro by triggering built-in actions via controller API.",
-      "version": "1.0.0",
-      "repo": "https://github.com/ne0gl1tch20/pypad",
-      "source": "online_plugins/example_action_macro",
-      "homepage": "https://github.com/ne0gl1tch20/pypad"
-    },
-    {
-      "id": "example_action_runner",
-      "name": "Example Action Runner",
-      "author": "ne0gl1tch20",
-      "description": "Demonstrates listing and triggering app actions via controller API.",
-      "version": "1.0.0",
-      "repo": "https://github.com/ne0gl1tch20/pypad",
-      "source": "online_plugins/example_action_runner",
-      "homepage": "https://github.com/ne0gl1tch20/pypad"
-    },
-    {
-      "id": "example_action_searcher",
-      "name": "Example Action Searcher",
-      "author": "ne0gl1tch20",
-      "description": "Finds actions by keyword and can trigger best match.",
-      "version": "1.0.0",
-      "repo": "https://github.com/ne0gl1tch20/pypad",
-      "source": "online_plugins/example_action_searcher",
-      "homepage": "https://github.com/ne0gl1tch20/pypad"
-    },
-    {
-      "id": "example_ai_commit_message",
-      "name": "Example AI Commit Message",
-      "author": "ne0gl1tch20",
-      "description": "Asks AI to draft commit messages from selection/current text.",
-      "version": "1.0.0",
-      "repo": "https://github.com/ne0gl1tch20/pypad",
-      "source": "online_plugins/example_ai_commit_message",
-      "homepage": "https://github.com/ne0gl1tch20/pypad"
-    },
-    {
-      "id": "example_auto_tagger",
-      "name": "Example Auto Tagger",
-      "author": "ne0gl1tch20",
-      "description": "Adds lightweight content tags to current document state.",
-      "version": "1.0.0",
-      "repo": "https://github.com/ne0gl1tch20/pypad",
-      "source": "online_plugins/example_auto_tagger",
-      "homepage": "https://github.com/ne0gl1tch20/pypad"
-    },
-    {
-      "id": "example_file_rotator",
-      "name": "Example File Rotator",
-      "author": "ne0gl1tch20",
-      "description": "Rotates through open tabs and saves writable ones.",
-      "version": "1.0.0",
-      "repo": "https://github.com/ne0gl1tch20/pypad",
-      "source": "online_plugins/example_file_rotator",
-      "homepage": "https://github.com/ne0gl1tch20/pypad"
-    },
-    {
-      "id": "example_hello_network",
-      "name": "Example Hello Network",
-      "author": "ne0gl1tch20",
-      "description": "Example plugin that demonstrates network permission, hooks, and menu actions.",
-      "version": "1.0.0",
-      "repo": "https://github.com/ne0gl1tch20/pypad",
-      "source": "online_plugins/example_hello_network",
-      "homepage": "https://github.com/ne0gl1tch20/pypad"
-    },
-    {
-      "id": "example_hook_logger",
-      "name": "Example Hook Logger",
-      "author": "ne0gl1tch20",
-      "description": "Logs lifecycle hooks and keeps per-hook counters in plugin state.",
-      "version": "1.0.0",
-      "repo": "https://github.com/ne0gl1tch20/pypad",
-      "source": "online_plugins/example_hook_logger",
-      "homepage": "https://github.com/ne0gl1tch20/pypad"
-    },
-    {
-      "id": "example_quick_insert",
-      "name": "Example Quick Insert",
-      "author": "ne0gl1tch20",
-      "description": "Quick insertion helpers for common snippets.",
-      "version": "1.0.0",
-      "repo": "https://github.com/ne0gl1tch20/pypad",
-      "source": "online_plugins/example_quick_insert",
-      "homepage": "https://github.com/ne0gl1tch20/pypad"
-    },
-    {
-      "id": "example_save_guard",
-      "name": "Example Save Guard",
-      "author": "ne0gl1tch20",
-      "description": "Warns on save if risky content patterns are detected.",
-      "version": "1.0.0",
-      "repo": "https://github.com/ne0gl1tch20/pypad",
-      "source": "online_plugins/example_save_guard",
-      "homepage": "https://github.com/ne0gl1tch20/pypad"
-    },
-    {
-      "id": "example_save_snapshot_trail",
-      "name": "Example Save Snapshot Trail",
-      "author": "ne0gl1tch20",
-      "description": "Tracks recent save events and renders a quick report.",
-      "version": "1.0.0",
-      "repo": "https://github.com/ne0gl1tch20/pypad",
-      "source": "online_plugins/example_save_snapshot_trail",
-      "homepage": "https://github.com/ne0gl1tch20/pypad"
-    },
-    {
-      "id": "example_selection_case_cycle",
-      "name": "Example Selection Case Cycle",
-      "author": "ne0gl1tch20",
-      "description": "Cycles selection through lower/upper/title case.",
-      "version": "1.0.0",
-      "repo": "https://github.com/ne0gl1tch20/pypad",
-      "source": "online_plugins/example_selection_case_cycle",
-      "homepage": "https://github.com/ne0gl1tch20/pypad"
-    },
-    {
-      "id": "example_selection_tools",
-      "name": "Example Selection Tools",
-      "author": "ne0gl1tch20",
-      "description": "Selection-focused editing helpers (quote/timestamp).",
-      "version": "1.0.0",
-      "repo": "https://github.com/ne0gl1tch20/pypad",
-      "source": "online_plugins/example_selection_tools",
-      "homepage": "https://github.com/ne0gl1tch20/pypad"
-    },
-    {
-      "id": "example_session_metrics_panel",
-      "name": "Example Session Metrics Panel",
-      "author": "ne0gl1tch20",
-      "description": "Simple dock panel showing session counters from hooks.",
-      "version": "1.0.0",
-      "repo": "https://github.com/ne0gl1tch20/pypad",
-      "source": "online_plugins/example_session_metrics_panel",
-      "homepage": "https://github.com/ne0gl1tch20/pypad"
-    },
-    {
-      "id": "example_session_notes",
-      "name": "Example Session Notes",
-      "author": "ne0gl1tch20",
-      "description": "Stores lightweight plugin state and creates timestamped notes.",
-      "version": "1.0.0",
-      "repo": "https://github.com/ne0gl1tch20/pypad",
-      "source": "online_plugins/example_session_notes",
-      "homepage": "https://github.com/ne0gl1tch20/pypad"
-    },
-    {
-      "id": "example_tab_cycle",
-      "name": "Example Tab Cycle",
-      "author": "ne0gl1tch20",
-      "description": "Cycles across tabs and reports current tab info using controller API.",
-      "version": "1.0.0",
-      "repo": "https://github.com/ne0gl1tch20/pypad",
-      "source": "online_plugins/example_tab_cycle",
-      "homepage": "https://github.com/ne0gl1tch20/pypad"
-    },
-    {
-      "id": "example_tab_health",
-      "name": "Example Tab Health",
-      "author": "ne0gl1tch20",
-      "description": "Periodic tab-health summary (count/switches/current).",
-      "version": "1.0.0",
-      "repo": "https://github.com/ne0gl1tch20/pypad",
-      "source": "online_plugins/example_tab_health",
-      "homepage": "https://github.com/ne0gl1tch20/pypad"
-    },
-    {
-      "id": "example_word_tools",
-      "name": "Example Word Tools",
-      "author": "ne0gl1tch20",
-      "description": "Example plugin that can uppercase current document, update a stats panel, and optionally call AI.",
-      "version": "1.0.0",
-      "repo": "https://github.com/ne0gl1tch20/pypad",
-      "source": "online_plugins/example_word_tools",
-      "homepage": "https://github.com/ne0gl1tch20/pypad"
-    },
-    {
-      "id": "example_workspace_file_sampler",
-      "name": "Example Workspace File Sampler",
-      "author": "ne0gl1tch20",
-      "description": "Creates a random workspace file sample report.",
-      "version": "1.0.0",
-      "repo": "https://github.com/ne0gl1tch20/pypad",
-      "source": "online_plugins/example_workspace_file_sampler",
-      "homepage": "https://github.com/ne0gl1tch20/pypad"
-    },
-    {
-      "id": "example_workspace_inspector",
-      "name": "Example Workspace Inspector",
-      "author": "ne0gl1tch20",
-      "description": "Example plugin that shows workspace index status in a panel and notifies when indexing completes.",
-      "version": "1.0.0",
-      "repo": "https://github.com/ne0gl1tch20/pypad",
-      "source": "online_plugins/example_workspace_inspector",
-      "homepage": "https://github.com/ne0gl1tch20/pypad"
-    },
-    {
-      "id": "example_workspace_report",
-      "name": "Example Workspace Report",
-      "author": "ne0gl1tch20",
-      "description": "Generates a simple workspace snapshot report in a new tab.",
-      "version": "1.0.0",
-      "repo": "https://github.com/ne0gl1tch20/pypad",
-      "source": "online_plugins/example_workspace_report",
-      "homepage": "https://github.com/ne0gl1tch20/pypad"
-    },
-    {
-      "id": "example_workspace_todo_index",
-      "name": "Example Workspace TODO Index",
-      "author": "ne0gl1tch20",
-      "description": "Builds a TODO/FIXME report from workspace files.",
-      "version": "1.0.0",
-      "repo": "https://github.com/ne0gl1tch20/pypad",
-      "source": "online_plugins/example_workspace_todo_index",
-      "homepage": "https://github.com/ne0gl1tch20/pypad"
+      "source": "online_plugins/plugin_example_pack",
+      "homepage": "https://github.com/ne0gl1tch20/pypad",
+      "changelog": [
+        "Consolidates the online example catalog into one richer example plugin.",
+        "Includes top-level menu examples, including Help.",
+        "Includes a Main toolbar/topbar action example."
+      ]
     },
     {
       "id": "plugin_online_example",
@@ -238,7 +23,10 @@
       "version": "1.0.0",
       "repo": "https://github.com/ne0gl1tch20/pypad",
       "source": "online_plugins/plugin_online_example",
-      "homepage": "https://github.com/ne0gl1tch20/pypad"
+      "homepage": "https://github.com/ne0gl1tch20/pypad",
+      "changelog": [
+        "Baseline online plugin example retained as the minimal install sample."
+      ]
     }
   ]
 }

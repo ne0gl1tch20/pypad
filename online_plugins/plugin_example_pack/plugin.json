@@ -1,0 +1,18 @@
+{
+  "id": "plugin_example_pack",
+  "name": "Plugin Example Pack",
+  "author": "ne0gl1tch20",
+  "version": "1.0.0",
+  "plugin_api_version": "1.0",
+  "description": "An example plugin pack that shows how the plugin system works end to end.",
+  "min_app_version": "1.8.1",
+  "max_app_version": "",
+  "update_url": "",
+  "homepage": "https://github.com/ne0gl1tch20/pypad",
+  "changelog": [
+    "Added consolidated example pack entry for online plugins.",
+    "Added Help-menu and top-toolbar examples.",
+    "Demonstrates menus, toolbar, panel, hooks, file helpers, and background timers."
+  ],
+  "permissions": ["file", "ui", "menu", "toolbar", "panel", "hooks", "background"]
+}

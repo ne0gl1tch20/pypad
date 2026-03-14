@@ -1268,12 +1268,12 @@ class UiSetupMixin:
         if hasattr(self, "_sync_gamification_tab_snapshot"):
             self._sync_gamification_tab_snapshot(tab)
         tab.text_edit.modificationChanged.connect(self._on_modification_changed)
-        tab.text_edit.cursorPositionChanged.connect(self.update_status_bar)
+        tab.text_edit.cursorPositionChanged.connect(self._update_status_bar_cursor_only)
         tab.text_edit.cursorPositionChanged.connect(self._on_cursor_position_changed_for_jump_history)
-        tab.text_edit.textChanged.connect(self.update_status_bar)
+        tab.text_edit.textChanged.connect(self._schedule_deferred_editor_refresh)
         tab.text_edit.textChanged.connect(self._handle_text_changed)
         if hasattr(self, "_gamification_on_text_changed"):
-            tab.text_edit.textChanged.connect(self._gamification_on_text_changed)
+            tab.text_edit.textChanged.connect(self._schedule_deferred_gamification_refresh)
         tab.text_edit.selectionChanged.connect(self._handle_selection_changed)
         tab.text_edit.copyAvailable.connect(self.update_action_states)
         tab.text_edit.undoAvailable.connect(self.update_action_states)
@@ -1292,7 +1292,7 @@ class UiSetupMixin:
         except (TypeError, RuntimeError):
             pass
         try:
-            tab.text_edit.cursorPositionChanged.disconnect(self.update_status_bar)
+            tab.text_edit.cursorPositionChanged.disconnect(self._update_status_bar_cursor_only)
         except (TypeError, RuntimeError):
             pass
         try:
@@ -1300,7 +1300,7 @@ class UiSetupMixin:
         except (TypeError, RuntimeError):
             pass
         try:
-            tab.text_edit.textChanged.disconnect(self.update_status_bar)
+            tab.text_edit.textChanged.disconnect(self._schedule_deferred_editor_refresh)
         except (TypeError, RuntimeError):
             pass
         try:
@@ -1309,7 +1309,7 @@ class UiSetupMixin:
             pass
         if hasattr(self, "_gamification_on_text_changed"):
             try:
-                tab.text_edit.textChanged.disconnect(self._gamification_on_text_changed)
+                tab.text_edit.textChanged.disconnect(self._schedule_deferred_gamification_refresh)
             except (TypeError, RuntimeError):
                 pass
         try:
@@ -1379,7 +1379,26 @@ class UiSetupMixin:
             self._record_change_history_line()
         if hasattr(self, "_refresh_quiz_placeholders_for_tab"):
             self._refresh_quiz_placeholders_for_tab(tab)
+        if hasattr(self, "_handle_typing_test_text_changed"):
+            self._handle_typing_test_text_changed(tab)
         self._emit_plugin_event("change", tab=tab)
+
+    def _schedule_deferred_editor_refresh(self) -> None:
+        timer = getattr(self, "_editor_refresh_timer", None)
+        if timer is None:
+            self.update_status_bar()
+            return
+        self.log_event("Debug", f"Deferred editor refresh scheduled interval={int(timer.interval())}ms")
+        timer.start()
+
+    def _schedule_deferred_gamification_refresh(self) -> None:
+        timer = getattr(self, "_gamification_refresh_timer", None)
+        if timer is None:
+            if hasattr(self, "_gamification_on_text_changed"):
+                self._gamification_on_text_changed()
+            return
+        self.log_event("Debug", f"Deferred gamification refresh scheduled interval={int(timer.interval())}ms")
+        timer.start()
 
     def _handle_selection_changed(self) -> None:
         sender = self.sender()
@@ -2471,7 +2490,10 @@ class UiSetupMixin:
         self.print_action.setEnabled(has_tab)
         self.print_preview_action.setEnabled(has_tab)
         self.save_all_action.setEnabled(has_tab)
-        if has_tab and bool(getattr(tab, "quiz_mode_enabled", False)):
+        if has_tab and (
+            bool(getattr(tab, "quiz_mode_enabled", False))
+            or bool(getattr(tab, "typing_test_mode_enabled", False))
+        ):
             self.save_action.setEnabled(False)
             self.save_as_action.setEnabled(False)
             self.save_all_action.setEnabled(False)
@@ -2841,6 +2863,8 @@ class UiSetupMixin:
             self.quiz_action.setEnabled(has_tab)
         if hasattr(self, "quiz_format_help_action"):
             self.quiz_format_help_action.setEnabled(True)
+        if hasattr(self, "typing_speed_test_action"):
+            self.typing_speed_test_action.setEnabled(True)
         if hasattr(self, "show_symbol_toolbar_button"):
             self.show_symbol_toolbar_button.setEnabled(has_scintilla)
         self.keyboard_only_mode_action.blockSignals(True)
@@ -3220,6 +3244,8 @@ class UiSetupMixin:
         self.coach_recommendation_action.triggered.connect(self.run_coach_recommendation)
         self.focus_sprint_action = QAction("Challenge: Focus Sprint...", self)
         self.focus_sprint_action.triggered.connect(self.start_focus_sprint_mode)
+        self.typing_speed_test_action = QAction("Challenge: Typing Speed Test...", self)
+        self.typing_speed_test_action.triggered.connect(self.start_typing_speed_test)
         self.no_backspace_challenge_action = QAction("Challenge: No-Backspace", self)
         self.no_backspace_challenge_action.triggered.connect(self.toggle_no_backspace_challenge)
         self.bug_hunt_action = QAction("Challenge: Bug Hunt", self)
@@ -4155,6 +4181,8 @@ class UiSetupMixin:
         self.quiz_action.triggered.connect(self.start_quiz_mode)
         self.quiz_format_help_action = QAction("Quiz Format Help...", self)
         self.quiz_format_help_action.triggered.connect(self.show_quiz_format_help)
+        self.quiz_action.setIcon(self._svg_icon("play-quiz"))
+        self.typing_speed_test_action.setIcon(self._svg_icon("play-typing"))
 
         self._apply_ai_feature_icons()
         if hasattr(self, "_sync_layout_panel_actions"):
@@ -4961,6 +4989,7 @@ class UiSetupMixin:
         self.play_menu.addAction(self.coach_recommendation_action)
         self.play_menu.addSeparator()
         self.play_menu.addAction(self.focus_sprint_action)
+        self.play_menu.addAction(self.typing_speed_test_action)
         self.play_menu.addAction(self.no_backspace_challenge_action)
         self.play_menu.addAction(self.bug_hunt_action)
         self.play_menu.addSeparator()
@@ -5000,8 +5029,9 @@ class UiSetupMixin:
         self.tools_menu.addAction(self.collab_resolve_conflict_action)
         self.tools_menu.addAction(self.annotation_layer_action)
         self.tools_menu.addSeparator()
-        self.tools_menu.addAction(self.quiz_action)
-        self.tools_menu.addAction(self.quiz_format_help_action)
+        self.play_menu.addSeparator()
+        self.play_menu.addAction(self.quiz_action)
+        self.play_menu.addAction(self.quiz_format_help_action)
 
         # Macros
         self.macros_menu = menu_bar.addMenu("&Macro")

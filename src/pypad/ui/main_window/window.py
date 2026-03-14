@@ -141,6 +141,7 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
         self._startup_ui_ready = False
         self._startup_first_paint_ready = False
         self._startup_sequence_done = False
+        self._startup_hold_main_window_visible = True
         startup_t0 = time.perf_counter()
         startup_stages: list[tuple[str, int]] = []
 
@@ -288,6 +289,14 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
         self.recovery_state_store = RecoveryStateStore(self._get_autosave_dir_path())
         self.autosave_timer = QTimer(self)
         self.autosave_timer.timeout.connect(self._run_autosave_cycle)
+        self._editor_refresh_timer = QTimer(self)
+        self._editor_refresh_timer.setSingleShot(True)
+        self._editor_refresh_timer.setInterval(90)
+        self._editor_refresh_timer.timeout.connect(self.update_status_bar)
+        self._gamification_refresh_timer = QTimer(self)
+        self._gamification_refresh_timer.setSingleShot(True)
+        self._gamification_refresh_timer.setInterval(120)
+        self._gamification_refresh_timer.timeout.connect(self._gamification_on_text_changed)
         self.reminder_timer = QTimer(self)
         self.reminder_timer.timeout.connect(self._check_reminders)
         self.file_watcher = QFileSystemWatcher(self)
@@ -367,6 +376,10 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
         self.quiz_finish_button.setVisible(False)
         self.quiz_finish_button.clicked.connect(self.finish_quiz_mode)
         self.status.addPermanentWidget(self.quiz_finish_button)
+        self.typing_test_quit_button = QPushButton("Quit Test", self)
+        self.typing_test_quit_button.setVisible(False)
+        self.typing_test_quit_button.clicked.connect(self.quit_typing_speed_test)
+        self.status.addPermanentWidget(self.typing_test_quit_button)
         self.log_event("Info", "[Startup] Status bar widgets attached")
         self.advanced_features = AdvancedFeaturesController(self)
         if hasattr(self, "_init_gamification_system"):
@@ -417,19 +430,6 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
             def _mark_deferred(name: str) -> None:
                 deferred_marks.append((name, int((time.perf_counter() - deferred_start) * 1000)))
 
-            try:
-                self._offer_crash_recovery()
-                _mark_deferred("crash_recovery")
-            except Exception as exc:  # noqa: BLE001
-                self.log_event("Error", f"[Startup] crash recovery offer failed: {exc!r}")
-            try:
-                self.apply_settings(startup_deferred=True)
-                self.log_event("Info", "[Startup] Settings applied")
-                _mark_deferred("apply_settings")
-            except Exception as exc:  # noqa: BLE001
-                self.log_event("Error", f"[Startup] apply_settings failed: {exc!r}")
-                traceback_text = traceback.format_exc().strip()
-                self.log_event("Error", traceback_text)
             if not self._startup_first_paint_ready:
                 self._startup_first_paint_ready = True
                 app = QApplication.instance()
@@ -439,6 +439,21 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
                         startup_ready_cb(self)
                     except Exception:
                         pass
+            try:
+                self._offer_crash_recovery()
+                _mark_deferred("crash_recovery")
+            except Exception as exc:  # noqa: BLE001
+                self.log_event("Error", f"[Startup] crash recovery offer failed: {exc!r}")
+            finally:
+                self._startup_hold_main_window_visible = False
+            try:
+                self.apply_settings(startup_deferred=True)
+                self.log_event("Info", "[Startup] Settings applied")
+                _mark_deferred("apply_settings")
+            except Exception as exc:  # noqa: BLE001
+                self.log_event("Error", f"[Startup] apply_settings failed: {exc!r}")
+                traceback_text = traceback.format_exc().strip()
+                self.log_event("Error", traceback_text)
             startup_files, startup_folders = self._collect_startup_items()
             if startup_files or startup_folders:
                 open_items_started = time.perf_counter()

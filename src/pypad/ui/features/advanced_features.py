@@ -632,15 +632,33 @@ class PluginAPI:
     def _resolve_menu_path(self, menu_path: str):
         parts = [p for p in (menu_path or "Plugins").split("/") if p.strip()]
         root_name = parts[0] if parts else "Plugins"
-        menu = getattr(self.window, "plugins_menu", None)
-        if menu is None:
-            menu = self.window.menuBar().addMenu("&Plugins")
-            self.window.plugins_menu = menu
-        if root_name.lower() != "plugins":
-            menu = menu.addMenu(root_name)
+        menu = self._resolve_top_level_menu(root_name)
         for part in parts[1:]:
             menu = menu.addMenu(part)
         return menu
+
+    def _resolve_top_level_menu(self, root_name: str):
+        normalized = str(root_name or "Plugins").strip() or "Plugins"
+        normalized_clean = normalized.replace("&", "").strip().lower()
+        menu_bar = self.window.menuBar() if hasattr(self.window, "menuBar") else None
+        if menu_bar is not None:
+            for action in menu_bar.actions():
+                try:
+                    candidate = action.menu()
+                except Exception:
+                    candidate = None
+                if candidate is None:
+                    continue
+                title = str(candidate.title() or "").replace("&", "").strip().lower()
+                if title == normalized_clean:
+                    return candidate
+        if normalized_clean == "plugins":
+            menu = getattr(self.window, "plugins_menu", None)
+            if menu is None:
+                menu = self.window.menuBar().addMenu("&Plugins")
+                self.window.plugins_menu = menu
+            return menu
+        return self.window.menuBar().addMenu(normalized)
 
 
 class PluginHost:
@@ -1334,9 +1352,16 @@ class PluginHost:
                     "repo": str(row.get("repo", "") or "").strip(),
                     "source": source,
                     "homepage": str(row.get("homepage", "") or "").strip(),
+                    "changelog": self._catalog_changelog_text(row.get("changelog", "")),
                 }
             )
         return out
+
+    @staticmethod
+    def _catalog_changelog_text(value: Any) -> str:
+        if isinstance(value, list):
+            return "\n".join(f"- {str(item).strip()}" for item in value if str(item).strip())
+        return str(value or "").strip()
 
     @staticmethod
     def _decode_text_bytes_with_fallback(payload: bytes) -> str:
@@ -2941,6 +2966,9 @@ class OnlinePluginsDialog(QDialog):
             f"Source: {row.get('source', '') or '-'}",
             f"Homepage: {row.get('homepage', '') or '-'}",
         ]
+        changelog = str(row.get("changelog", "") or "").strip()
+        if changelog:
+            lines.extend(["", "Changelog:", changelog])
         self.details.setPlainText("\n".join(lines))
 
     def _install_selected(self) -> None:

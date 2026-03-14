@@ -1,4 +1,4 @@
-﻿{
+{
   "id": "plugin_online_example",
   "name": "Online Example Plugin",
   "author": "ne0gl1tch20",
@@ -9,5 +9,8 @@
   "max_app_version": "",
   "update_url": "",
   "homepage": "https://github.com/ne0gl1tch20/pypad",
+  "changelog": [
+    "Retained as the minimal online-install example plugin."
+  ],
   "permissions": ["menu"]
 }

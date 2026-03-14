@@ -507,14 +507,14 @@ class FileOpsMixin:
         tab = self.active_tab()
         if tab is None:
             return False
-        if bool(getattr(tab, "quiz_mode_enabled", False)):
-            self.show_status_message("Saving is disabled during quiz mode.", 2500)
+        if bool(getattr(tab, "quiz_mode_enabled", False)) or bool(getattr(tab, "typing_test_mode_enabled", False)):
+            self.show_status_message("Saving is disabled during active play mode.", 2500)
             return False
         return self.file_save_tab(tab)
 
     def file_save_tab(self, tab: EditorTab) -> bool:
-        if bool(getattr(tab, "quiz_mode_enabled", False)):
-            self.show_status_message("Saving is disabled during quiz mode.", 2500)
+        if bool(getattr(tab, "quiz_mode_enabled", False)) or bool(getattr(tab, "typing_test_mode_enabled", False)):
+            self.show_status_message("Saving is disabled during active play mode.", 2500)
             return False
         if getattr(tab, "partial_large_preview", False):
             QMessageBox.information(
@@ -639,8 +639,8 @@ class FileOpsMixin:
         return self.file_save_as_tab(tab)
 
     def file_save_as_tab(self, tab: EditorTab) -> bool:
-        if bool(getattr(tab, "quiz_mode_enabled", False)):
-            self.show_status_message("Save As is disabled during quiz mode.", 2500)
+        if bool(getattr(tab, "quiz_mode_enabled", False)) or bool(getattr(tab, "typing_test_mode_enabled", False)):
+            self.show_status_message("Save As is disabled during active play mode.", 2500)
             return False
         was_unsaved = tab.current_file is None
         previous_favorite = tab.favorite

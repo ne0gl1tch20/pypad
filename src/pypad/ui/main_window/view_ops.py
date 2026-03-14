@@ -105,6 +105,39 @@ from pypad.ui.document.document_review import (
 
 
 class ViewOpsMixin:
+    def _update_status_bar_cursor_only(self) -> None:
+        tab = self.active_tab()
+        if tab is None:
+            self.update_status_bar()
+            return
+        line, column = tab.text_edit.cursor_position()
+        line += 1
+        column += 1
+        lang_code = getattr(self, "_ui_language_code", "en")
+        ln_label = self._translate_text("Ln", lang_code)
+        col_label = self._translate_text("Col", lang_code)
+        self.position_label.setText(f"{ln_label} {line}, {col_label} {column}")
+        if hasattr(self, "status_panel_position_label"):
+            self.status_panel_position_label.setText(f"{ln_label} {line}, {col_label} {column}")
+        if hasattr(self, "ruler_label"):
+            show_ruler = bool(
+                self.settings.get("status_show_ruler", True)
+                and getattr(self, "_page_layout_view_enabled", False)
+                and self.settings.get("page_layout_show_ruler", True)
+            )
+            self.ruler_label.setVisible(show_ruler)
+            if show_ruler:
+                self.ruler_label.setText(build_ruler_text(column, width=100))
+        if hasattr(self, "status_panel_ruler_label"):
+            show_ruler = bool(
+                self.settings.get("status_show_ruler", True)
+                and getattr(self, "_page_layout_view_enabled", False)
+                and self.settings.get("page_layout_show_ruler", True)
+            )
+            self.status_panel_ruler_label.setVisible(show_ruler)
+            if show_ruler:
+                self.status_panel_ruler_label.setText(build_ruler_text(column, width=100))
+
     def _rebalance_markdown_preview_dock(self) -> None:
         dock = getattr(self, "markdown_preview_dock", None)
         editor_dock = getattr(self, "editor_dock", None)
@@ -1649,6 +1682,8 @@ class ViewOpsMixin:
             except Exception:
                 pass
         source_markdown = self.text_edit.get_text()
+        if hasattr(self, "log_event"):
+            self.log_event("Debug", f"Markdown preview refresh len={len(source_markdown)}")
         use_mathjax = bool(self.settings.get("markdown_math_preview_enabled", False))
         supports_mathjax = bool(
             hasattr(self.markdown_preview, "supports_mathjax")

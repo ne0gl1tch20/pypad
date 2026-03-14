@@ -1,20 +1,20 @@
 ﻿<?xml version="1.0" encoding="UTF-8"?>
 <updates>
   <item>
-    <title>PyPad 1.8.0 Released</title>
-    <version>1.8.0</version>
-    <pubDate>2026-03-13</pubDate>
+    <title>PyPad 1.8.1 Released</title>
+    <version>1.8.1</version>
+    <pubDate>2026-03-14</pubDate>
     <description>
-      - Important: PyPad 1.8.0 is now officially released.
-      - Added a visible gamification shell with status widgets, momentum banner, and reward toasts.
-      - Expanded the Productivity Hub with daily briefing, session review, milestones, secret trails, routines, and routine history.
-      - Companion guidance now routes users into practical next actions like focus sprint, workspace sweep, and planning loop.
-      - Gamification Dashboard now shows seasonal events, secret trails, and tracked productivity routine usage.
+      - Important: PyPad 1.8.1 improves startup/recovery behavior and editor responsiveness.
+      - Typing Speed Test tabs are now excluded from autosave/crash recovery state.
+      - Startup recovery no longer leaks a phantom or premature main window behind dialogs.
+      - Full-document status stats are preserved while heavy refresh work is deferred off the keystroke path.
+      - Play actions now include dedicated SVG icons and richer debug logging covers startup, recovery, and editor refresh flow.
       - Detailed changelog: CHANGELOG.md
     </description>
     <sha256>0000000000000000000000000000000000000000000000000000000000000000</sha256>
     <enclosure
-      url="https://github.com/ne0gl1tch20/pypad/releases/download/1.8.0/PyPad-Setup-1.8.0.exe"
+      url="https://github.com/ne0gl1tch20/pypad/releases/download/1.8.1/PyPad-Setup-1.8.1.exe"
       type="application/octet-stream" />
   </item>
 </updates>

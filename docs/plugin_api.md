@@ -34,6 +34,7 @@ Optional compatibility/update fields in `plugin.json`:
 - `max_app_version`: maximum app version supported.
 - `update_url`: plugin update metadata endpoint.
 - `homepage`: plugin homepage/project URL.
+- `changelog`: optional plugin changelog text or summary list for manager/catalog display.
 - `depends_on`: plugin ids that must be enabled/loadable first.
 - `provides_services`: service names this plugin offers.
 - `requires_services`: required service refs (`service` or `plugin_id:service`).
@@ -137,6 +138,12 @@ Actions/menus/UI:
 - `add_toolbar_action(toolbar_name, label, callback, shortcut=None)` (`toolbar` or `ui`)
 - `add_panel(title, widget, area=Qt.RightDockWidgetArea)` (`panel` or `ui`)
 
+`add_menu_action(...)` now accepts real top-level menu roots when they exist, not just `Plugins/...`.
+Examples:
+- `Help/My Plugin`
+- `Tools/My Plugin`
+- `Plugins/My Plugin`
+
 AI and network:
 
 - `ask_ai(prompt)` (`ai`)
@@ -187,6 +194,7 @@ class Plugin:
 
 | Example Plugin | Demonstrates |
 | --- | --- |
+| `plugin_example_pack` | Consolidated online example pack: top-level menu injection, Help-menu exposure, main toolbar/topbar actions, dock panel, timers, hooks, and file creation |
 | `example_word_tools` | `file` + `ai` flows, `add_menu_action`, `add_toolbar_action`, `add_panel`, timers, basic text transforms |
 | `example_hello_network` | `network_allowed`, `show_status`, persistent counters via `plugin_state_get/set`, action discovery with `list_actions` |
 | `example_workspace_inspector` | Workspace index APIs (`refresh_workspace_index`, `workspace_index_status`), panel UI, plugin state persistence |
@@ -210,3 +218,4 @@ class Plugin:
 | `example_workspace_file_sampler` | Workspace sampling/report generation from `workspace_files` into `file_new` output |
 | `example_save_snapshot_trail` | Persistent save event journaling with `on_after_save` hook and report rendering |
 | `example_action_searcher` | Action discovery/filtering and invocation patterns with `list_actions` + `trigger_action` |
+| `plugin_online_example` | Minimal online-install sample that adds one plugin menu action after download |

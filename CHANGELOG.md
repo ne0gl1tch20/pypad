@@ -4,6 +4,31 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, and this project uses Semantic Versioning.
 
+## [1.8.1] - 2026-03-14
+
+### Added
+- New dedicated Play action SVG assets for quiz and typing-speed flows.
+- Online Plugins catalog entries can now expose changelog notes in the browser/install UI.
+- New `Plugin Example Pack` online plugin that demonstrates top-level menus, Help-menu injection, topbar actions, dock panels, timers, hooks, and file creation.
+- More verbose debug logging across:
+  - startup visibility gating
+  - crash/autosave recovery decisions
+  - deferred editor refresh scheduling
+  - typing-speed challenge lifecycle events
+
+### Changed
+- App/version metadata has been aligned to the `1.8.1` release line across release files, summaries, and update feed metadata.
+- Quiz flows now live under the `Play` menu alongside the typing-speed challenge.
+- Online example catalog entries have been consolidated into `Plugin Example Pack`, while `plugin_online_example` remains as the minimal install sample.
+- Plugin menu APIs can now target existing top-level menus such as `Help`, `Tools`, and `Play` instead of being forced under `Plugins`.
+- Full-document status stats remain enabled, but the expensive refresh path is now deferred so typing is more responsive.
+
+### Fixed
+- Startup recovery no longer leaks a visible main window behind recovery prompts.
+- Recovery dialogs no longer self-promote into a phantom top-level shell during startup.
+- Typing Speed Test tabs no longer enter autosave drafts or crash recovery state.
+- Per-keystroke editor lag is reduced by moving heavy status/preview/gamification refresh work off the immediate text-change path.
+
 ## [1.8.0] - 2026-03-13
 
 - PyPad is finally being released!!

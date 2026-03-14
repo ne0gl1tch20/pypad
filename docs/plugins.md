@@ -137,5 +137,7 @@ For full method and hook references, see `docs/plugin_api.md`.
 
 - Catalog URL setting: `plugin_online_catalog_url` (defaults to the PyPad GitHub `online_plugins/catalog.json`).
 - Catalog entries can point to plugin source folders in GitHub (raw `plugin.json` + `plugin.py`).
-- Catalog/manifest metadata supports `author` and `description` for richer plugin identity.
-- Example online plugin in this repo: `online_plugins/plugin_online_example/`.
+- Catalog/manifest metadata supports `author`, `description`, and `changelog` for richer plugin identity and update notes.
+- Online catalog example pack in this repo: `online_plugins/plugin_example_pack/`.
+- Minimal online plugin example retained in this repo: `online_plugins/plugin_online_example/`.
+- Plugin menu actions can now target real top-level menus such as `Help/...`, `Tools/...`, or `Play/...`, not only `Plugins/...`.

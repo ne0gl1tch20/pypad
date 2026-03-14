@@ -5,6 +5,7 @@ import importlib.metadata as importlib_metadata
 import base64
 import hashlib
 import json
+import math
 import os
 import random
 import re
@@ -407,6 +408,505 @@ class MiscMixin(
             self.move(int(round(self._pos_x)), int(round(self._pos_y)))
 
         def closeEvent(self, event) -> None:  # type: ignore[override]
+            self._timer.stop()
+            super().closeEvent(event)
+
+    class _EasterEggBallGame(QWidget):
+        def __init__(self, host: QWidget, mode: str = "score") -> None:
+            super().__init__(host)
+            self._host = host
+            self._state = self._host._easter_egg_ball_state()
+            self._mode = "freeplay" if mode == "freeplay" else "score"
+            self._state["last_mode"] = self._mode
+            self._diameter = 30
+            self._arena_margin = 12
+            self._pos_x = 96.0
+            self._pos_y = 96.0
+            self._vel_x = 4.0
+            self._vel_y = -5.0
+            self._gravity = 0.42
+            self._bounce = 0.86
+            self._friction = 0.992
+            self._dragging = False
+            self._drag_offset = QPoint()
+            self._paused = False
+            self._game_over = False
+            self._score = 0
+            self._combo = 0
+            self._best_score = int(self._state.get("best_score", 0) or 0)
+            self._best_combo = int(self._state.get("best_combo", 0) or 0)
+            self._streak = 0
+            self._damage_count = 0
+            self._lives = 3
+            self._start_ts = time.time()
+            self._last_score_ts = 0.0
+            self._next_pickup_ts = self._start_ts + 6.0
+            self._next_event_ts = self._start_ts + 12.0
+            self._pickup: dict[str, Any] | None = None
+            self._random_event: dict[str, Any] | None = None
+            self._power_until = {"slow": 0.0, "shield": 0.0, "double": 0.0, "magnet": 0.0}
+            self._trail: list[tuple[float, float, float]] = []
+            self._obstacles: list[dict[str, float]] = []
+            self._leaderboard = list(self._state.get("leaderboard", [])) if isinstance(self._state.get("leaderboard", []), list) else []
+            self._spark_text = ""
+            self._spark_until = 0.0
+            self._last_sound_ts = 0.0
+            self._last_hurt_ts = 0.0
+            self._invulnerable_until = 0.0
+            self._last_persist_ts = 0.0
+            self._message_score = int(self._state.get("message_score", self._host.settings.get("easter_egg_ball_message_score", 42)) or 42)
+            self._message_text = str(self._state.get("message_text", self._host.settings.get("easter_egg_ball_message_text", "You found the bug budget. Please spend responsibly.")) or "You found the bug budget. Please spend responsibly.")
+            self._message_shown = False
+            self._base_ball_color = QColor(self._state.get("equipped_skin", "#ff8a00") or "#ff8a00")
+            self._ball_color = QColor(self._base_ball_color)
+            self._background_name = str(self._state.get("equipped_background", "Midnight Grid") or "Midnight Grid")
+            self._trail_name = str(self._state.get("equipped_trail", "Classic") or "Classic")
+            self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
+            self.setCursor(Qt.CursorShape.OpenHandCursor)
+            self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+            self._reset_run(self._mode)
+            self._timer = QTimer(self)
+            self._timer.setTimerType(Qt.TimerType.PreciseTimer)
+            self._timer.timeout.connect(self._tick)
+            self._timer.start(16)
+
+        def _bounds_rect(self) -> QRect:
+            return QRect(self._arena_margin, 62, max(180, self.width() - self._arena_margin * 2), max(140, self.height() - 120))
+
+        def _bounded_pos(self, x: float, y: float) -> tuple[float, float]:
+            bounds = self._bounds_rect()
+            min_x = float(bounds.left())
+            min_y = float(bounds.top())
+            max_x = float(max(bounds.left(), bounds.right() - self._diameter + 1))
+            max_y = float(max(bounds.top(), bounds.bottom() - self._diameter + 1))
+            return (
+                max(min_x, min(float(x), max_x)),
+                max(min_y, min(float(y), max_y)),
+            )
+
+        def _set_float_pos(self, x: float, y: float) -> None:
+            self._pos_x, self._pos_y = self._bounded_pos(x, y)
+
+        def _resolve_obstacle_collision(self, obstacle: dict[str, float]) -> None:
+            ball_left = self._pos_x
+            ball_top = self._pos_y
+            ball_right = ball_left + self._diameter
+            ball_bottom = ball_top + self._diameter
+            obstacle_left = float(obstacle["x"])
+            obstacle_top = float(obstacle["y"])
+            obstacle_right = obstacle_left + float(obstacle["w"])
+            obstacle_bottom = obstacle_top + float(obstacle["h"])
+
+            overlap_left = ball_right - obstacle_left
+            overlap_right = obstacle_right - ball_left
+            overlap_top = ball_bottom - obstacle_top
+            overlap_bottom = obstacle_bottom - ball_top
+            min_overlap = min(overlap_left, overlap_right, overlap_top, overlap_bottom)
+
+            if min_overlap == overlap_left:
+                self._set_float_pos(obstacle_left - self._diameter, self._pos_y)
+                self._vel_x = -abs(self._vel_x) * self._bounce
+            elif min_overlap == overlap_right:
+                self._set_float_pos(obstacle_right, self._pos_y)
+                self._vel_x = abs(self._vel_x) * self._bounce
+            elif min_overlap == overlap_top:
+                self._set_float_pos(self._pos_x, obstacle_top - self._diameter)
+                self._vel_y = -abs(self._vel_y) * self._bounce
+            else:
+                self._set_float_pos(self._pos_x, obstacle_bottom)
+                self._vel_y = abs(self._vel_y) * self._bounce
+
+        def _spawn_obstacles(self, count: int) -> None:
+            bounds = self._bounds_rect()
+            self._obstacles = []
+            for idx in range(max(1, count)):
+                width = 18.0 if idx % 2 == 0 else 22.0
+                height = 70.0 + float((idx % 3) * 18)
+                self._obstacles.append(
+                    {
+                        "x": float(bounds.left() + 84 + idx * 88),
+                        "y": float(bounds.top() + 14 + (idx * 37) % max(40, bounds.height() - int(height) - 20)),
+                        "w": width,
+                        "h": height,
+                        "vx": 1.1 + idx * 0.35,
+                        "vy": 0.9 + (idx % 2) * 0.45,
+                    }
+                )
+
+        def _reset_run(self, mode: str) -> None:
+            self._mode = "freeplay" if mode == "freeplay" else "score"
+            self._state["last_mode"] = self._mode
+            self._pos_x = 96.0
+            self._pos_y = 96.0
+            self._vel_x = 4.0
+            self._vel_y = -5.0
+            self._score = 0
+            self._combo = 0
+            self._streak = 0
+            self._damage_count = 0
+            self._lives = 3
+            self._game_over = False
+            self._paused = False
+            self._start_ts = time.time()
+            self._last_score_ts = 0.0
+            self._next_pickup_ts = self._start_ts + random.uniform(5.0, 8.0)
+            self._next_event_ts = self._start_ts + random.uniform(10.0, 16.0)
+            self._pickup = None
+            self._random_event = None
+            self._power_until = {"slow": 0.0, "shield": 0.0, "double": 0.0, "magnet": 0.0}
+            self._trail.clear()
+            self._last_hurt_ts = 0.0
+            self._invulnerable_until = 0.0
+            self._message_shown = False
+            self._show_spark("Freeplay" if self._mode == "freeplay" else "Score Run")
+            self._spawn_obstacles(1)
+            self._persist_state_if_needed(time.time(), force=True)
+
+        def _show_spark(self, text: str) -> None:
+            self._spark_text = str(text or "").strip()
+            self._spark_until = time.time() + 1.6
+
+        def _play_sound(self, cue: str) -> None:
+            if not self._host.settings.get("sound_enabled", True):
+                return
+            now = time.time()
+            cooldown = 0.05 if cue == "bounce" else 0.18
+            if now - self._last_sound_ts < cooldown:
+                return
+            self._last_sound_ts = now
+            QApplication.beep()
+            if cue == "pickup":
+                QTimer.singleShot(70, QApplication.beep)
+            elif cue == "game_over":
+                QTimer.singleShot(90, QApplication.beep)
+                QTimer.singleShot(180, QApplication.beep)
+
+        def _persist_state(self) -> None:
+            self._state["best_score"] = max(int(self._state.get("best_score", 0) or 0), self._best_score)
+            self._state["best_combo"] = max(int(self._state.get("best_combo", 0) or 0), self._best_combo)
+            self._state["leaderboard"] = self._leaderboard
+            self._host.settings["gamification_state"] = self._host.gamification.state()
+
+        def _persist_state_if_needed(self, now: float, *, force: bool = False) -> None:
+            if not force and now - self._last_persist_ts < 0.35:
+                return
+            self._last_persist_ts = now
+            self._persist_state()
+
+        def _power_active(self, kind: str) -> bool:
+            return float(self._power_until.get(kind, 0.0)) > time.time()
+
+        def _event_active(self, kind: str) -> bool:
+            return bool(self._random_event and self._random_event.get("kind") == kind and float(self._random_event.get("until", 0.0)) > time.time())
+
+        def _unlock_value(self, key: str, value: str, should_unlock: bool) -> None:
+            if not should_unlock:
+                return
+            current = self._state.get(key, [])
+            current = list(current) if isinstance(current, list) else []
+            if value in current:
+                return
+            current.append(value)
+            self._state[key] = sorted({str(item) for item in current if str(item).strip()})
+            self._show_spark(f"Unlocked: {value}")
+            self._persist_state()
+
+        def _tick(self) -> None:
+            if self._paused:
+                return
+            if self._dragging:
+                self._trail = [(x, y, alpha - 10.0) for x, y, alpha in self._trail[-10:] if alpha > 8]
+                self.update()
+                return
+            now = time.time()
+            bounds = self._bounds_rect()
+            min_x = float(bounds.left())
+            min_y = float(bounds.top())
+            max_x = float(max(bounds.left(), bounds.right() - self._diameter + 1))
+            max_y = float(max(bounds.top(), bounds.bottom() - self._diameter + 1))
+            difficulty = 1.0 if self._mode == "freeplay" else min(2.8, 1.0 + (now - self._start_ts) / 28.0)
+            gravity = self._gravity * (0.5 if self._event_active("low_gravity") else 1.0)
+            if self._power_active("slow"):
+                difficulty *= 0.7
+            self._vel_y += gravity * difficulty
+            self._vel_x *= self._friction * (0.998 if self._event_active("chaos") else 1.0)
+            next_x = self._pos_x + self._vel_x
+            next_y = self._pos_y + self._vel_y
+            bounced = False
+            if next_x <= min_x:
+                next_x = min_x
+                self._vel_x = abs(self._vel_x) * self._bounce
+                bounced = True
+            elif next_x >= max_x:
+                next_x = max_x
+                self._vel_x = -abs(self._vel_x) * self._bounce
+                bounced = True
+            if next_y <= min_y:
+                next_y = min_y
+                self._vel_y = abs(self._vel_y) * self._bounce
+                bounced = True
+            elif next_y >= max_y:
+                next_y = max_y
+                self._vel_y = -abs(self._vel_y) * self._bounce
+                self._vel_x *= 0.985
+                if abs(self._vel_y) < 1.2:
+                    self._vel_y = -3.8
+                bounced = True
+            self._set_float_pos(next_x, next_y)
+            if bounced:
+                self._trail.append((self._pos_x, self._pos_y, 120.0))
+                self._streak += 1
+                self._play_sound("bounce")
+                if self._mode != "freeplay" and not self._game_over:
+                    self._combo = self._combo + 1 if now - self._last_score_ts <= 1.5 else 1
+                    self._last_score_ts = now
+                    gain = min(12, 1 + self._combo // 3) * (2 if self._power_active("double") else 1)
+                    self._score += gain
+                    self._best_score = max(self._best_score, self._score)
+                    self._best_combo = max(self._best_combo, self._combo)
+                    if self._score == self._message_score and not self._message_shown:
+                        self._message_shown = True
+                        self._show_spark(self._message_text)
+                    elif self._combo and self._combo % 5 == 0:
+                        self._show_spark(f"Combo x{self._combo}")
+                    self._persist_state_if_needed(now)
+            target_count = 1 if self._mode == "freeplay" else min(4, 1 + int((now - self._start_ts) // 18))
+            if len(self._obstacles) != target_count:
+                self._spawn_obstacles(target_count)
+            for obstacle in self._obstacles:
+                obstacle["x"] += obstacle["vx"] * difficulty
+                obstacle["y"] += obstacle["vy"] * difficulty
+                if obstacle["x"] <= bounds.left() or obstacle["x"] + obstacle["w"] >= bounds.right():
+                    obstacle["vx"] *= -1.0
+                if obstacle["y"] <= bounds.top() or obstacle["y"] + obstacle["h"] >= bounds.bottom():
+                    obstacle["vy"] *= -1.0
+            if self._pickup is None and now >= self._next_pickup_ts:
+                self._pickup = {
+                    "kind": random.choice(["slow", "shield", "double", "magnet"]),
+                    "x": float(random.randint(bounds.left() + 30, bounds.right() - 40)),
+                    "y": float(random.randint(bounds.top() + 24, bounds.bottom() - 40)),
+                    "until": now + 10.0,
+                }
+                self._next_pickup_ts = now + random.uniform(8.0, 13.0)
+            if self._pickup is not None:
+                if float(self._pickup.get("until", 0.0)) <= now:
+                    self._pickup = None
+                elif self._power_active("magnet"):
+                    bx = self._pos_x + self._diameter / 2
+                    by = self._pos_y + self._diameter / 2
+                    self._pickup["x"] += (bx - float(self._pickup["x"])) * 0.08
+                    self._pickup["y"] += (by - float(self._pickup["y"])) * 0.08
+            if self._random_event is not None and float(self._random_event.get("until", 0.0)) <= now:
+                self._random_event = None
+            if self._mode != "freeplay" and self._random_event is None and now >= self._next_event_ts:
+                kind = random.choice(["chaos", "low_gravity", "reverse"])
+                self._random_event = {"kind": kind, "label": {"chaos": "Chaos Mode", "low_gravity": "Low Gravity", "reverse": "Reverse Drag"}[kind], "until": now + 5.0}
+                self._next_event_ts = now + random.uniform(15.0, 24.0)
+                self._show_spark(str(self._random_event["label"]))
+                self._play_sound("pickup")
+            ball_rect = QRect(int(self._pos_x), int(self._pos_y), self._diameter, self._diameter)
+            for obstacle in self._obstacles:
+                if ball_rect.intersects(QRect(int(obstacle["x"]), int(obstacle["y"]), int(obstacle["w"]), int(obstacle["h"]))):
+                    self._resolve_obstacle_collision(obstacle)
+                    if self._power_active("shield"):
+                        self._power_until["shield"] = 0.0
+                        self._show_spark("Shield pop")
+                        self._invulnerable_until = now + 0.25
+                    else:
+                        if now < self._invulnerable_until or now - self._last_hurt_ts < 0.35:
+                            break
+                        self._last_hurt_ts = now
+                        self._invulnerable_until = now + 0.55
+                        self._damage_count += 1
+                        self._lives -= 1
+                        self._combo = 0
+                        self._streak = 0
+                        self._show_spark("Ouch")
+                    self._play_sound("hurt")
+                    if self._mode != "freeplay" and self._lives <= 0:
+                        self._game_over = True
+                        self._leaderboard.append({"score": int(self._score), "ts": datetime.now().isoformat(timespec="seconds")})
+                        self._leaderboard.sort(key=lambda row: int(row.get("score", 0)), reverse=True)
+                        self._leaderboard = self._leaderboard[:10]
+                        self._show_spark("Run over")
+                        self._play_sound("game_over")
+                        self._persist_state_if_needed(now, force=True)
+                    break
+            if self._pickup is not None and ball_rect.intersects(QRect(int(self._pickup["x"]), int(self._pickup["y"]), 18, 18)):
+                kind = str(self._pickup.get("kind", "slow"))
+                self._power_until[kind] = now + 6.0
+                self._pickup = None
+                self._show_spark(kind.title())
+                self._play_sound("pickup")
+            if now - self._start_ts >= 60.0 and not self._state.get("achievement_survive_60"):
+                self._state["achievement_survive_60"] = True
+                self._host._unlock_easter_egg("Easter Egg Ball: Survive 60s", "Ball marathon complete.")
+            if self._score >= 100 and not self._state.get("achievement_score_100"):
+                self._state["achievement_score_100"] = True
+                self._host._unlock_easter_egg("Easter Egg Ball: Hit 100", "Three digits on the board.")
+            if self._score >= 60 and self._damage_count == 0 and not self._state.get("achievement_no_damage"):
+                self._state["achievement_no_damage"] = True
+                self._host._unlock_easter_egg("Easter Egg Ball: No Damage Run", "Clean run energy detected.")
+            self._unlock_value("skins_unlocked", "#56ccf2", self._score >= 30)
+            self._unlock_value("trails_unlocked", "Comet", self._score >= 30)
+            self._unlock_value("backgrounds_unlocked", "Sunset Circuit", self._score >= 80)
+            self._unlock_value("trails_unlocked", "Glitch", self._best_combo >= 10)
+            if self._score == 42 and self._combo >= 4 and not self._state.get("rare_mode_unlocked"):
+                self._state["rare_mode_unlocked"] = True
+                self._state["equipped_background"] = "Void Pulse"
+                self._state["equipped_trail"] = "Glitch"
+                self._background_name = "Void Pulse"
+                self._trail_name = "Glitch"
+                self._show_spark("Rare visual mode")
+                self._persist_state_if_needed(now, force=True)
+            self._unlock_value("backgrounds_unlocked", "Void Pulse", bool(self._state.get("rare_mode_unlocked")))
+            self._ball_color = QColor("#ff67f7") if self._state.get("rare_mode_unlocked") and int(now * 2) % 2 == 0 else QColor(self._base_ball_color)
+            self._trail = [(x, y, alpha - 10.0) for x, y, alpha in self._trail[-10:] if alpha > 8]
+            self.update()
+
+        def paintEvent(self, event) -> None:  # type: ignore[override]
+            painter = QPainter(self)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            rect = self.rect()
+            top = QColor("#08111d")
+            bottom = QColor("#101f31")
+            if self._background_name == "Sunset Circuit":
+                top = QColor("#2f1107")
+                bottom = QColor("#5b2b0b")
+            elif self._background_name == "Void Pulse":
+                top = QColor("#160b23")
+                bottom = QColor("#09030f")
+            painter.fillRect(rect, top)
+            painter.fillRect(rect.adjusted(0, rect.height() // 3, 0, 0), bottom)
+            painter.setPen(QPen(QColor(255, 255, 255, 18), 1))
+            for x in range(0, rect.width(), 24):
+                painter.drawLine(x, 58, x, rect.height() - 16)
+            for y in range(58, rect.height(), 24):
+                painter.drawLine(0, y, rect.width(), y)
+            for x, y, alpha in self._trail:
+                color = QColor("#8be9fd" if self._trail_name == "Comet" else "#f777ff" if self._trail_name == "Glitch" else self._ball_color.name())
+                color.setAlpha(int(alpha))
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(color)
+                painter.drawEllipse(int(x), int(y), self._diameter, self._diameter)
+            for obstacle in self._obstacles:
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(QColor(255, 255, 255, 32))
+                painter.drawRoundedRect(int(obstacle["x"]), int(obstacle["y"]), int(obstacle["w"]), int(obstacle["h"]), 8, 8)
+            if self._pickup is not None:
+                colors = {"slow": "#79c6ff", "shield": "#67f0c1", "double": "#ffd166", "magnet": "#ff88cc"}
+                painter.setBrush(QColor(colors.get(str(self._pickup.get("kind")), "#ffffff")))
+                painter.drawEllipse(int(self._pickup["x"]), int(self._pickup["y"]), 18, 18)
+            painter.setBrush(self._ball_color)
+            painter.drawEllipse(int(self._pos_x), int(self._pos_y), self._diameter, self._diameter)
+            painter.setBrush(QColor(255, 255, 255, 85))
+            painter.drawEllipse(int(self._pos_x) + 7, int(self._pos_y) + 5, 10, 8)
+            if self._power_active("shield"):
+                painter.setPen(QPen(QColor("#8ae6ff"), 3))
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                painter.drawEllipse(int(self._pos_x) - 4, int(self._pos_y) - 4, self._diameter + 8, self._diameter + 8)
+            painter.setPen(QColor("#ecf4ff"))
+            painter.drawText(QRect(14, 12, self.width() - 28, 22), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, f"Mode: {'Freeplay' if self._mode == 'freeplay' else 'Score'}   Score: {self._score}   Best: {self._best_score}   Combo: x{max(1, self._combo)}   Streak: {self._streak}")
+            if self._mode != "freeplay":
+                painter.setPen(QColor("#ffd2d2"))
+                painter.drawText(QRect(14, 34, 220, 18), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, f"Lives: {self._lives}")
+            painter.setPen(QColor(220, 230, 245, 180))
+            painter.drawText(QRect(14, self.height() - 30, self.width() - 28, 20), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, "Drag to throw | Right click: skin | Space: pause | R: restart | M: switch mode | Esc: close")
+            if self._random_event is not None and float(self._random_event.get("until", 0.0)) > time.time():
+                painter.setPen(QColor("#9bf6ff"))
+                painter.drawText(QRect(self.width() - 220, 12, 206, 20), Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, f"Event: {self._random_event.get('label', 'Chaos')}")
+            if self._spark_until > time.time() and self._spark_text:
+                painter.setPen(QColor("#fff0a8"))
+                painter.drawText(QRect(0, 0, self.width(), self.height()), Qt.AlignmentFlag.AlignCenter, self._spark_text)
+            if self._paused:
+                painter.setPen(QColor("#ffffff"))
+                painter.drawText(QRect(0, 0, self.width(), self.height()), Qt.AlignmentFlag.AlignCenter, "Paused")
+            if self._game_over:
+                rows = [str(item.get("score", 0)) for item in self._leaderboard[:5] if isinstance(item, dict)]
+                painter.setPen(QColor("#ffffff"))
+                painter.drawText(QRect(0, 0, self.width(), self.height()), Qt.AlignmentFlag.AlignCenter, "Game Over\nPress R to retry\nTop: " + (", ".join(rows) if rows else "none yet"))
+            painter.end()
+            super().paintEvent(event)
+
+        def mousePressEvent(self, event) -> None:  # type: ignore[override]
+            if event.button() == Qt.MouseButton.LeftButton:
+                center = QPoint(int(self._pos_x + self._diameter / 2), int(self._pos_y + self._diameter / 2))
+                if math.hypot(event.position().x() - center.x(), event.position().y() - center.y()) <= self._diameter:
+                    self._dragging = True
+                    self._drag_offset = QPoint(int(event.position().x() - self._pos_x), int(event.position().y() - self._pos_y))
+                    self.setCursor(Qt.CursorShape.ClosedHandCursor)
+                    event.accept()
+                    return
+            super().mousePressEvent(event)
+
+        def mouseMoveEvent(self, event) -> None:  # type: ignore[override]
+            if self._dragging:
+                target = event.position().toPoint() - self._drag_offset
+                if self._event_active("reverse"):
+                    target = QPoint(self.width() - self._diameter - target.x(), self.height() - self._diameter - target.y())
+                self._set_float_pos(target.x(), target.y())
+                event.accept()
+                return
+            super().mouseMoveEvent(event)
+
+        def mouseReleaseEvent(self, event) -> None:  # type: ignore[override]
+            if event.button() == Qt.MouseButton.LeftButton and self._dragging:
+                self._dragging = False
+                self.setCursor(Qt.CursorShape.OpenHandCursor)
+                center = self.rect().center()
+                ball_center = QPoint(int(self._pos_x + self._diameter / 2), int(self._pos_y + self._diameter / 2))
+                self._vel_x = -4.2 if ball_center.x() >= center.x() else 4.2
+                self._vel_y = -6.5 if ball_center.y() >= center.y() else -4.8
+                event.accept()
+                return
+            if event.button() == Qt.MouseButton.RightButton:
+                color = QColorDialog.getColor(self._base_ball_color, self, "Choose Ball Color")
+                if color.isValid():
+                    self._base_ball_color = QColor(color)
+                    self._ball_color = QColor(color)
+                    skins = self._state.get("skins_unlocked", [])
+                    skins = list(skins) if isinstance(skins, list) else []
+                    skins.append(color.name())
+                    self._state["skins_unlocked"] = sorted({str(item) for item in skins if str(item).strip()})
+                    self._state["equipped_skin"] = color.name()
+                    self._persist_state_if_needed(time.time(), force=True)
+                event.accept()
+                return
+            if event.button() == Qt.MouseButton.MiddleButton:
+                self._reset_run(self._mode)
+                event.accept()
+                return
+            super().mouseReleaseEvent(event)
+
+        def mouseDoubleClickEvent(self, event) -> None:  # type: ignore[override]
+            self._paused = not self._paused
+            self._show_spark("Paused" if self._paused else "Resume")
+            self.update()
+            super().mouseDoubleClickEvent(event)
+
+        def keyPressEvent(self, event) -> None:  # type: ignore[override]
+            if event.key() == Qt.Key.Key_Space:
+                self._paused = not self._paused
+                self._show_spark("Paused" if self._paused else "Resume")
+                self.update()
+                event.accept()
+                return
+            if event.key() == Qt.Key.Key_R:
+                self._reset_run(self._mode)
+                event.accept()
+                return
+            if event.key() == Qt.Key.Key_M:
+                self._reset_run("freeplay" if self._mode != "freeplay" else "score")
+                event.accept()
+                return
+            if event.key() == Qt.Key.Key_Escape:
+                self.close()
+                event.accept()
+                return
+            super().keyPressEvent(event)
+
+        def closeEvent(self, event) -> None:  # type: ignore[override]
+            self._persist_state_if_needed(time.time(), force=True)
             self._timer.stop()
             super().closeEvent(event)
 
@@ -936,6 +1436,319 @@ class MiscMixin(
         next_state = not active
         self.gamification.set_challenge_state("no_backspace", next_state, {"failed": False, "started_at": time.time()})
         self.show_status_message("No-backspace challenge started." if next_state else "No-backspace challenge stopped.", 2500)
+
+    @staticmethod
+    def _typing_test_type_here_marker() -> str:
+        return "Type here:"
+
+    @staticmethod
+    def _typing_test_default_words() -> list[str]:
+        return (
+            "code editor python window signal timer widget action keyboard plugin workspace markdown "
+            "cursor document file search replace sprint focus challenge speed accuracy result session "
+            "syntax status preview project custom dialog layout buffer render typing words practice"
+        ).split()
+
+    @staticmethod
+    def _typing_test_parse_words(raw: str) -> list[str]:
+        tokens = re.findall(r"[A-Za-z0-9][A-Za-z0-9'_-]*", str(raw or ""))
+        return [token for token in tokens if token.strip()]
+
+    def _typing_test_settings_payload(self) -> dict[str, Any]:
+        words = self._typing_test_parse_words(str(self.settings.get("typing_test_custom_words", "") or ""))
+        return {
+            "duration_sec": max(15, int(self.settings.get("typing_test_duration_sec", 60) or 60)),
+            "word_count": max(10, int(self.settings.get("typing_test_word_count", 35) or 35)),
+            "randomize_words": bool(self.settings.get("typing_test_randomize_words", True)),
+            "case_sensitive": bool(self.settings.get("typing_test_case_sensitive", False)),
+            "custom_words": words,
+        }
+
+    @classmethod
+    def _typing_test_build_prompt_words(cls, config: dict[str, Any]) -> list[str]:
+        custom_words = config.get("custom_words", [])
+        bank = [str(word).strip() for word in custom_words if str(word).strip()] if isinstance(custom_words, list) else []
+        if not bank:
+            bank = cls._typing_test_default_words()
+        count = max(10, int(config.get("word_count", 35) or 35))
+        if not bool(config.get("randomize_words", True)):
+            return [bank[idx % len(bank)] for idx in range(count)]
+        rng = random.Random()
+        return [rng.choice(bank) for _ in range(count)]
+
+    @classmethod
+    def _typing_test_build_document(cls, prompt_words: list[str], config: dict[str, Any]) -> str:
+        prompt = " ".join(str(word) for word in prompt_words if str(word).strip())
+        mode = "Random" if bool(config.get("randomize_words", True)) else "Sequence"
+        case_mode = "On" if bool(config.get("case_sensitive", False)) else "Off"
+        return (
+            "Typing Speed Test\n"
+            "=================\n\n"
+            f"Timer: {int(config.get('duration_sec', 60) or 60)}s\n"
+            f"Word Count: {len(prompt_words)}\n"
+            f"Randomize: {mode}\n"
+            f"Case Sensitive: {case_mode}\n\n"
+            "Prompt:\n"
+            f"{prompt}\n\n"
+            f"{cls._typing_test_type_here_marker()}\n"
+        )
+
+    @classmethod
+    def _typing_test_extract_typed_text(cls, text: str) -> str:
+        marker = cls._typing_test_type_here_marker()
+        source = str(text or "")
+        if marker not in source:
+            return ""
+        return source.split(marker, 1)[1].lstrip("\r\n")
+
+    @staticmethod
+    def _typing_test_word_token(word: str, *, case_sensitive: bool) -> str:
+        text = str(word or "").strip()
+        return text if case_sensitive else text.lower()
+
+    @classmethod
+    def _typing_test_score(cls, prompt_words: list[str], typed_text: str, *, elapsed_sec: float, case_sensitive: bool) -> dict[str, Any]:
+        typed_words = cls._typing_test_parse_words(typed_text)
+        expected_words = [str(word).strip() for word in prompt_words if str(word).strip()]
+        correct_words = 0
+        mistakes = 0
+        correct_chars = 0
+        for idx, typed_word in enumerate(typed_words):
+            if idx >= len(expected_words):
+                mistakes += 1
+                continue
+            expected = expected_words[idx]
+            if cls._typing_test_word_token(typed_word, case_sensitive=case_sensitive) == cls._typing_test_word_token(expected, case_sensitive=case_sensitive):
+                correct_words += 1
+                correct_chars += len(expected)
+            else:
+                mistakes += 1
+        elapsed_min = max(float(elapsed_sec), 1.0) / 60.0
+        gross_wpm = round((len(str(typed_text or "").strip()) / 5.0) / elapsed_min, 1)
+        net_wpm = round(max(0.0, (correct_chars / 5.0) / elapsed_min - (mistakes / elapsed_min)), 1)
+        accuracy = round((correct_words / max(1, len(typed_words))) * 100.0, 1) if typed_words else 100.0
+        progress = round((min(len(typed_words), len(expected_words)) / max(1, len(expected_words))) * 100.0, 1)
+        return {
+            "typed_words": len(typed_words),
+            "correct_words": correct_words,
+            "mistakes": mistakes,
+            "gross_wpm": gross_wpm,
+            "net_wpm": net_wpm,
+            "accuracy": accuracy,
+            "progress_pct": progress,
+            "elapsed_sec": round(float(elapsed_sec), 2),
+        }
+
+    def _typing_test_find_active_tab(self) -> EditorTab | None:
+        for index in range(self.tab_widget.count()):
+            tab = self.tab_widget.widget(index)
+            if isinstance(tab, EditorTab) and bool(getattr(tab, "typing_test_mode_enabled", False)) and not bool(
+                getattr(tab, "typing_test_finished", False)
+            ):
+                return tab
+        return None
+
+    def _typing_test_ensure_timer(self) -> None:
+        timer = getattr(self, "_typing_test_timer", None)
+        if isinstance(timer, QTimer):
+            return
+        self._typing_test_timer = QTimer(self)
+        self._typing_test_timer.setInterval(1000)
+        self._typing_test_timer.timeout.connect(self._tick_typing_speed_test)
+
+    def _refresh_typing_test_annotations(self, tab: EditorTab) -> None:
+        if tab is None or not bool(getattr(tab, "typing_test_mode_enabled", False)):
+            return
+        widget = getattr(tab.text_edit, "widget", None)
+        if widget is None or not hasattr(widget, "annotationSetText") or not hasattr(widget, "annotationClearAll"):
+            return
+        config = dict(getattr(tab, "typing_test_config", {}) or {})
+        started_at = getattr(tab, "typing_test_started_at", None)
+        elapsed = max(0.0, time.time() - float(started_at)) if started_at is not None else 0.0
+        stats = self._typing_test_score(
+            self._typing_test_parse_words(getattr(tab, "typing_test_source_text", "")),
+            self._typing_test_extract_typed_text(tab.text_edit.get_text()),
+            elapsed_sec=elapsed,
+            case_sensitive=bool(config.get("case_sensitive", False)),
+        )
+        remaining = max(0, int(config.get("duration_sec", 60) or 60) - int(elapsed))
+        summary = (
+            f"Time Left: {remaining}s | Net WPM: {stats['net_wpm']} | Gross WPM: {stats['gross_wpm']} | "
+            f"Accuracy: {stats['accuracy']}% | Correct: {stats['correct_words']} | Mistakes: {stats['mistakes']}"
+        )
+        debug_line = (
+            f"Debug | Started: {'yes' if started_at is not None else 'no'} | Elapsed: {stats['elapsed_sec']}s | "
+            f"Typed: {stats['typed_words']} | Prompt: {len(self._typing_test_parse_words(getattr(tab, 'typing_test_source_text', '')))} | "
+            f"CursorIdx: {tab.text_edit.cursor_index()}"
+        )
+        try:
+            widget.annotationClearAll()
+            widget.annotationSetText(0, summary)
+            widget.annotationSetText(1, debug_line)
+        except Exception:
+            pass
+
+    def _handle_typing_test_text_changed(self, tab: EditorTab) -> None:
+        if tab is None or not bool(getattr(tab, "typing_test_mode_enabled", False)) or bool(getattr(tab, "typing_test_finished", False)):
+            return
+        typed_text = self._typing_test_extract_typed_text(tab.text_edit.get_text())
+        if typed_text.strip() and getattr(tab, "typing_test_started_at", None) is None:
+            tab.typing_test_started_at = time.time()
+            self._typing_test_ensure_timer()
+            self._typing_test_timer.start()
+            self.log_event("Info", "Typing speed test timer started")
+        self._refresh_typing_test_annotations(tab)
+        config = dict(getattr(tab, "typing_test_config", {}) or {})
+        started_at = getattr(tab, "typing_test_started_at", None)
+        if started_at is not None and (time.time() - float(started_at)) >= max(1, int(config.get("duration_sec", 60) or 60)):
+            self._finish_typing_speed_test(tab, timed_out=True)
+
+    def _tick_typing_speed_test(self) -> None:
+        tab = self._typing_test_find_active_tab()
+        if tab is None:
+            timer = getattr(self, "_typing_test_timer", None)
+            if isinstance(timer, QTimer):
+                timer.stop()
+            return
+        self._refresh_typing_test_annotations(tab)
+        started_at = getattr(tab, "typing_test_started_at", None)
+        config = dict(getattr(tab, "typing_test_config", {}) or {})
+        if started_at is not None and (time.time() - float(started_at)) >= max(1, int(config.get("duration_sec", 60) or 60)):
+            self._finish_typing_speed_test(tab, timed_out=True)
+
+    def _finish_typing_speed_test(self, tab: EditorTab, *, timed_out: bool) -> None:
+        if tab is None or not bool(getattr(tab, "typing_test_mode_enabled", False)) or bool(getattr(tab, "typing_test_finished", False)):
+            return
+        config = dict(getattr(tab, "typing_test_config", {}) or {})
+        started_at = getattr(tab, "typing_test_started_at", None)
+        elapsed = max(0.0, time.time() - float(started_at)) if started_at is not None else 0.0
+        source_words = self._typing_test_parse_words(getattr(tab, "typing_test_source_text", ""))
+        stats = self._typing_test_score(
+            source_words,
+            self._typing_test_extract_typed_text(tab.text_edit.get_text()),
+            elapsed_sec=elapsed,
+            case_sensitive=bool(config.get("case_sensitive", False)),
+        )
+        tab.typing_test_result = stats
+        tab.typing_test_finished = True
+        timer = getattr(self, "_typing_test_timer", None)
+        if isinstance(timer, QTimer) and self._typing_test_find_active_tab() is None:
+            timer.stop()
+        self._refresh_typing_test_annotations(tab)
+        self.log_event("Info", f"Typing speed test finished: {stats}")
+        self.update_action_states()
+        self._sync_typing_test_controls()
+        QMessageBox.information(
+            self,
+            "Typing Speed Test",
+            (
+                f"{'Time is up.' if timed_out else 'Typing test finished.'}\n\n"
+                f"Net WPM: {stats['net_wpm']}\n"
+                f"Gross WPM: {stats['gross_wpm']}\n"
+                f"Accuracy: {stats['accuracy']}%\n"
+                f"Correct words: {stats['correct_words']}\n"
+                f"Mistakes: {stats['mistakes']}"
+            ),
+        )
+
+    def quit_typing_speed_test(self) -> None:
+        tab = self.active_tab()
+        if tab is None or not bool(getattr(tab, "typing_test_mode_enabled", False)):
+            return
+        timer = getattr(self, "_typing_test_timer", None)
+        if isinstance(timer, QTimer) and self._typing_test_find_active_tab() in {None, tab}:
+            timer.stop()
+        widget = getattr(tab.text_edit, "widget", None)
+        if widget is not None and hasattr(widget, "annotationClearAll"):
+            try:
+                widget.annotationClearAll()
+            except Exception:
+                pass
+        tab.typing_test_mode_enabled = False
+        tab.typing_test_config = {}
+        tab.typing_test_source_text = ""
+        tab.typing_test_original_text = None
+        tab.typing_test_started_at = None
+        tab.typing_test_finished = False
+        tab.typing_test_result = None
+        self.log_event("Info", "Typing speed test quit")
+        self._sync_typing_test_controls()
+        self.update_action_states()
+        self.show_status_message("Typing speed test exited.", 2500)
+
+    def start_typing_speed_test(self) -> None:
+        active = self.active_tab()
+        if active is not None and bool(getattr(active, "typing_test_mode_enabled", False)):
+            self.quit_typing_speed_test()
+        defaults = self._typing_test_settings_payload()
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Typing Speed Test")
+        layout = QVBoxLayout(dialog)
+        form = QFormLayout()
+        duration_spin = QSpinBox(dialog)
+        duration_spin.setRange(15, 600)
+        duration_spin.setValue(int(defaults["duration_sec"]))
+        word_count_spin = QSpinBox(dialog)
+        word_count_spin.setRange(10, 300)
+        word_count_spin.setValue(int(defaults["word_count"]))
+        randomize_box = QCheckBox("Shuffle words", dialog)
+        randomize_box.setChecked(bool(defaults["randomize_words"]))
+        case_sensitive_box = QCheckBox("Case sensitive scoring", dialog)
+        case_sensitive_box.setChecked(bool(defaults["case_sensitive"]))
+        custom_words_edit = QTextEdit(dialog)
+        custom_words_edit.setPlaceholderText("Optional custom words, separated by spaces, commas, or new lines.")
+        custom_words_edit.setPlainText(" ".join(defaults["custom_words"]))
+        custom_words_edit.setMinimumHeight(110)
+        form.addRow("Timer (sec)", duration_spin)
+        form.addRow("Prompt words", word_count_spin)
+        form.addRow("", randomize_box)
+        form.addRow("", case_sensitive_box)
+        form.addRow("Custom words", custom_words_edit)
+        layout.addLayout(form)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, dialog)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        if dialog.exec() != QDialog.Accepted:
+            return
+        custom_words = self._typing_test_parse_words(custom_words_edit.toPlainText())
+        config = {
+            "duration_sec": int(duration_spin.value()),
+            "word_count": int(word_count_spin.value()),
+            "randomize_words": bool(randomize_box.isChecked()),
+            "case_sensitive": bool(case_sensitive_box.isChecked()),
+            "custom_words": custom_words,
+        }
+        self.settings["typing_test_duration_sec"] = config["duration_sec"]
+        self.settings["typing_test_word_count"] = config["word_count"]
+        self.settings["typing_test_randomize_words"] = config["randomize_words"]
+        self.settings["typing_test_case_sensitive"] = config["case_sensitive"]
+        self.settings["typing_test_custom_words"] = " ".join(custom_words)
+        if hasattr(self, "save_settings_to_disk"):
+            self.save_settings_to_disk()
+        prompt_words = self._typing_test_build_prompt_words(config)
+        source_text = " ".join(prompt_words)
+        tab = self.add_new_tab(
+            text=self._typing_test_build_document(prompt_words, config),
+            file_path=None,
+            make_current=True,
+        )
+        tab.typing_test_mode_enabled = True
+        tab.typing_test_config = dict(config)
+        tab.typing_test_source_text = source_text
+        tab.typing_test_original_text = None
+        tab.typing_test_started_at = None
+        tab.typing_test_finished = False
+        tab.typing_test_result = None
+        if hasattr(self, "_clear_tab_autosave"):
+            self._clear_tab_autosave(tab)
+        tab.text_edit.set_modified(False)
+        self._typing_test_ensure_timer()
+        self._refresh_typing_test_annotations(tab)
+        self.log_event("Info", f"Typing speed test created with config={config}")
+        self._sync_typing_test_controls()
+        self.update_action_states()
+        self.show_status_message("Typing speed test ready. Start typing in the editor to begin the timer.", 3500)
 
     def start_bug_hunt_mode(self) -> bool:
         if not self._gamification_enabled():
@@ -2058,6 +2871,16 @@ class MiscMixin(
             self.quiz_finish_button.setVisible(enabled)
         if hasattr(self, "quiz_action"):
             self.quiz_action.setText("Restart Quiz" if enabled else "Quiz Mode")
+        if hasattr(self, "_sync_typing_test_controls"):
+            self._sync_typing_test_controls()
+
+    def _sync_typing_test_controls(self) -> None:
+        tab = self.active_tab()
+        enabled = bool(tab and getattr(tab, "typing_test_mode_enabled", False))
+        if hasattr(self, "typing_test_quit_button"):
+            self.typing_test_quit_button.setVisible(enabled)
+        if hasattr(self, "typing_speed_test_action"):
+            self.typing_speed_test_action.setText("Restart Typing Speed Test..." if enabled else "Challenge: Typing Speed Test...")
 
     def show_quiz_format_help(self) -> None:
         dlg = QDialog(self)
@@ -3354,10 +4177,16 @@ class MiscMixin(
             self.tab_widget.setCurrentWidget(current)
 
     def _ensure_tab_autosave_meta(self, tab: EditorTab) -> None:
+        if bool(getattr(tab, "typing_test_mode_enabled", False)):
+            return
         if tab.autosave_id:
             return
         tab.autosave_id = self.autosave_store.new_id()
         tab.autosave_path = str(self.autosave_store.autosave_file(tab.autosave_id))
+
+    @staticmethod
+    def _exclude_tab_from_recovery(tab: EditorTab) -> bool:
+        return bool(getattr(tab, "typing_test_mode_enabled", False))
 
     def _local_history_cache(self) -> dict[str, list[dict[str, str]]]:
         if not self.settings.get("local_history_persist_enabled", True):
@@ -3434,6 +4263,9 @@ class MiscMixin(
             tab = self.tab_widget.widget(index)
             if not isinstance(tab, EditorTab):
                 continue
+            if self._exclude_tab_from_recovery(tab):
+                self.log_event("Debug", f"Crash snapshot skipped recovery-excluded tab: {self._tab_display_name(tab)}")
+                continue
             if not tab.text_edit.is_modified():
                 continue
             tabs_payload.append(
@@ -3445,6 +4277,7 @@ class MiscMixin(
                 }
             )
         if not tabs_payload:
+            self.log_event("Debug", "Crash snapshot cleared because no modified recoverable tabs remain.")
             store.clear_crash_snapshot()
             return
         active = self.active_tab()
@@ -3454,6 +4287,7 @@ class MiscMixin(
             active_file=active_file,
             workspace_root=str(self.settings.get("workspace_root", "") or ""),
         )
+        self.log_event("Debug", f"Crash snapshot saved with {len(tabs_payload)} tab(s).")
 
     def _restore_from_snapshot_payload(self, payload: dict[str, object]) -> int:
         raw_tabs = payload.get("tabs", [])
@@ -3502,6 +4336,10 @@ class MiscMixin(
         for index in range(self.tab_widget.count()):
             tab = self.tab_widget.widget(index)
             if not isinstance(tab, EditorTab):
+                continue
+            if self._exclude_tab_from_recovery(tab):
+                if tab.autosave_id:
+                    self._clear_tab_autosave(tab)
                 continue
             if bool(getattr(tab, "quiz_mode_enabled", False)):
                 continue
@@ -3602,7 +4440,12 @@ class MiscMixin(
         )
         has_snapshot_tabs = bool(snapshot_payload and isinstance(snapshot_payload.get("tabs", []), list) and snapshot_payload.get("tabs"))
         if not entries and not has_snapshot_tabs:
+            self.log_event("Debug", "Crash recovery skipped: no autosave entries and no crash snapshot tabs.")
             return
+        self.log_event(
+            "Debug",
+            f"Crash recovery offer mode={mode} autosave_entries={len(entries)} snapshot_tabs={int(has_snapshot_tabs)} visible={self.isVisible()}",
+        )
         if mode == "auto_discard":
             for entry in entries:
                 try:
@@ -3617,6 +4460,7 @@ class MiscMixin(
                 store.clear_crash_snapshot()
             return
         if mode == "auto_restore":
+            self.log_event("Debug", f"Crash recovery auto_restore starting entries={len(entries)}")
             restored_any = False
             for entry in entries:
                 try:
@@ -3647,7 +4491,12 @@ class MiscMixin(
                     app.setQuitOnLastWindowClosed(False)
                 dlg = AutoSaveRecoveryDialog(self, entries)
                 if dlg.exec() != QDialog.Accepted:
+                    self.log_event("Debug", "Crash recovery dialog closed without acceptance.")
                     return
+                self.log_event(
+                    "Debug",
+                    f"Crash recovery dialog accepted action={dlg.selected_action} count={len(dlg.selected_ids)}",
+                )
                 if dlg.selected_action == "discard" and dlg.selected_ids:
                     _consume_placeholder_tab()
                 restored_any = False
@@ -9272,15 +10121,22 @@ class MiscMixin(
         text_label = about_box.findChild(QLabel, "qt_msgbox_label")
         if text_label is not None:
             text_label.setOpenExternalLinks(False)
-            text_label.linkActivated.connect(
-                lambda link: (
-                    about_box.done(0),
-                    self.log_event("Info", "About dialog easter egg link clicked"),
-                    self.trigger_easter_egg(),
-                )
-                if link == "easteregg"
-                else None
-            )
+            def _about_easter_egg(link: str) -> None:
+                if link != "easteregg":
+                    return
+                now = time.time()
+                last = float(getattr(self, "_easter_egg_link_ts", 0.0))
+                clicks = int(getattr(self, "_easter_egg_link_clicks", 0))
+                clicks = clicks + 1 if now - last <= 2.5 else 1
+                self._easter_egg_link_ts = now
+                self._easter_egg_link_clicks = clicks
+                self.log_event("Info", f"About dialog easter egg link clicked ({clicks}/3)")
+                if clicks >= 3:
+                    self._easter_egg_link_clicks = 0
+                    about_box.done(0)
+                    self.trigger_easter_egg()
+
+            text_label.linkActivated.connect(_about_easter_egg)
 
         about_box.exec()
 
@@ -9964,22 +10820,54 @@ Pypad User Guide
                 "Incorrect password or PIN. Please try again.",
             )
 
+    def _easter_egg_ball_state(self) -> dict[str, Any]:
+        state = self.gamification.state()
+        ball_state = state.get("easter_egg_ball")
+        if not isinstance(ball_state, dict):
+            ball_state = {}
+            state["easter_egg_ball"] = ball_state
+        ball_state.setdefault("best_score", 0)
+        ball_state.setdefault("best_combo", 0)
+        ball_state.setdefault("leaderboard", [])
+        ball_state.setdefault("skins_unlocked", ["#ff8a00"])
+        ball_state.setdefault("backgrounds_unlocked", ["Midnight Grid"])
+        ball_state.setdefault("trails_unlocked", ["Classic"])
+        ball_state.setdefault("equipped_skin", "#ff8a00")
+        ball_state.setdefault("equipped_background", "Midnight Grid")
+        ball_state.setdefault("equipped_trail", "Classic")
+        ball_state.setdefault("message_score", int(self.settings.get("easter_egg_ball_message_score", 42) or 42))
+        ball_state.setdefault(
+            "message_text",
+            str(self.settings.get("easter_egg_ball_message_text", "You found the bug budget. Please spend responsibly.") or "You found the bug budget. Please spend responsibly."),
+        )
+        return ball_state
+
     def trigger_easter_egg(self) -> None:
-        """Spawn a draggable bouncing ball inside the main window."""
+        """Launch the Easter Egg Ball minigame."""
         existing = getattr(self, "_easter_egg_ball", None)
         if existing is not None and isinstance(existing, QWidget) and not existing.isHidden():
             existing.raise_()
             existing.activateWindow()
             self.log_event("Debug", "Bouncing ball already active")
             return
+        mode, ok = QInputDialog.getItem(
+            self,
+            "Easter Egg Ball",
+            "Mode",
+            ["Score", "Freeplay"],
+            0 if str(self._easter_egg_ball_state().get("last_mode", "score")) != "freeplay" else 1,
+            False,
+        )
+        if not ok:
+            return
         self._easter_egg_running = True
-        ball = self._EasterEggBall(self)
+        ball = self._EasterEggBallGame(self, "freeplay" if str(mode).lower() == "freeplay" else "score")
         self._easter_egg_ball = ball
-        x = max(0, min(self.width() // 3, self.width() - ball.width()))
-        y = max(0, min(self.height() // 4, self.height() - ball.height()))
-        ball.move(x, y)
+        ball.setGeometry(self.rect())
         ball.show()
         ball.raise_()
+        ball.activateWindow()
+        ball.setFocus(Qt.FocusReason.OtherFocusReason)
 
         def _clear_ball() -> None:
             self._easter_egg_running = False
@@ -9988,7 +10876,7 @@ Pypad User Guide
             self.log_event("Info", "Bouncing ball easter egg closed")
 
         ball.destroyed.connect(lambda _obj=None: _clear_ball())
-        self.log_event("Info", "Bouncing ball easter egg spawned")
+        self.log_event("Info", f"Bouncing ball easter egg spawned ({str(mode).lower()})")
 
 
 

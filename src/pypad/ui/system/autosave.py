@@ -174,13 +174,16 @@ class AutoSaveStore:
 class AutoSaveRecoveryDialog(QDialog):
     def __init__(self, parent, entries: list[AutoSaveEntry]) -> None:
         owner = parent
-        use_top_level = bool(owner is not None and hasattr(owner, "isVisible") and not owner.isVisible())
-        super().__init__(None if use_top_level else owner)
-        # During startup recovery (before main window is shown), use a top-level dialog so Windows shows a taskbar button.
+        super().__init__(owner)
         self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
-        self.setWindowModality(Qt.ApplicationModal if use_top_level else Qt.WindowModal)
+        self.setWindowModality(Qt.WindowModal)
         self.setWindowTitle("Recover Unsaved Notes")
         self.resize(960, 540)
+        _LOGGER.debug(
+            "AutoSaveRecoveryDialog init owner_visible=%s entries=%d",
+            bool(owner.isVisible()) if owner is not None and hasattr(owner, "isVisible") else False,
+            len(entries),
+        )
         self._theme_parent = owner
         if owner is not None and hasattr(owner, "windowIcon"):
             try:
@@ -285,6 +288,7 @@ class AutoSaveRecoveryDialog(QDialog):
             return
         self._selected_action = "open"
         self._selected_ids = [item.data(Qt.UserRole) for item in picked if item.data(Qt.UserRole)]
+        _LOGGER.debug("AutoSaveRecoveryDialog accept_open ids=%s", self._selected_ids)
         self.accept()
 
     def _accept_discard(self) -> None:
@@ -297,6 +301,7 @@ class AutoSaveRecoveryDialog(QDialog):
             return
         self._selected_action = "discard"
         self._selected_ids = [item.data(Qt.UserRole) for item in picked if item.data(Qt.UserRole)]
+        _LOGGER.debug("AutoSaveRecoveryDialog accept_discard ids=%s", self._selected_ids)
         self.accept()
 
     @property

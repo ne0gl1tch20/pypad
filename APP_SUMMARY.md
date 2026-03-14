@@ -1,13 +1,23 @@
 # Pypad - App Summary
 
-Last updated: 2026-03-13
-Release target: `1.8.1-prerelease`
+Last updated: 2026-03-14
+Release target: `1.8.1`
 
 ## Product Snapshot
 
 Pypad is a PySide6 desktop editor that combines note-taking, coding and markdown workflows, workspace tooling, AI-assisted editing, and a visible productivity/gamification layer. The app uses a token-based dark/light theme system across the main window, dialogs, docks, and newer feature surfaces.
 
 Current release focus:
+- startup and recovery hardening:
+  - recovery dialogs no longer promote into phantom startup shells
+  - main window remains hidden until startup is actually ready
+  - typing-test play tabs are excluded from autosave/crash recovery state
+- editor responsiveness without dropping full stats:
+  - full-document counters remain available in the status area
+  - heavy status/gamification refresh work is deferred off the keystroke path
+- more explicit Play-mode polish:
+  - typing speed challenge gets dedicated status controls
+  - quiz/play flows now live under the `Play` menu with dedicated SVG icons
 - IDE-style workflow expansion:
   - fuller LSP actions for hover, references, rename, completion, formatting, and diagnostics
   - dedicated dock windows for Problems, Output, GitLens, Terminal & Tasks, and Git
@@ -39,6 +49,7 @@ Current release focus:
 - Per-note encryption (`.encnote`) and app privacy lock options
 - AI chat dock, AI inline edits, workspace citation workflows, and diff/apply previews
 - Visible productivity/gamification systems layered into the main shell and `Play` menu
+- Expanded debug logging around startup, recovery, autosave, and deferred editor refresh paths
 - Update checking/downloading from XML feed (`update.xml`)
 - Unified Preferences (PyPad + Notepad++ compatibility pages)
 
