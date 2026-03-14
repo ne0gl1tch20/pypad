@@ -63,6 +63,9 @@ The long-term goals of PyPad include:
 
 ## Developer Notes
 
+- Plugin system overview: `docs/plugins.md`
+- Plugin runtime architecture and event flow: `docs/plugin_runtime.md`
+- Plugin API and hook reference: `docs/plugin_api.md`
 - Scintilla compat contract overview: `docs/scintilla_parity.md`
 - Generated compat command reference: `docs/scintilla_compat_reference.md`
 - Repo surface audit: `python scripts/audit_scintilla_compat.py`

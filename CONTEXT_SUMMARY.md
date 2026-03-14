@@ -1,10 +1,14 @@
 # Context Summary
 
 ## Docs Updated
-- Last docs sync: 2026-03-13
+- Last docs sync: 2026-03-14
 - Synced files:
   - `CONTEXT_SUMMARY.md`
   - `APP_SUMMARY.md`
+  - `README.md`
+  - `docs/plugins.md`
+  - `docs/plugin_runtime.md`
+  - `docs/plugin_api.md`
   - `CHANGELOG.md`
   - `src/pypad/ai_app_knowledge.py`
   - `templates/demo_pack/01_welcome_quick_tour.md`
@@ -15,6 +19,10 @@
 - Latest release notes already live in `CHANGELOG.md` and `update.xml`
 
 ## Current Focus (Completed)
+- plugin documentation coverage:
+  - plugin setup guide retained in `docs/plugins.md`
+  - runtime architecture and event flow documented in `docs/plugin_runtime.md`
+  - API, permissions, and hook surface retained in `docs/plugin_api.md`
 - IDE workflow expansion:
   - fuller LSP feature path around the existing definition support
   - new dock windows for Problems, Output, GitLens, Terminal & Tasks, and Git
@@ -75,6 +83,9 @@
 - daily guidance is layered into the normal app shell rather than buried in one dialog
 
 ## Key Files (Most Relevant Now)
+- `docs/plugins.md`
+- `docs/plugin_runtime.md`
+- `docs/plugin_api.md`
 - `src/pypad/ui/features/advanced_features.py`
 - `src/pypad/ui/features/gamification_system.py`
 - `src/pypad/ui/features/gamification_widgets.py`

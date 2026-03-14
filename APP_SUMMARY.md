@@ -103,6 +103,11 @@ Settings system:
 - `src/pypad/app_settings/defaults.py`
 - `src/pypad/app_settings/coercion.py`
 
+Plugin system docs:
+- `docs/plugins.md`
+- `docs/plugin_runtime.md`
+- `docs/plugin_api.md`
+
 ## QA / Regression Tooling
 
 Focused checks for the current productivity shell:

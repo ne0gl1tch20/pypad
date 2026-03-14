@@ -11,6 +11,7 @@ The format is based on Keep a Changelog, and this project uses Semantic Versioni
 - Online Plugins catalog entries can now expose changelog notes in the browser/install UI.
 - Online Plugins catalog entries can now show verification/trust signals and 1-5 star ratings in the browser/install UI.
 - New `Plugin Example Pack` online plugin that demonstrates top-level menus, Help-menu injection, topbar actions, dock panels, timers, hooks, and file creation.
+- New plugin runtime architecture guide in `docs/plugin_runtime.md`, including the event flow from `ui_setup._emit_plugin_event()` into `PluginHost.emit_event()` and plugin hook handlers.
 - More verbose debug logging across:
   - startup visibility gating
   - crash/autosave recovery decisions
