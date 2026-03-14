@@ -1352,10 +1352,40 @@ class PluginHost:
                     "repo": str(row.get("repo", "") or "").strip(),
                     "source": source,
                     "homepage": str(row.get("homepage", "") or "").strip(),
+                    "verified": self._catalog_bool_text(row.get("verified", "")),
+                    "trustworthy": self._catalog_bool_text(row.get("trustworthy", "")),
+                    "rating": self._catalog_rating_text(row.get("rating", "")),
                     "changelog": self._catalog_changelog_text(row.get("changelog", "")),
                 }
             )
         return out
+
+    @staticmethod
+    def _catalog_bool_text(value: Any) -> str:
+        if isinstance(value, bool):
+            return "Yes" if value else "No"
+        text = str(value or "").strip()
+        if not text:
+            return ""
+        lowered = text.lower()
+        if lowered in {"true", "yes", "1", "verified", "trusted"}:
+            return "Yes"
+        if lowered in {"false", "no", "0", "unverified", "untrusted"}:
+            return "No"
+        return text
+
+    @staticmethod
+    def _catalog_rating_text(value: Any) -> str:
+        try:
+            rating = float(value)
+        except Exception:
+            text = str(value or "").strip()
+            return text
+        if rating <= 0:
+            return ""
+        rating = max(1.0, min(5.0, rating))
+        stars = "★" * int(round(rating))
+        return f"{rating:.1f}/5 ({stars})"
 
     @staticmethod
     def _catalog_changelog_text(value: Any) -> str:
@@ -2961,6 +2991,9 @@ class OnlinePluginsDialog(QDialog):
             f"Installed Version: {installed_version or '-'}",
             f"Update Status: {update_status}",
             f"Author: {row.get('author', '') or '-'}",
+            f"Verified: {row.get('verified', '') or '-'}",
+            f"Trustworthy: {row.get('trustworthy', '') or '-'}",
+            f"Rating: {row.get('rating', '') or '-'}",
             f"Description: {row.get('description', '') or '-'}",
             f"Repository: {row.get('repo', '') or '-'}",
             f"Source: {row.get('source', '') or '-'}",

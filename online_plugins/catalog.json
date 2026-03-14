@@ -9,6 +9,9 @@
       "repo": "https://github.com/ne0gl1tch20/pypad",
       "source": "online_plugins/plugin_example_pack",
       "homepage": "https://github.com/ne0gl1tch20/pypad",
+      "verified": true,
+      "trustworthy": true,
+      "rating": 5,
       "changelog": [
         "Consolidates the online example catalog into one richer example plugin.",
         "Includes top-level menu examples, including Help.",
@@ -24,6 +27,9 @@
       "repo": "https://github.com/ne0gl1tch20/pypad",
       "source": "online_plugins/plugin_online_example",
       "homepage": "https://github.com/ne0gl1tch20/pypad",
+      "verified": true,
+      "trustworthy": true,
+      "rating": 4,
       "changelog": [
         "Baseline online plugin example retained as the minimal install sample."
       ]

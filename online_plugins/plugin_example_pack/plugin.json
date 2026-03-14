@@ -9,6 +9,9 @@
   "max_app_version": "",
   "update_url": "",
   "homepage": "https://github.com/ne0gl1tch20/pypad",
+  "verified": true,
+  "trustworthy": true,
+  "rating": 5,
   "changelog": [
     "Added consolidated example pack entry for online plugins.",
     "Added Help-menu and top-toolbar examples.",

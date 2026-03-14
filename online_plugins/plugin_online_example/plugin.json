@@ -9,6 +9,9 @@
   "max_app_version": "",
   "update_url": "",
   "homepage": "https://github.com/ne0gl1tch20/pypad",
+  "verified": true,
+  "trustworthy": true,
+  "rating": 4,
   "changelog": [
     "Retained as the minimal online-install example plugin."
   ],

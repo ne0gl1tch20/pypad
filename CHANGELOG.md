@@ -9,6 +9,7 @@ The format is based on Keep a Changelog, and this project uses Semantic Versioni
 ### Added
 - New dedicated Play action SVG assets for quiz and typing-speed flows.
 - Online Plugins catalog entries can now expose changelog notes in the browser/install UI.
+- Online Plugins catalog entries can now show verification/trust signals and 1-5 star ratings in the browser/install UI.
 - New `Plugin Example Pack` online plugin that demonstrates top-level menus, Help-menu injection, topbar actions, dock panels, timers, hooks, and file creation.
 - More verbose debug logging across:
   - startup visibility gating
