@@ -34,7 +34,7 @@ def get_language_display_options() -> list[str]:
 
 
 def language_code_for(label: str) -> str:
-    """Handle language code for."""
+    """Resolve the language code for the requested locale."""
     normalized = (label or "").strip()
     if not normalized:
         return "en"
@@ -139,7 +139,7 @@ class AppTranslator:
         thread.start()
 
     def _enqueue_translation(self, text: str, target_lang: str) -> None:
-        """Handle enqueue translation."""
+        """Enqueue translation."""
         key = (target_lang, text)
         with self._lock:
             if key in self._pending:
@@ -149,7 +149,7 @@ class AppTranslator:
         self._queue.put(key)
 
     def _worker_loop(self) -> None:
-        """Handle worker loop."""
+        """Run the worker loop."""
         while True:
             target_lang, text = self._queue.get()
             try:
@@ -167,7 +167,7 @@ class AppTranslator:
                 self._queue.task_done()
 
     def _translate_remote(self, text: str, target_lang: str) -> str:
-        """Handle translate remote."""
+        """Translate remote."""
         try:
             if self._translator is None:
                 from googletrans import Translator  # type: ignore

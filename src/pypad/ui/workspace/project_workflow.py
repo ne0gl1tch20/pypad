@@ -61,7 +61,7 @@ def build_unified_diff_text(
 
 
 def diff_stats_from_patch(patch_text: str) -> DiffStats:
-    """Handle diff stats from patch."""
+    """Diff stats from patch."""
     added = 0
     removed = 0
     hunks = 0

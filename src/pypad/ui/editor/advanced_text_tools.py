@@ -11,7 +11,7 @@ from dataclasses import dataclass
 
 @dataclass
 class LineRef:
-    """line ref."""
+    """Represent the line ref."""
     kind: str
     line_no: int
     style_id: int | None
@@ -20,7 +20,7 @@ class LineRef:
 
 @dataclass
 class RegexFilterResult:
-    """regex filter result."""
+    """Represent the regex filter result."""
     total_matches: int
     filtered_matches: int
     preview_lines: list[str]
@@ -28,7 +28,7 @@ class RegexFilterResult:
 
 
 def _line_span(source: str, start: int, end: int) -> tuple[int, int, str]:
-    """Handle line span."""
+    """Return the line span for the current match."""
     line_start = source.rfind("\n", 0, start)
     line_start = 0 if line_start < 0 else line_start + 1
     line_end = source.find("\n", end)

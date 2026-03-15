@@ -151,7 +151,7 @@ class FileOpsMixin:
         self.log_event("Info", f'Open succeeded: "{path}"')
 
     def _prompt_password(self, title: str, label: str) -> str | None:
-        """Handle prompt password."""
+        """Prompt for a password."""
         return self.security_controller.prompt_password(title, label)
 
     def _load_text_from_path(self, path: str, encoding: str = "utf-8") -> tuple[str, bool, str | None]:
@@ -312,18 +312,18 @@ class FileOpsMixin:
                         layout.addWidget(QLabel("Audio player", media_container), 1)
 
                     def _fmt(ms: int) -> str:
-                        """Handle fmt."""
+                        """Fmt."""
                         sec = max(0, int(ms // 1000))
                         return f"{sec // 60:02d}:{sec % 60:02d}"
 
                     def _on_pos(ms: int) -> None:
-                        """Handle on pos."""
+                        """Update the slider position."""
                         if not slider.isSliderDown():
                             slider.setValue(int(ms))
                         elapsed_label.setText(_fmt(ms))
 
                     def _on_dur(ms: int) -> None:
-                        """Handle on dur."""
+                        """Update the slider duration."""
                         slider.setRange(0, max(0, int(ms)))
                         total_label.setText(_fmt(ms))
 
@@ -802,7 +802,7 @@ class FileOpsMixin:
         dialog.setWindowTitle("Print Preview")
 
         def render_preview(preview_printer: QPrinter) -> None:
-            """Handle render preview."""
+            """Render preview."""
             doc = self._build_print_document(tab)
             try:
                 doc.print_(preview_printer)

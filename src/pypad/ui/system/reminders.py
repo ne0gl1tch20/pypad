@@ -44,7 +44,7 @@ class Reminder:
 
     @property
     def due_datetime(self) -> datetime:
-        """Handle due datetime."""
+        """Due date/time."""
         return datetime.fromisoformat(self.due_iso)
 
     def set_due(self, due_dt: datetime) -> None:
@@ -124,19 +124,19 @@ class ReminderStore:
         self.reminders = [r for r in self.reminders if r.reminder_id != reminder_id]
 
     def by_id(self, reminder_id: str) -> Reminder | None:
-        """Handle by id."""
+        """By id."""
         for reminder in self.reminders:
             if reminder.reminder_id == reminder_id:
                 return reminder
         return None
 
     def snooze(self, reminder: Reminder, delta: timedelta) -> None:
-        """Handle snooze."""
+        """Snooze."""
         reminder.set_due(datetime.now() + delta)
         reminder.fired = False
 
     def reschedule_recurring(self, reminder: Reminder) -> None:
-        """Handle reschedule recurring."""
+        """Reschedule recurring."""
         due = reminder.due_datetime
         if reminder.recurrence == "daily":
             reminder.set_due(due + timedelta(days=1))
@@ -226,7 +226,7 @@ class RemindersDialog(QDialog):
         self._refresh()
 
     def _refresh(self) -> None:
-        """Handle refresh."""
+        """Refresh."""
         self.list_widget.clear()
         for reminder in sorted(self.store.reminders, key=lambda r: r.due_iso):
             status = "done" if reminder.fired else "pending"
@@ -235,7 +235,7 @@ class RemindersDialog(QDialog):
             item.setData(Qt.UserRole, reminder.reminder_id)
 
     def _selected_reminder(self) -> Reminder | None:
-        """Handle selected reminder."""
+        """Return the selected reminder."""
         item = self.list_widget.currentItem()
         if item is None:
             return None
@@ -285,7 +285,7 @@ class RemindersDialog(QDialog):
         self._refresh()
 
     def _delete_selected(self) -> None:
-        """Handle delete selected."""
+        """Delete selected."""
         reminder = self._selected_reminder()
         if reminder is None:
             return
@@ -294,7 +294,7 @@ class RemindersDialog(QDialog):
         self._refresh()
 
     def _snooze_selected(self, delta: timedelta) -> None:
-        """Handle snooze selected."""
+        """Snooze selected."""
         reminder = self._selected_reminder()
         if reminder is None:
             return

@@ -92,7 +92,7 @@ class VersionHistoryDialog(QDialog):
         self.cancel_btn.clicked.connect(self.reject)
 
     def _populate(self, history: VersionHistory, current_text: str) -> None:
-        """Handle populate."""
+        """Populate."""
         current_item = QListWidgetItem("Current (unsaved)", self.list_widget)
         current_item.setData(Qt.UserRole, current_text)
         self.list_widget.addItem(current_item)
@@ -121,7 +121,7 @@ class VersionHistoryDialog(QDialog):
         self.restore_btn.setEnabled(True)
 
     def _accept_restore(self) -> None:
-        """Handle accept restore."""
+        """Accept restore."""
         item = self.list_widget.currentItem()
         if item is None:
             return
@@ -130,7 +130,7 @@ class VersionHistoryDialog(QDialog):
 
     @property
     def selected_text(self) -> str | None:
-        """Handle selected text."""
+        """Return the selected text."""
         return self._selected_text
 
 
@@ -181,7 +181,7 @@ class LocalHistoryTimelineDialog(QDialog):
             self.list_widget.setCurrentRow(0)
 
     def _populate(self, history: VersionHistory) -> None:
-        """Handle populate."""
+        """Populate."""
         current_item = QListWidgetItem("Current (unsaved)", self.list_widget)
         current_item.setData(Qt.UserRole, self._current_text)
         current_item.setData(Qt.UserRole + 1, "current")
@@ -228,7 +228,7 @@ class LocalHistoryTimelineDialog(QDialog):
         self.diff_view.setPlainText("\n".join(diff_lines) or "(No visible diff)")
 
     def _accept_restore(self) -> None:
-        """Handle accept restore."""
+        """Accept restore."""
         item = self.list_widget.currentItem()
         if item is None:
             return
@@ -239,5 +239,5 @@ class LocalHistoryTimelineDialog(QDialog):
 
     @property
     def selected_text(self) -> str | None:
-        """Handle selected text."""
+        """Return the selected text."""
         return self._selected_text

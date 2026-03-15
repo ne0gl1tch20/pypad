@@ -10,7 +10,10 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from notepadclone.ui.ai.ai_controller import AIController, _generate_sync, sanitize_prompt_text
+try:
+    from pypad.ui.ai.ai_controller import AIController, _generate_sync, sanitize_prompt_text
+except ModuleNotFoundError:
+    from notepadclone.ui.ai.ai_controller import AIController, _generate_sync, sanitize_prompt_text
 
 
 class _WindowStub:
@@ -110,6 +113,20 @@ class AIControllerTests(unittest.TestCase):
         controller = AIController(window)
         self.assertFalse(controller.cancel_active_chat_request())
 
+    def test_ask_ai_chat_returns_false_when_stream_preparation_is_canceled(self) -> None:
+        window = _WindowStub({"gemini_api_key": ""})
+        controller = AIController(window)
+        with patch.object(controller, "_guard_ai_private_mode", return_value=False), patch.object(
+            controller, "_guard_untrusted_tab_ai", return_value=False
+        ), patch.object(controller, "_start_stream_generation", return_value=False):
+            started = controller.ask_ai_chat(
+                "hello",
+                on_chunk=lambda _text: None,
+                on_done=lambda _text: None,
+                on_error=lambda _message: None,
+            )
+        self.assertFalse(started)
+
     def test_sanitize_prompt_redacts_emails_paths_and_tokens(self) -> None:
         prompt = (
             "Email me at a@b.com\n"
@@ -129,6 +146,25 @@ class AIControllerTests(unittest.TestCase):
         self.assertIn("[REDACTED_PATH]", redacted)
         self.assertIn("[REDACTED_TOKEN]", redacted)
         self.assertTrue(changes)
+
+    def test_sanitize_prompt_preserves_pypad_deep_links(self) -> None:
+        prompt = (
+            "Open settings via pypad://settings/ai-updates\n"
+            "Then check pypad://workspace/search?q=token\n"
+            "Actual path: /home/me/token.txt"
+        )
+        redacted, changes = sanitize_prompt_text(
+            prompt,
+            {
+                "ai_send_redact_emails": False,
+                "ai_send_redact_paths": True,
+                "ai_send_redact_tokens": False,
+            },
+        )
+        self.assertIn("pypad://settings/ai-updates", redacted)
+        self.assertIn("pypad://workspace/search?q=token", redacted)
+        self.assertIn("[REDACTED_PATH]", redacted)
+        self.assertIn("paths(1)", changes)
 
 
 if __name__ == "__main__":

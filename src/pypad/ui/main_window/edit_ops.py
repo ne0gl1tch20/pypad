@@ -101,23 +101,23 @@ class EditOpsMixin:
             self.hide_search_panel()
 
     def edit_undo(self) -> None:
-        """Handle edit undo."""
+        """Undo the last editor change."""
         self.text_edit.undo()
 
     def edit_redo(self) -> None:
-        """Handle edit redo."""
+        """Redo the last undone editor change."""
         self.text_edit.redo()
 
     def edit_cut(self) -> None:
-        """Handle edit cut."""
+        """Cut the current selection to the clipboard."""
         self.text_edit.cut()
 
     def edit_copy(self) -> None:
-        """Handle edit copy."""
+        """Copy the current selection to the clipboard."""
         self.text_edit.copy()
 
     def edit_paste(self) -> None:
-        """Handle edit paste."""
+        """Paste clipboard contents into the active editor."""
         self.text_edit.paste()
 
     def edit_paste_special(self) -> None:
@@ -143,11 +143,11 @@ class EditOpsMixin:
             self.text_edit.insert_text(converted)
 
     def edit_select_all(self) -> None:
-        """Handle edit select all."""
+        """Select all text in the active editor."""
         self.text_edit.select_all()
 
     def edit_delete(self) -> None:
-        """Handle edit delete."""
+        """Delete the current selection or the next character."""
         if self.text_edit.has_selection():
             self.text_edit.replace_selection("")
             return
@@ -159,7 +159,7 @@ class EditOpsMixin:
             self.text_edit.set_selection_by_index(idx, idx)
 
     def edit_time_date(self) -> None:
-        """Handle edit time date."""
+        """Perform the time date action."""
         self.text_edit.insert_text(datetime.now().strftime("%H:%M %d/%m/%Y"))
 
     def _do_find(self, text: str, backward: bool = False) -> bool:
@@ -187,7 +187,7 @@ class EditOpsMixin:
         return True
 
     def edit_find(self) -> None:
-        """Handle edit find."""
+        """Perform the find action."""
         self.show_search_panel()
 
     def edit_find_next(self) -> None:
@@ -277,7 +277,7 @@ class EditOpsMixin:
         from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QLineEdit, QGridLayout
 
         class RegexReplaceDialog(QDialog):
-            """regex replace dialog."""
+            """Represent the regex replace dialog."""
             def __init__(self, parent=None, seed: str | None = None, has_selection: bool = False) -> None:
                 """Build the regex replace preview dialog and initialize its filters and preview state."""
                 super().__init__(parent)
@@ -327,7 +327,7 @@ class EditOpsMixin:
                 return flags
 
             def preview_requested(self) -> None:
-                """Handle preview requested."""
+                """Return whether preview was requested."""
                 pattern = self.find_edit.text()
                 repl = self.replace_edit.text()
                 source = self._source_text_for_preview()
@@ -371,7 +371,7 @@ class EditOpsMixin:
                 self._last_regex = rx
 
             def _source_text_for_preview(self) -> str:
-                """Handle source text for preview."""
+                """Return the source text used for the preview."""
                 if self.selection_only_checkbox.isChecked():
                     return self.parent().text_edit.selected_text()  # type: ignore[union-attr]
                 return self.parent().text_edit.get_text()  # type: ignore[union-attr]
@@ -416,7 +416,7 @@ class EditOpsMixin:
         from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QLineEdit, QGridLayout
 
         class RegexFilterDialog(QDialog):
-            """regex filter dialog."""
+            """Represent the regex filter dialog."""
             def __init__(self, parent=None, seed: str | None = None, has_selection: bool = False) -> None:
                 """Build the regex include or exclude preview dialog and initialize its controls."""
                 super().__init__(parent)
@@ -465,20 +465,20 @@ class EditOpsMixin:
                 buttons.rejected.connect(self.reject)
 
             def _flags(self) -> int:
-                """Handle flags."""
+                """Build the flags used for this operation."""
                 flags = 0 if self.case_checkbox.isChecked() else re.IGNORECASE
                 if self.multiline_checkbox.isChecked():
                     flags |= re.MULTILINE
                 return flags
 
             def _source_text(self) -> str:
-                """Handle source text."""
+                """Return the source text."""
                 if self.selection_only_checkbox.isChecked():
                     return self.parent().text_edit.selected_text()  # type: ignore[union-attr]
                 return self.parent().text_edit.get_text()  # type: ignore[union-attr]
 
             def preview_requested(self) -> None:
-                """Handle preview requested."""
+                """Return whether preview was requested."""
                 pattern = self.find_edit.text()
                 source = self._source_text()
                 if not pattern:

@@ -19,7 +19,7 @@ class MiscAiTemplatesMixin:
             ...
 
     def _ai_templates(self) -> dict[str, str]:
-        """Handle AI templates."""
+        """Ai templates."""
         templates = self.settings.get("ai_prompt_templates", {})
         if not isinstance(templates, dict):
             templates = {}
@@ -35,7 +35,7 @@ class MiscAiTemplatesMixin:
         return merged
 
     def _render_ai_template(self, template: str, tab) -> str:
-        """Handle render AI template."""
+        """Render ai template."""
         text = tab.text_edit.get_text()
         selection = tab.text_edit.selected_text() or text[:5000]
         file_name = str(tab.current_file or "Untitled")

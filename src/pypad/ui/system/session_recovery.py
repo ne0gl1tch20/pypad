@@ -12,7 +12,7 @@ from typing import Any
 
 
 def _atomic_write_json(path: Path, payload: object) -> None:
-    """Handle atomic write json."""
+    """Atomic write json."""
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -121,7 +121,7 @@ class RecoveryStateStore:
 
 
 def local_history_key(file_path: str | None, autosave_id: str | None, title: str) -> str:
-    """Handle local history key."""
+    """Local history key."""
     if file_path:
         return f"file:{file_path}"
     if autosave_id:

@@ -45,7 +45,7 @@ class MiscTabMetadataMixin:
         bar.setTabTextColor(index, self.palette().color(QPalette.Text))
 
     def _color_swatch_icon(self, color_hex: str, size: int = 12) -> QIcon:
-        """Handle color swatch icon."""
+        """Color swatch icon."""
         color = QColor(color_hex)
         if not color.isValid():
             return QIcon()

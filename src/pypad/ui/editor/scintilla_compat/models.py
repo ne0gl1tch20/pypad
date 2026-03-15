@@ -11,7 +11,7 @@ from typing import Any, Protocol
 
 @dataclass
 class FoldRegion:
-    """fold region."""
+    """Represent the fold region."""
     start: int
     end: int
     level: int
@@ -19,7 +19,7 @@ class FoldRegion:
 
 @dataclass
 class ColumnBlock:
-    """column block."""
+    """Represent the column block."""
     line_lo: int
     line_hi: int
     col_lo: int
@@ -28,7 +28,7 @@ class ColumnBlock:
 
 @dataclass
 class HotspotRange:
-    """hotspot range."""
+    """Represent the hotspot range."""
     start: int
     end: int
     payload: str = ""
@@ -36,7 +36,7 @@ class HotspotRange:
 
 @dataclass
 class IndicatorRange:
-    """indicator range."""
+    """Represent the indicator range."""
     start: int
     end: int
     payload: str = ""
@@ -45,7 +45,7 @@ class IndicatorRange:
 
 @dataclass
 class MultiSelectionRange:
-    """multi selection range."""
+    """Represent the multi selection range."""
     anchor: int
     caret: int
     virtual_space_anchor: int = 0
@@ -53,18 +53,18 @@ class MultiSelectionRange:
 
     @property
     def start(self) -> int:
-        """Handle start."""
+        """Start."""
         return min(int(self.anchor), int(self.caret))
 
     @property
     def end(self) -> int:
-        """Handle end."""
+        """End."""
         return max(int(self.anchor), int(self.caret))
 
 
 @dataclass
 class ScintillaNotification:
-    """scintilla notification."""
+    """Represent the scintilla notification."""
     code: str
     position: int = -1
     line: int = -1
@@ -97,7 +97,7 @@ class ScintillaEngineState:
 
 @dataclass
 class UndoFrame:
-    """undo frame."""
+    """Represent the undo frame."""
     before_text: str
     after_text: str
     before_cursor: int
@@ -110,14 +110,14 @@ class UndoFrame:
 
 @dataclass
 class LexerWindow:
-    """lexer window."""
+    """Represent the lexer window."""
     start: int
     end: int
     prev_state: int = 0
 
 
 class CompatLexerProtocol(Protocol):
-    """compat lexer protocol."""
+    """Represent the compat lexer protocol."""
     def lex_incremental(self, text: str, start: int, end: int, prev_state: int = 0) -> tuple[list[tuple[int, int, int]], dict[int, FoldRegion], int]:
-        """Handle lex incremental."""
+        """Lex incremental."""
         ...

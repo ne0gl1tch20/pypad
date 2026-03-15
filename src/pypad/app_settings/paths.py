@@ -11,13 +11,13 @@ from pathlib import Path
 
 
 def _app_roaming_dir() -> Path:
-    """Handle app roaming dir."""
+    """Return the roaming application-data directory."""
     appdata = os.environ.get("APPDATA")
     base_dir = Path(appdata) if appdata else (Path.home() / "AppData" / "Roaming")
     return base_dir / "notepadclone"
 
 def _app_roaming_pypad_dir() -> Path:
-    """Handle app roaming pypad dir."""
+    """Return the Pypad roaming application-data directory."""
     appdata = os.environ.get("APPDATA")
     base_dir = Path(appdata) if appdata else (Path.home() / "AppData" / "Roaming")
     return base_dir / "pypad"

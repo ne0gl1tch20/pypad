@@ -8,7 +8,7 @@ from PySide6.QtWidgets import QApplication, QDialog, QHBoxLayout, QPushButton, Q
 from pypad.ui.theme.theme_tokens import build_debug_logs_dialog_qss, build_dialog_theme_qss_from_tokens, build_tokens_from_settings
 
 class DebugLogsDialog(QDialog):
-    """debug logs dialog."""
+    """Display collected debug logs and provide export actions."""
     def __init__(self, parent=None) -> None:
         """Build the debug logs dialog and prepare its widgets."""
         super().__init__(parent)
@@ -60,7 +60,7 @@ class DebugLogsDialog(QDialog):
         self.logs_view.setTextCursor(cursor)
 
     def _copy_all(self) -> None:
-        """Handle copy all."""
+        """Copy all."""
         QApplication.clipboard().setText(self.logs_view.toPlainText())
 
     def _clear_all(self) -> None:

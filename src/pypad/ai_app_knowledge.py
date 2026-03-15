@@ -252,7 +252,7 @@ Safety / reliability guidance:
 
 
 def _strip_qt_mnemonic(label: str) -> str:
-    """Handle strip Qt mnemonic."""
+    """Strip Qt mnemonic markers from a label."""
     return str(label or "").replace("&&", "&").replace("&", "").strip()
 
 
@@ -281,7 +281,7 @@ def _extract_text_from_call_args(call_node: ast.Call) -> str:
 
 @lru_cache(maxsize=1)
 def _generate_ui_setup_appendix() -> str:
-    """Handle generate UI setup appendix."""
+    """Generate the UI setup appendix text."""
     try:
         ui_setup_path = Path(__file__).resolve().parent / "ui" / "main_window" / "ui_setup.py"
         source = ui_setup_path.read_text(encoding="utf-8", errors="replace")

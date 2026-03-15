@@ -73,7 +73,7 @@ class CompactGamificationWidget(QFrame):
 
 
 class GamificationToast(QFrame):
-    """gamification toast."""
+    """Represent the gamification toast."""
     def __init__(self, host: QWidget) -> None:
         """Build the gamification toast widget and initialize its transient message state."""
         super().__init__(host)
@@ -465,7 +465,7 @@ class ProductivityHubWidget(QFrame):
 
 
 class ProductivityHubDialog(QDialog):
-    """productivity hub dialog."""
+    """Represent the productivity hub dialog."""
     def __init__(
         self,
         window: QWidget,
@@ -538,7 +538,7 @@ class ProductivityHubDialog(QDialog):
         super().closeEvent(event)
 
     def _schedule_geometry_save(self) -> None:
-        """Handle schedule geometry save."""
+        """Schedule geometry save."""
         if not self.isVisible():
             return
         self._geometry_save_timer.start(350)

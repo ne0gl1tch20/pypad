@@ -22,7 +22,7 @@ class MiscFileStateMixin:
             ...
 
     def _notify_large_file_mode(self, tab: EditorTab) -> None:
-        """Handle notify large file mode."""
+        """Notify large file mode."""
         if not tab.large_file:
             tab.large_file_notice_shown = False
             return
@@ -41,7 +41,7 @@ class MiscFileStateMixin:
             )
 
     def reload_tab_from_disk(self, tab: EditorTab) -> None:
-        """Handle reload tab from disk."""
+        """Reload tab from disk."""
         if not tab.current_file:
             return
         if tab.text_edit.is_modified():
@@ -118,7 +118,7 @@ class MiscFileStateMixin:
         if old == new:
             return
         def _replace_in_list(values: list[str]) -> list[str]:
-            """Handle replace in list."""
+            """Replace in list."""
             return [new if p == old else p for p in values]
 
         self.settings["recent_files"] = _replace_in_list(self.settings.get("recent_files", []))

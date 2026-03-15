@@ -268,7 +268,7 @@ class _EnumKey:
 
 
 def _coerce_bool(value: Any, default: bool) -> bool:
-    """Handle coerce bool."""
+    """Coerce bool."""
     if isinstance(value, bool):
         return value
     if isinstance(value, (int, float)):
@@ -283,7 +283,7 @@ def _coerce_bool(value: Any, default: bool) -> bool:
 
 
 def _coerce_int(value: Any, default: int, min_value: int, max_value: int) -> int:
-    """Handle coerce int."""
+    """Coerce int."""
     try:
         num = int(value)
     except Exception:
@@ -292,13 +292,13 @@ def _coerce_int(value: Any, default: int, min_value: int, max_value: int) -> int
 
 
 def _coerce_enum(value: Any, default: str, allowed: set[str]) -> str:
-    """Handle coerce enum."""
+    """Coerce enum."""
     text = str(value or "").strip()
     return text if text in allowed else default
 
 
 def _coerce_hex(value: Any, default: str = "") -> str:
-    """Handle coerce hex."""
+    """Coerce hex."""
     text = str(value or "").strip()
     if not text:
         return default
@@ -312,7 +312,7 @@ def _coerce_hex(value: Any, default: str = "") -> str:
 
 
 def _coerce_string_list(value: Any) -> list[str]:
-    """Handle coerce string list."""
+    """Coerce string list."""
     if not isinstance(value, list):
         return []
     out: list[str] = []
@@ -329,7 +329,7 @@ def _coerce_string_list(value: Any) -> list[str]:
 
 
 def _coerce_indent_overrides(value: Any) -> dict[str, dict[str, Any]]:
-    """Handle coerce indent overrides."""
+    """Coerce indent overrides."""
     if not isinstance(value, dict):
         return {}
     cleaned: dict[str, dict[str, Any]] = {}

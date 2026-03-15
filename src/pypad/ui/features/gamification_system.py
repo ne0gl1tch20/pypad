@@ -14,7 +14,7 @@ XP_PER_LEVEL = 120
 
 @dataclass(frozen=True)
 class XPResult:
-    """x p result."""
+    """Represent the x p result."""
     xp_added: int
     level_before: int
     level_after: int
@@ -26,7 +26,7 @@ class XPResult:
 
 
 class GamificationSystem:
-    """gamification system."""
+    """Represent the gamification system."""
     def __init__(self, settings: dict[str, Any]) -> None:
         """Set up gamification progress tracking, storage, and unlock state."""
         self.settings = settings
@@ -52,7 +52,7 @@ class GamificationSystem:
         return state
 
     def _coerce_state(self, state: dict[str, Any]) -> None:
-        """Handle coerce state."""
+        """Coerce state."""
         state["xp"] = self._safe_int(state.get("xp", 0), 0, minimum=0)
         state["level"] = self._safe_int(state.get("level", 1), 1, minimum=1)
         state["achievements"] = sorted({str(x) for x in state.get("achievements", []) if str(x).strip()})

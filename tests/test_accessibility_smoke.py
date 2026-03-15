@@ -29,6 +29,12 @@ class _ParentWindow(QMainWindow):
 
         return QIcon()
 
+    def show_status_message(self, _message: str, _timeout: int = 0) -> None:
+        return
+
+    def save_settings_to_disk(self) -> None:
+        return
+
 
 class _Host:
     def __init__(self, window: _ParentWindow) -> None:
@@ -48,6 +54,12 @@ class _Host:
 class _AIController:
     def __init__(self, window: _ParentWindow) -> None:
         self.window = window
+
+    def ask_ai_chat(self, *_args, **_kwargs) -> bool:
+        return False
+
+    def cancel_active_chat_request(self) -> bool:
+        return False
 
 
 class AccessibilitySmokeTests(unittest.TestCase):
@@ -75,6 +87,17 @@ class AccessibilitySmokeTests(unittest.TestCase):
         self.assertEqual(dock.accessibleName(), "AI chat dock")
         self.assertEqual(dock.input.accessibleName(), "AI chat prompt input")
         self.assertTrue(dock._reduce_motion_enabled())
+
+    def test_ai_chat_dock_keeps_input_enabled_when_request_does_not_start(self) -> None:
+        parent = _ParentWindow()
+        dock = AIChatDock(parent, ai_controller=_AIController(parent))
+        dock.input.setPlainText("Draft prompt")
+
+        dock._send_prompt()
+
+        self.assertEqual(dock.input.toPlainText(), "Draft prompt")
+        self.assertTrue(dock.send_btn.isEnabled())
+        self.assertFalse(dock.stop_btn.isEnabled())
 
     def test_plugin_dialogs_expose_accessible_names(self) -> None:
         parent = _ParentWindow()

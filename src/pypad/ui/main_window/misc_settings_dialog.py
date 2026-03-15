@@ -51,7 +51,7 @@ def _normalize_hex_color(value: str) -> str | None:
 
 
 class SettingsDialog(QDialog):
-    """settings dialog."""
+    """Represent the settings dialog."""
     def __init__(self, parent: Notepad, settings: dict) -> None:
         """Build the settings dialog and initialize its controls from the current settings."""
         super().__init__(parent)
@@ -334,7 +334,7 @@ class SettingsDialog(QDialog):
 
     @staticmethod
     def _normalized_or_default(value: str, fallback: str) -> str:
-        """Handle normalized or default."""
+        """Normalized or default."""
         normalized = _normalize_hex_color(value)
         if normalized is not None:
             return normalized
@@ -380,7 +380,7 @@ class SettingsDialog(QDialog):
 
     @staticmethod
     def _label_color_value(label: QLabel) -> str:
-        """Handle label color value."""
+        """Label color value."""
         value = label.text().strip()
         if value == "(auto)":
             return ""

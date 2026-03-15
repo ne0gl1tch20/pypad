@@ -255,6 +255,7 @@ def build_default_settings(*, default_style: str, font_family: str, font_size: i
         "debug_telemetry_enabled": False,
         "save_debug_logs_to_appdata": False,
         "logging_level": "INFO",
+        "developer_mode_enabled": False,
         "spellcheck_enabled": True,
         "spellcheck_language": "en",
         "spellcheck_user_dictionary": [],

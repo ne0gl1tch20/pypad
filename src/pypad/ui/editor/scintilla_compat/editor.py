@@ -41,7 +41,7 @@ class _MarginArea(QWidget):
         self._editor = editor
 
     def sizeHint(self) -> QSize:
-        """Handle size hint."""
+        """Return the preferred size for the layout."""
         return QSize(self._editor.margin_width(), 0)
 
     def paintEvent(self, event) -> None:
@@ -49,7 +49,7 @@ class _MarginArea(QWidget):
         self._editor.paint_margin(event)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
-        """Handle mouse press input for this widget."""
+        """Mouse press event."""
         self._editor.handle_margin_click(event)
 
 # Lots of variables!
@@ -710,7 +710,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         return self.textCursor().hasSelection()
 
     def selectedText(self) -> str:
-        """Handle selected text."""
+        """Return the selected text."""
         return self.textCursor().selectedText().replace("\u2029", "\n")
 
     def replaceSelectedText(self, text: str) -> None:
@@ -964,7 +964,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         self.setMarginsBackgroundColor(background)
 
     def indicatorDefine(self, style: int, indicator: int) -> int:
-        """Handle indicator define."""
+        """Indicator define."""
         idx = max(0, int(indicator))
         self._indicator_styles[idx] = int(style)
         if idx not in self._indicator_colors:
@@ -989,7 +989,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         self._indicator_value_current = int(value)
 
     def indicatorFillRange(self, position: int, length: int) -> None:
-        """Handle indicator fill range."""
+        """Indicator fill range."""
         pos = max(0, int(position))
         end = max(pos, pos + max(0, int(length)))
         ranges = self._indicator_ranges.setdefault(self._indicator_current, [])
@@ -1004,7 +1004,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         self._refresh_extra_selections()
 
     def indicatorClearRange(self, position: int, length: int) -> None:
-        """Handle indicator clear range."""
+        """Indicator clear range."""
         pos = max(0, int(position))
         end = max(pos, pos + max(0, int(length)))
         for key in list(self._indicator_ranges.keys()):
@@ -1099,14 +1099,14 @@ class ScintillaCompatEditor(QPlainTextEdit):
         self._refresh_extra_selections()
 
     def _hotspot_index_at_pos(self, pos: int) -> int:
-        """Handle hotspot index at pos."""
+        """Hotspot index at pos."""
         for idx, hs in enumerate(self._hotspot_ranges):
             if hs.start <= pos < hs.end:
                 return idx
         return -1
 
     def _indicator_hit_at_pos(self, pos: int) -> tuple[int, int] | None:
-        """Handle indicator hit at pos."""
+        """Indicator hit at pos."""
         for indic_id, ranges in self._indicator_ranges.items():
             for idx, seg in enumerate(ranges):
                 if int(seg.start) <= pos < int(seg.end):
@@ -1114,41 +1114,41 @@ class ScintillaCompatEditor(QPlainTextEdit):
         return None
 
     def styleSetFore(self, style_id: int, color: QColor | str) -> None:
-        """Handle style set fore."""
+        """Style set fore."""
         fmt = self._style_formats.get(int(style_id), QTextCharFormat())
         fmt.setForeground(color if isinstance(color, QColor) else QColor(str(color)))
         self._style_formats[int(style_id)] = fmt
         self._refresh_extra_selections()
 
     def styleSetBack(self, style_id: int, color: QColor | str) -> None:
-        """Handle style set back."""
+        """Style set back."""
         fmt = self._style_formats.get(int(style_id), QTextCharFormat())
         fmt.setBackground(color if isinstance(color, QColor) else QColor(str(color)))
         self._style_formats[int(style_id)] = fmt
         self._refresh_extra_selections()
 
     def styleClearAll(self) -> None:
-        """Handle style clear all."""
+        """Style clear all."""
         self._style_formats.clear()
         self._style_ranges = []
         self._refresh_extra_selections()
 
     def styleSetBold(self, style_id: int, bold: bool) -> None:
-        """Handle style set bold."""
+        """Style set bold."""
         fmt = self._style_formats.get(int(style_id), QTextCharFormat())
         fmt.setFontWeight(75 if bool(bold) else 50)
         self._style_formats[int(style_id)] = fmt
         self._refresh_extra_selections()
 
     def styleSetItalic(self, style_id: int, italic: bool) -> None:
-        """Handle style set italic."""
+        """Style set italic."""
         fmt = self._style_formats.get(int(style_id), QTextCharFormat())
         fmt.setFontItalic(bool(italic))
         self._style_formats[int(style_id)] = fmt
         self._refresh_extra_selections()
 
     def styleSetUnderline(self, style_id: int, underline: bool) -> None:
-        """Handle style set underline."""
+        """Style set underline."""
         fmt = self._style_formats.get(int(style_id), QTextCharFormat())
         fmt.setFontUnderline(bool(underline))
         self._style_formats[int(style_id)] = fmt
@@ -1517,7 +1517,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         return changed
 
     def _engine_touch(self, slot: int, value: int) -> None:
-        """Handle engine touch."""
+        """Engine touch."""
         state = self._engine_state
         state.generation += 1
         checksum_slot = int(slot) % len(state.checksums)
@@ -1528,7 +1528,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         ) & 0x7FFFFFFF
 
     def _engine_set_var(self, slot: int, value: int) -> int:
-        """Handle engine set var."""
+        """Engine set var."""
         state = self._engine_state
         if slot < 0 or slot >= len(state.variables):
             return -1
@@ -1542,14 +1542,14 @@ class ScintillaCompatEditor(QPlainTextEdit):
         return masked
 
     def _engine_get_var(self, slot: int) -> int:
-        """Handle engine get var."""
+        """Engine get var."""
         state = self._engine_state
         if slot < 0 or slot >= len(state.variables):
             return -1
         return int(state.variables[slot])
 
     def _engine_set_toggle(self, slot: int, value: int) -> int:
-        """Handle engine set toggle."""
+        """Engine set toggle."""
         state = self._engine_state
         if slot < 0 or slot >= len(state.toggles):
             return -1
@@ -1559,14 +1559,14 @@ class ScintillaCompatEditor(QPlainTextEdit):
         return 1 if flag else 0
 
     def _engine_get_toggle(self, slot: int) -> int:
-        """Handle engine get toggle."""
+        """Engine get toggle."""
         state = self._engine_state
         if slot < 0 or slot >= len(state.toggles):
             return -1
         return 1 if state.toggles[slot] else 0
 
     def _engine_set_channel(self, slot: int, value: int) -> int:
-        """Handle engine set channel."""
+        """Engine set channel."""
         state = self._engine_state
         if slot < 0 or slot >= len(state.channels):
             return -1
@@ -1575,26 +1575,26 @@ class ScintillaCompatEditor(QPlainTextEdit):
         return int(state.channels[slot])
 
     def _engine_get_channel(self, slot: int) -> int:
-        """Handle engine get channel."""
+        """Engine get channel."""
         state = self._engine_state
         if slot < 0 or slot >= len(state.channels):
             return -1
         return int(state.channels[slot])
 
     def _engine_reset_state(self) -> int:
-        """Handle engine reset state."""
+        """Engine reset state."""
         self._engine_state = ScintillaEngineState.create_default()
         return 1
 
     def _begin_undo_action(self) -> None:
-        """Handle begin undo action."""
+        """Begin undo action."""
         self._undo_action_depth += 1
         if self._undo_action_depth == 1:
             self._undo_action_before_text = self.toPlainText()
             self._undo_action_before_cursor = int(self.textCursor().position())
 
     def _end_undo_action(self) -> None:
-        """Handle end undo action."""
+        """End undo action."""
         if self._undo_action_depth <= 0:
             self._undo_action_depth = 0
             return
@@ -1667,7 +1667,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         self._last_cursor_snapshot = int(self.textCursor().position())
 
     def _undo_from_frames(self) -> int:
-        """Handle undo from frames."""
+        """Undo from frames."""
         if not self._undo_frames:
             return 0
         frame = self._undo_frames.pop()
@@ -1679,7 +1679,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         return 1
 
     def _redo_from_frames(self) -> int:
-        """Handle redo from frames."""
+        """Redo from frames."""
         if not self._redo_frames:
             return 0
         frame = self._redo_frames.pop()
@@ -1691,7 +1691,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         return 1
 
     def _engine_snapshot(self) -> str:
-        """Handle engine snapshot."""
+        """Engine snapshot."""
         state = self._engine_state
         payload = {
             "generation": int(state.generation),
@@ -1706,7 +1706,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         return text
 
     def _engine_import_snapshot(self, payload: str) -> int:
-        """Handle engine import snapshot."""
+        """Engine import snapshot."""
         try:
             data = json.loads(str(payload or "{}"))
         except Exception:
@@ -1732,7 +1732,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         return 1
 
     def _engine_diff_snapshot(self, payload: str) -> str:
-        """Handle engine diff snapshot."""
+        """Engine diff snapshot."""
         try:
             other = json.loads(str(payload or "{}"))
         except Exception:
@@ -1775,51 +1775,51 @@ class ScintillaCompatEditor(QPlainTextEdit):
         }
 
     def _named_engine_var(self, *args: int) -> bool:
-        """Handle named engine var."""
+        """Named engine var."""
         return self._engine_set_var(int(args[0]), int(args[1])) >= 0
 
     def _named_engine_toggle(self, *args: int) -> bool:
-        """Handle named engine toggle."""
+        """Named engine toggle."""
         return self._engine_set_toggle(int(args[0]), int(args[1])) >= 0
 
     def _named_engine_channel(self, *args: int) -> bool:
-        """Handle named engine channel."""
+        """Named engine channel."""
         return self._engine_set_channel(int(args[0]), int(args[1])) >= 0
 
     def _named_engine_reset(self, *args: int) -> bool:
-        """Handle named engine reset."""
+        """Named engine reset."""
         return self._engine_reset_state() == 1
 
     def _named_hide_lines(self, *args: int) -> bool:
-        """Handle named hide lines."""
+        """Named hide lines."""
         return self.hide_lines(int(args[0]), int(args[1]))
 
     def _named_show_lines(self, *args: int) -> bool:
-        """Handle named show lines."""
+        """Named show lines."""
         return self.show_lines(int(args[0]), int(args[1]))
 
     def _named_set_selection_mode(self, *args: int) -> bool:
-        """Handle named set selection mode."""
+        """Named set selection mode."""
         self.set_column_mode(int(args[0]) == self.SC_SEL_RECTANGLE)
         return True
 
     def _named_set_multiple_selection(self, *args: int) -> bool:
-        """Handle named set multiple selection."""
+        """Named set multiple selection."""
         self.setMultipleSelectionEnabled(bool(args[0]))
         return True
 
     def _named_set_additional_selection_typing(self, *args: int) -> bool:
-        """Handle named set additional selection typing."""
+        """Named set additional selection typing."""
         self.setAdditionalSelectionTyping(bool(args[0]))
         return True
 
     def _named_set_multi_paste(self, *args: int) -> bool:
-        """Handle named set multi paste."""
+        """Named set multi paste."""
         self.setMultiPaste(bool(args[0]))
         return True
 
     def _emit_scn(self, code: str, *, position: int = -1, line: int = -1, text: str = "", value: int = 0, **metadata) -> None:
-        """Handle emit scn."""
+        """Emit scn."""
         mask_by_code = {
             self.SCN_MODIFIED: int(self.SC_MOD_INSERTTEXT | self.SC_MOD_DELETETEXT | self.SC_MOD_CHANGESTYLE | self.SC_MOD_CHANGEFOLD),
             self.SCN_UPDATEUI: int(self.SC_MOD_UPDATEUI),
@@ -1852,7 +1852,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         self.scnNotify.emit(payload)
 
     def _emit_dwell_start(self) -> None:
-        """Handle emit dwell start."""
+        """Emit dwell start."""
         pos = int(self._last_dwell_pos)
         if pos < 0:
             return
@@ -2992,7 +2992,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
 
     @staticmethod
     def _write_scintilla_text_target(target, text: str, *, max_len: int | None = None) -> None:
-        """Handle write scintilla text target."""
+        """Write scintilla text target."""
         payload = str(text)
         if isinstance(target, dict):
             target["text"] = payload
@@ -3018,7 +3018,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
 
     @staticmethod
     def _read_scintilla_text_arg(source, max_len: int | None = None) -> str:
-        """Handle read scintilla text arg."""
+        """Read scintilla text arg."""
         if isinstance(source, dict):
             value = source.get("text", "")
             text = str(value)
@@ -3040,7 +3040,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         return text[:limit]
 
     def _search_in_target(self, text: str, needle: str, lo: int, hi: int, *, reverse: bool = False) -> int:
-        """Handle search in target."""
+        """Search in target."""
         match_case = bool(int(self._search_flags) & int(self.SCFIND_MATCHCASE))
         whole_word = bool(int(self._search_flags) & int(self.SCFIND_WHOLEWORD))
         word_start = bool(int(self._search_flags) & int(self.SCFIND_WORDSTART))
@@ -3101,7 +3101,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         match_case: bool,
         posix_mode: bool,
     ) -> int:
-        """Handle regex search in target."""
+        """Regex search in target."""
         flags = 0 if match_case else re.IGNORECASE
         try:
             regex = re.compile(pattern, flags)
@@ -3155,7 +3155,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         return bool(start <= 0 or not self._is_word_char_posix(text[start - 1]))
 
     def _matches_word_constraints(self, text: str, start: int, end: int, *, whole_word: bool, word_start: bool) -> bool:
-        """Handle matches word constraints."""
+        """Matches word constraints."""
         if whole_word:
             return self._is_whole_word_match(text, start, end)
         if word_start:
@@ -3163,7 +3163,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         return True
 
     def _matches_word_constraints_posix(self, text: str, start: int, end: int, *, whole_word: bool, word_start: bool) -> bool:
-        """Handle matches word constraints posix."""
+        """Matches word constraints posix."""
         if whole_word:
             return self._is_whole_word_match_posix(text, start, end)
         if word_start:
@@ -3171,7 +3171,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         return True
 
     def _replace_target_span(self, lo: int, hi: int, replacement: str) -> int:
-        """Handle replace target span."""
+        """Replace target span."""
         before_text = self.toPlainText()
         cursor = self.textCursor()
         cursor.setPosition(max(0, int(lo)))
@@ -3191,7 +3191,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         return len(str(replacement))
 
     def _page_move(self, *, up: bool, extend: bool) -> int:
-        """Handle page move."""
+        """Page move."""
         steps = max(1, int(self.SendScintilla(self.SCI_LINESONSCREEN)) - 1)
         c = self.textCursor()
         op = QTextCursor.Up if up else QTextCursor.Down
@@ -3202,7 +3202,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         return int(c.position())
 
     def _word_start_position(self, pos: int, *, only_word_chars: bool) -> int:
-        """Handle word start position."""
+        """Word start position."""
         text = self.toPlainText()
         p = max(0, min(int(pos), len(text)))
         if p <= 0:
@@ -3219,7 +3219,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         return int(p)
 
     def _word_end_position(self, pos: int, *, only_word_chars: bool) -> int:
-        """Handle word end position."""
+        """Word end position."""
         text = self.toPlainText()
         p = max(0, min(int(pos), len(text)))
         n = len(text)
@@ -3235,7 +3235,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         return int(p)
 
     def _selection_n_range(self, idx: int) -> tuple[int, int]:
-        """Handle selection n range."""
+        """Selection n range."""
         self._sync_selection_ranges_from_editor()
         index = max(0, int(idx))
         if 0 <= index < len(self._selection_ranges):
@@ -3247,13 +3247,13 @@ class ScintillaCompatEditor(QPlainTextEdit):
         return 0, 0
 
     def _coerce_main_selection_index(self, idx: int) -> int:
-        """Handle coerce main selection index."""
+        """Coerce main selection index."""
         self._sync_selection_ranges_from_editor()
         total = max(1, len(self._selection_ranges))
         return max(0, min(int(idx), max(0, total - 1)))
 
     def _rotate_main_selection(self) -> None:
-        """Handle rotate main selection."""
+        """Rotate main selection."""
         total = 1
         if self._multiple_selection_enabled and self._additional_carets:
             total = len(self._additional_carets) + 1
@@ -3263,7 +3263,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         self._main_selection_index = (int(self._main_selection_index) + 1) % int(total)
 
     def _swap_main_anchor_caret(self) -> None:
-        """Handle swap main anchor caret."""
+        """Swap main anchor caret."""
         self._sync_selection_ranges_from_editor()
         main_idx = self._coerce_main_selection_index(self._main_selection_index)
         if not (0 <= main_idx < len(self._selection_ranges)):
@@ -3358,7 +3358,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         self.viewport().update()
 
     def _drop_selection_n(self, idx: int) -> None:
-        """Handle drop selection n."""
+        """Drop selection n."""
         self._sync_selection_ranges_from_editor()
         index = int(idx)
         if index < 0:
@@ -3385,7 +3385,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         self.viewport().update()
 
     def _style_at_pos(self, pos: int) -> int:
-        """Handle style at pos."""
+        """Style at pos."""
         p = max(0, int(pos))
         for lo, hi, style_id in reversed([*self._lexer_ranges, *self._style_ranges]):
             if int(lo) <= p < int(hi):
@@ -3431,7 +3431,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         }
 
     def _marker_mask_for_line(self, line: int) -> int:
-        """Handle marker mask for line."""
+        """Marker mask for line."""
         ln = max(0, int(line))
         mask = 0
         for marker_id, lines in self._markers.items():
@@ -3446,14 +3446,14 @@ class ScintillaCompatEditor(QPlainTextEdit):
         return int(mask)
 
     def _marker_line_matches_mask(self, line: int, mask: int) -> bool:
-        """Handle marker line matches mask."""
+        """Marker line matches mask."""
         line_mask = self._marker_mask_for_line(line)
         if int(mask) < 0:
             return line_mask != 0
         return (line_mask & int(mask)) != 0
 
     def _marker_next_line(self, line: int, mask: int) -> int:
-        """Handle marker next line."""
+        """Marker next line."""
         max_line = max(0, self.blockCount() - 1)
         for ln in range(max(0, int(line)), max_line + 1):
             if self._marker_line_matches_mask(ln, int(mask)):
@@ -3461,7 +3461,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         return -1
 
     def _marker_previous_line(self, line: int, mask: int) -> int:
-        """Handle marker previous line."""
+        """Marker previous line."""
         max_line = max(0, self.blockCount() - 1)
         start = min(max_line, max(0, int(line)))
         for ln in range(start, -1, -1):
@@ -3470,7 +3470,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         return -1
 
     def _fold_parent_for_line(self, line: int) -> int:
-        """Handle fold parent for line."""
+        """Fold parent for line."""
         best_parent = -1
         best_span = None
         for header, region in self._fold_regions.items():
@@ -3482,7 +3482,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         return int(best_parent)
 
     def _fold_last_child_for_line(self, line: int, level: int) -> int:
-        """Handle fold last child for line."""
+        """Fold last child for line."""
         region = self._fold_regions.get(int(line))
         if region is None:
             return int(line)
@@ -3493,7 +3493,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         return sum(width for _idx, _kind, _x, width in self._margin_segments()) + self._margin_left_padding + self._margin_right_padding
 
     def _margin_segments(self) -> list[tuple[int, str, int, int]]:
-        """Handle margin segments."""
+        """Margin segments."""
         digits = max(2, len(str(self.blockCount())))
         dynamic_number_width = 8 + self.fontMetrics().horizontalAdvance("9" * digits)
         x = self._margin_left_padding
@@ -3547,7 +3547,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         painter.end()
 
     def _paint_fold_display_texts(self) -> None:
-        """Handle paint fold display texts."""
+        """Paint fold display texts."""
         if not self._fold_display_text:
             return
         painter = QPainter(self.viewport())
@@ -3569,7 +3569,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         painter.end()
 
     def _paint_annotations(self) -> None:
-        """Handle paint annotations."""
+        """Paint annotations."""
         if not self._annotations:
             return
         painter = QPainter(self.viewport())
@@ -3598,7 +3598,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         painter.end()
 
     def _paint_brace_match(self) -> None:
-        """Handle paint brace match."""
+        """Paint brace match."""
         pair = self._brace_match_pair
         if pair is None:
             return
@@ -3617,7 +3617,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         painter.end()
 
     def _paint_multi_ranges(self) -> None:
-        """Handle paint multi ranges."""
+        """Paint multi ranges."""
         ranges = [(s, e) for s, e in self._multi_ranges if e > s]
         if not ranges:
             return
@@ -3644,7 +3644,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         painter.end()
 
     def _paint_symbol_overlays(self) -> None:
-        """Handle paint symbol overlays."""
+        """Paint symbol overlays."""
         if not (
             self._view_whitespace
             or self._view_eol
@@ -3695,7 +3695,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
             bottom = top + round(self.blockBoundingRect(block).height())
         painter.end()
     def paint_margin(self, event) -> None:
-        """Handle paint margin."""
+        """Paint margin."""
         painter = QPainter(self._margin)
         bg = QColor(self._margin_bg_color)
         fg = QColor(self._margin_fg_color)
@@ -3732,7 +3732,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         painter.end()
 
     def handle_margin_click(self, event: QMouseEvent) -> None:
-        """Handle clicks in the editor margin for folding and markers."""
+        """Margin click."""
         line = self._line_from_y(int(event.position().y()))
         if line < 0:
             return
@@ -3758,7 +3758,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         self.setFocus()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
-        """Handle mouse press input for this widget."""
+        """Mouse press event."""
         mods = event.modifiers()
         add_multi_caret = bool(mods & Qt.ControlModifier) and bool(mods & Qt.AltModifier)
         if self._multiple_selection_enabled and add_multi_caret:
@@ -3786,7 +3786,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:
-        """Handle mouse movement for this widget."""
+        """Mouse move event."""
         self._last_dwell_pos = int(self.cursorForPosition(event.position().toPoint()).position())
         self._dwell_timer.setInterval(max(50, int(self._mouse_dwell_time_ms)))
         self._dwell_timer.start()
@@ -3818,7 +3818,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event) -> None:
-        """Handle mouse release input for this widget."""
+        """Mouse release event."""
         if self._column_drag_active and event.button() == Qt.LeftButton:
             cursor = self.cursorForPosition(event.position().toPoint())
             self._apply_column_drag(cursor.blockNumber(), cursor.columnNumber())
@@ -3845,7 +3845,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         super().mouseReleaseEvent(event)
 
     def keyPressEvent(self, event) -> None:
-        """Handle key press input for this widget."""
+        """Process key press events."""
         typed = event.text() if hasattr(event, "text") else ""
         if typed and not (event.modifiers() & (Qt.ControlModifier | Qt.MetaModifier)):
             cur_pos = int(self.textCursor().position())
@@ -3931,7 +3931,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
             self._invoke_completion(force=False)
 
     def _insert_text_at_all_carets(self, text: str) -> None:
-        """Handle insert text at all carets."""
+        """Insert text at all carets."""
         positions = sorted(set([self.textCursor().position(), *self._additional_carets]))
         if not positions:
             return
@@ -3959,7 +3959,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         self.viewport().update()
 
     def _insert_rows_at_all_carets(self, rows: list[str]) -> None:
-        """Handle insert rows at all carets."""
+        """Insert rows at all carets."""
         positions = sorted(set([self.textCursor().position(), *self._additional_carets]))
         if not positions or len(rows) != len(positions):
             return
@@ -3987,7 +3987,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         self.viewport().update()
 
     def _move_all_carets(self, key: int, *, keep_anchor: bool) -> None:
-        """Handle move all carets."""
+        """Move all carets."""
         positions = sorted(set([self.textCursor().position(), *self._additional_carets]))
         if not positions:
             return
@@ -4020,7 +4020,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         self.viewport().update()
 
     def _delete_at_all_carets(self, *, backward: bool) -> None:
-        """Handle delete at all carets."""
+        """Delete at all carets."""
         positions = sorted(set([self.textCursor().position(), *self._additional_carets]))
         if not positions:
             return
@@ -4062,7 +4062,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         self.viewport().update()
 
     def _replace_ranges_with_text(self, ranges: list[tuple[int, int]], text: str) -> None:
-        """Handle replace ranges with text."""
+        """Replace ranges with text."""
         ordered = sorted((min(s, e), max(s, e)) for s, e in ranges)
         if not ordered:
             return
@@ -4100,7 +4100,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         self.viewport().update()
 
     def _replace_ranges_with_text_rows(self, ranges: list[tuple[int, int]], rows: list[str]) -> None:
-        """Handle replace ranges with text rows."""
+        """Replace ranges with text rows."""
         ordered = sorted((min(s, e), max(s, e), idx) for idx, (s, e) in enumerate(ranges))
         if not ordered or len(rows) != len(ordered):
             return
@@ -4139,7 +4139,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         self.viewport().update()
 
     def _delete_multi_ranges(self, *, backward: bool) -> None:
-        """Handle delete multi ranges."""
+        """Delete multi ranges."""
         ranges = [(s, e) for s, e in self._multi_ranges if s != e]
         if ranges:
             self._replace_ranges_with_text(ranges, "")
@@ -4147,7 +4147,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         self._delete_at_all_carets(backward=backward)
 
     def _clipboard_text(self) -> str:
-        """Handle clipboard text."""
+        """Clipboard text."""
         try:
             from PySide6.QtGui import QGuiApplication
 
@@ -4157,7 +4157,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
             return ""
 
     def _on_text_changed(self) -> None:
-        """Handle on text changed."""
+        """React when the text changes."""
         self._sync_selection_ranges_from_editor()
         c = self.textCursor()
         pos = int(c.position())
@@ -4215,7 +4215,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
             self._rebuild_timer.start()
 
     def _on_cursor_changed(self) -> None:
-        """Handle on cursor changed."""
+        """React when the cursor position changes."""
         self._sync_selection_ranges_from_editor()
         c = self.textCursor()
         cursor_pos = int(c.position())
@@ -4255,7 +4255,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
             self._margin.update(0, rect.y(), self._margin.width(), rect.height())
 
     def _paint_marker_glyph(self, painter: QPainter, line: int, x: int, top: int, *, margin: int) -> None:
-        """Handle paint marker glyph."""
+        """Paint marker glyph."""
         marker_id = self._first_masked_marker_for_line(line, margin=margin)
         if marker_id is None:
             return
@@ -4296,7 +4296,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
             painter.drawEllipse(rect)
 
     def _first_masked_marker_for_line(self, line: int, *, margin: int) -> int | None:
-        """Handle first masked marker for line."""
+        """First masked marker for line."""
         mask = int(self._margin_marker_masks.get(int(margin), -1))
         for mid, lines in self._markers.items():
             if line not in lines:
@@ -4308,7 +4308,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         return None
 
     def _paint_fold_glyph(self, painter: QPainter, line: int, x: int, top: int) -> None:
-        """Handle paint fold glyph."""
+        """Paint fold glyph."""
         if not self._folding_enabled or line not in self._fold_regions:
             return
         h = self.fontMetrics().height()
@@ -4322,7 +4322,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
             painter.drawLine(box.center().x(), box.top() + 2, box.center().x(), box.bottom() - 2)
 
     def _line_from_y(self, y: int) -> int:
-        """Handle line from y."""
+        """Line from y."""
         block = self.firstVisibleBlock()
         top = round(self.blockBoundingGeometry(block).translated(self.contentOffset()).top())
         bottom = top + round(self.blockBoundingRect(block).height())
@@ -4335,7 +4335,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         return -1
 
     def _rebuild_fold_regions(self) -> None:
-        """Handle rebuild fold regions."""
+        """Rebuild fold regions."""
         lines = self.toPlainText().splitlines()
         if not lines:
             self._fold_regions = {}
@@ -4446,7 +4446,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         return regions
 
     def _rebuild_fold_hidden_lines(self) -> None:
-        """Handle rebuild fold hidden lines."""
+        """Rebuild fold hidden lines."""
         hidden: set[int] = set()
         for header in self._collapsed_headers:
             region = self._fold_regions.get(header)
@@ -4471,7 +4471,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         self._margin.update()
 
     def _indent_of_line(self, line: str) -> int:
-        """Handle indent of line."""
+        """Indent of line."""
         total = 0
         for ch in line:
             if ch == " ":
@@ -4483,7 +4483,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         return total
 
     def _index_from_line_col(self, line: int, col: int) -> int:
-        """Handle index from line col."""
+        """Index from line col."""
         line = max(0, int(line))
         col = max(0, int(col))
         block = self.document().findBlockByNumber(line)
@@ -4492,7 +4492,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         return min(block.position() + col, block.position() + len(block.text()))
 
     def _line_col_from_pos(self, pos: int) -> tuple[int, int]:
-        """Handle line col from pos."""
+        """Line col from pos."""
         block = self.document().findBlock(max(0, min(pos, len(self.toPlainText()))))
         return block.blockNumber(), max(0, min(pos - block.position(), len(block.text())))
 
@@ -4533,7 +4533,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         )
 
     def _reapply_column_block(self) -> None:
-        """Handle reapply column block."""
+        """Reapply column block."""
         block = self._column_block
         if block is None:
             return
@@ -4555,7 +4555,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         self._multi_ranges = ranges
 
     def _block_newline_text(self) -> str:
-        """Handle block newline text."""
+        """Block newline text."""
         cursor = self.textCursor()
         block = cursor.block()
         line = block.text() if block.isValid() else ""
@@ -4582,7 +4582,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         self._completion_model.setStringList(sorted(words))
 
     def _api_words(self) -> set[str]:
-        """Handle api words."""
+        """Api words."""
         apis = self._apis
         if apis is None:
             return set()
@@ -4602,7 +4602,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         return set()
 
     def _flush_deferred_rebuild(self) -> None:
-        """Handle flush deferred rebuild."""
+        """Flush deferred rebuild."""
         if not self._rebuild_pending:
             return
         self._rebuild_pending = False
@@ -4613,11 +4613,11 @@ class ScintillaCompatEditor(QPlainTextEdit):
         self._margin.update()
 
     def _document_words(self) -> set[str]:
-        """Handle document words."""
+        """Document words."""
         return {m.group(0) for m in re.finditer(r"[A-Za-z_][A-Za-z0-9_]{1,}", self.toPlainText())}
 
     def _current_word_span(self) -> tuple[int, int]:
-        """Handle current word span."""
+        """Return the current word span."""
         cursor = self.textCursor()
         pos = cursor.position()
         text = self.toPlainText()
@@ -4632,7 +4632,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         return start, end
 
     def _invoke_completion(self, *, force: bool) -> None:
-        """Handle invoke completion."""
+        """Invoke completion."""
         self._refresh_completion_words()
         start, end = self._current_word_span()
         prefix = self.toPlainText()[start:end]
@@ -4656,7 +4656,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         self._autoc_last_prefix = str(prefix)
 
     def _insert_completion(self, completion: str) -> None:
-        """Handle insert completion."""
+        """Insert completion."""
         text = str(completion or "")
         if not text:
             return
@@ -4668,7 +4668,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         self.setTextCursor(cursor)
 
     def _rebuild_lexer_ranges(self) -> None:
-        """Handle rebuild lexer ranges."""
+        """Rebuild lexer ranges."""
         if self._lexer is None:
             self._lexer_ranges = []
             return
@@ -4717,7 +4717,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         self._ensure_default_styles()
 
     def _detect_lexer_language(self, lexer) -> str:
-        """Handle detect lexer language."""
+        """Detect lexer language."""
         label = ""
         for attr in ("language", "name"):
             value = getattr(lexer, attr, None)
@@ -4745,7 +4745,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         return "plain"
 
     def _find_style_ranges(self, source: str, pattern: str, style_id: int, *, flags: int = 0) -> list[tuple[int, int, int]]:
-        """Handle find style ranges."""
+        """Find style ranges."""
         out: list[tuple[int, int, int]] = []
         for match in re.finditer(pattern, source, flags):
             lo, hi = match.span()
@@ -4800,7 +4800,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         self.setExtraSelections(selections)
 
     def _compose_render_layers(self) -> list[list[tuple[int, int, QTextCharFormat]]]:
-        """Handle compose render layers."""
+        """Compose render layers."""
         doc_len = len(self.toPlainText())
         style_layer: list[tuple[int, int, QTextCharFormat]] = []
         indicator_layer: list[tuple[int, int, QTextCharFormat]] = []
@@ -4865,7 +4865,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
 
     @staticmethod
     def _qcolor_from_scintilla_rgb(value: int) -> QColor:
-        """Handle qcolor from scintilla rgb."""
+        """Qcolor from scintilla rgb."""
         iv = int(value)
         r = iv & 0xFF
         g = (iv >> 8) & 0xFF
@@ -4873,7 +4873,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         return QColor(r, g, b)
 
     def _auto_brace_match(self) -> None:
-        """Handle auto brace match."""
+        """Auto brace match."""
         text = self.toPlainText()
         if not text:
             self._brace_match_pair = None
@@ -4883,7 +4883,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         self._brace_match_pair = pair
 
     def _find_nearby_brace_pair(self, text: str, pos: int) -> tuple[int, int] | None:
-        """Handle find nearby brace pair."""
+        """Find nearby brace pair."""
         if pos > 0 and pos - 1 < len(text):
             pair = self._find_brace_pair_at(text, pos - 1)
             if pair is not None:
@@ -4895,7 +4895,7 @@ class ScintillaCompatEditor(QPlainTextEdit):
         return None
 
     def _find_brace_pair_at(self, text: str, index: int) -> tuple[int, int] | None:
-        """Handle find brace pair at."""
+        """Find brace pair at."""
         if index < 0 or index >= len(text):
             return None
         ch = text[index]

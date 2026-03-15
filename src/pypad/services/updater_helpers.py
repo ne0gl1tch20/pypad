@@ -107,12 +107,12 @@ def is_newer_version(remote: str, current: str) -> bool:
 
 
 def _local(tag: str) -> str:
-    """Handle local."""
+    """Return the local value."""
     return tag.split("}", 1)[-1]
 
 
 def _first_text(parent: ET.Element, candidates: set[str]) -> str | None:
-    """Handle first text."""
+    """Return the first non-empty text value."""
     lowered = {name.lower() for name in candidates}
     for child in parent.iter():
         if _local(child.tag).lower() in lowered:
@@ -155,13 +155,13 @@ def _extract_download_url(node: ET.Element) -> str | None:
 
 
 def _version_tuple(version: str) -> tuple[int, ...]:
-    """Handle version tuple."""
+    """Normalize a version string into a tuple."""
     parts = [int(piece) for piece in re.findall(r"\d+", version)]
     return tuple(parts) if parts else (0,)
 
 
 def _version_key(version: str) -> tuple[tuple[int, ...], int, str]:
-    """Handle version key."""
+    """Build a sortable key for a version value."""
     value = str(version or "").strip().lower()
     prerelease_match = re.search(r"(?:-|\.)(?:alpha|beta|rc|pre|preview)", value)
     numeric_source = value[: prerelease_match.start()] if prerelease_match else value
@@ -172,7 +172,7 @@ def _version_key(version: str) -> tuple[tuple[int, ...], int, str]:
 
 
 def metadata_signature_payload(info: UpdateInfo) -> bytes:
-    """Handle metadata signature payload."""
+    """Build the metadata-signature payload."""
     return "|".join(
         [
             info.version.strip(),

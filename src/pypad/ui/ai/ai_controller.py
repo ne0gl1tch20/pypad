@@ -5,6 +5,7 @@ This module belongs to the AI-assisted editing and collaboration UI layer. It he
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import sys
@@ -24,6 +25,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QProgressDialog,
     QPushButton,
+    QTabWidget,
     QTextEdit,
     QVBoxLayout,
 )
@@ -51,6 +53,26 @@ JWT_RE = re.compile(r"\beyJ[A-Za-z0-9_\-]+?\.[A-Za-z0-9_\-]+?\.[A-Za-z0-9_\-]+?\
 _LOGGER = get_logger(__name__)
 
 
+def _replace_posix_paths(text: str) -> tuple[str, int]:
+    """Redact POSIX-like paths while preserving internal `pypad://...` deep links."""
+    replaced: list[str] = []
+    last = 0
+    count = 0
+    for match in POSIX_PATH_RE.finditer(text):
+        start, end = match.span()
+        scheme_start = max(0, start - 8)
+        if text[scheme_start:start].lower().endswith("pypad:/"):
+            continue
+        replaced.append(text[last:start])
+        replaced.append("[REDACTED_PATH]")
+        last = end
+        count += 1
+    if not count:
+        return text, 0
+    replaced.append(text[last:])
+    return "".join(replaced), count
+
+
 def sanitize_prompt_text(prompt: str, settings: dict) -> tuple[str, list[str]]:
     """Apply configurable redaction rules to a prompt before it is sent to the model."""
     redacted = prompt
@@ -62,7 +84,7 @@ def sanitize_prompt_text(prompt: str, settings: dict) -> tuple[str, list[str]]:
             changes.append(f"emails({count})")
     if bool(profile_setting(settings, "ai_send_redact_paths", True)):
         updated, count_win = WINDOWS_PATH_RE.subn("[REDACTED_PATH]", redacted)
-        updated, count_posix = POSIX_PATH_RE.subn("[REDACTED_PATH]", updated)
+        updated, count_posix = _replace_posix_paths(updated)
         total = count_win + count_posix
         if total:
             redacted = updated
@@ -272,11 +294,11 @@ class AIResultDialog(QDialog):
         self.replace_btn.clicked.connect(self._replace_selection)
 
     def _copy_text(self) -> None:
-        """Handle copy text."""
+        """Copy the generated output to the system clipboard."""
         QApplication.clipboard().setText(self.output.toPlainText())
 
     def _insert_text(self) -> None:
-        """Handle insert text."""
+        """Insert the generated output at the current editor cursor."""
         parent = self.parent()
         tab = parent.active_tab() if parent else None
         if tab is None:
@@ -284,7 +306,7 @@ class AIResultDialog(QDialog):
         tab.text_edit.insert_text(self.output.toPlainText())
 
     def _replace_selection(self) -> None:
-        """Handle replace selection."""
+        """Replace the current editor selection with the generated output."""
         parent = self.parent()
         tab = parent.active_tab() if parent else None
         if tab is None:
@@ -324,6 +346,60 @@ class AIRedactionPreviewDialog(QDialog):
         layout.addWidget(buttons)
 
 
+class AIDeveloperPreviewDialog(QDialog):
+    """Preview the exact assembled AI payload for developer mode before send."""
+    def __init__(self, parent, payload: dict[str, object]) -> None:
+        """Build the developer preview dialog for a pending AI request."""
+        super().__init__(parent)
+        self.setWindowTitle("AI Developer Send Preview")
+        self.resize(980, 700)
+        self._payload = dict(payload)
+
+        layout = QVBoxLayout(self)
+        summary = QLabel(self._summary_text(), self)
+        summary.setWordWrap(True)
+        layout.addWidget(summary)
+
+        tabs = QTabWidget(self)
+        for title, key in (("Input", "raw_prompt"), ("Assembled", "assembled_prompt"), ("Sent", "sent_prompt")):
+            viewer = QTextEdit(self)
+            viewer.setReadOnly(True)
+            viewer.setPlainText(str(self._payload.get(key, "") or ""))
+            tabs.addTab(viewer, title)
+        layout.addWidget(tabs, 1)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, Qt.Horizontal, self)
+        ok_btn = buttons.button(QDialogButtonBox.Ok)
+        if ok_btn is not None:
+            ok_btn.setText("Send")
+        copy_btn = QPushButton("Copy Sent", self)
+        open_btn = QPushButton("Open Inspector", self)
+        buttons.addButton(copy_btn, QDialogButtonBox.ActionRole)
+        buttons.addButton(open_btn, QDialogButtonBox.ActionRole)
+        copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(str(self._payload.get("sent_prompt", "") or "")))
+        open_btn.clicked.connect(self._open_inspector)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def _summary_text(self) -> str:
+        """Format a one-line summary for the preview header."""
+        changes = ", ".join(str(x) for x in list(self._payload.get("redaction_changes", []) or [])) or "none"
+        return (
+            f"Action: {self._payload.get('action_title', '')} | "
+            f"Model: {self._payload.get('model', '')} | "
+            f"Key source: {self._payload.get('api_key_source', '')} | "
+            f"Redactions: {changes} | "
+            f"Chars: {self._payload.get('sent_chars', 0)}"
+        )
+
+    def _open_inspector(self) -> None:
+        """Route to the main developer hub when available."""
+        parent = self.parent()
+        if parent is not None and hasattr(parent, "open_developer_hub"):
+            parent.open_developer_hub("AI")
+
+
 class AIController:
     """Coordinate AI prompt assembly, request execution, and UI result handling."""
     def __init__(self, window) -> None:
@@ -338,6 +414,8 @@ class AIController:
         self._cached_knowledge_key: tuple[object, ...] | None = None
         self._connectivity_cache_ok = False
         self._connectivity_cache_checked_at = 0.0
+        self._last_prompt_payload: dict[str, object] | None = None
+        self._recent_prompt_payloads: list[dict[str, object]] = []
 
     def _log_ai(self, message: str) -> None:
         """Write verbose AI diagnostics only when the related setting is enabled."""
@@ -443,22 +521,50 @@ class AIController:
             "[/APP_RUNTIME_CONTEXT]"
         )
 
-    def _api_key(self) -> str:
-        """Resolve the API key from settings or the environment based on storage policy."""
+    def _resolve_api_key_with_source(self) -> tuple[str, str]:
+        """Resolve the API key together with the source used for diagnostics."""
         resolved = resolve_security_policy(self.window.settings)
         default_storage_mode = "env_only" if resolved.profile_id in {"beginner", "balanced"} else "settings"
         storage_mode = str(profile_setting(self.window.settings, "ai_key_storage_mode", default_storage_mode) or default_storage_mode).strip().lower()
         configured = str(self.window.settings.get("gemini_api_key", "") or "").strip()
         if storage_mode != "env_only" and configured:
-            return configured
-        return str(os.getenv("GEMINI_API_KEY", "")).strip()
+            return configured, "settings"
+        env_key = str(os.getenv("GEMINI_API_KEY", "")).strip()
+        if env_key:
+            return env_key, "environment"
+        if configured:
+            # Recover from contradictory persisted state where a key was saved
+            # in settings but the storage mode remained `env_only`.
+            return configured, "settings_fallback_after_env_only_conflict"
+        return "", "missing"
+
+    def _api_key(self) -> str:
+        """Resolve the effective API key string used for actual AI calls."""
+        key, _source = self._resolve_api_key_with_source()
+        return key
+
+    def last_prompt_payload(self) -> dict[str, object] | None:
+        """Return the most recent AI payload snapshot."""
+        return dict(self._last_prompt_payload) if isinstance(self._last_prompt_payload, dict) else None
+
+    def recent_prompt_payloads(self) -> list[dict[str, object]]:
+        """Return recent AI payload snapshots."""
+        return [dict(item) for item in self._recent_prompt_payloads]
+
+    def _set_last_prompt_payload(self, payload: dict[str, object]) -> None:
+        """Persist a bounded in-memory payload history for developer inspection."""
+        snapshot = dict(payload)
+        self._last_prompt_payload = snapshot
+        self._recent_prompt_payloads.append(snapshot)
+        if len(self._recent_prompt_payloads) > 20:
+            self._recent_prompt_payloads = self._recent_prompt_payloads[-20:]
 
     def _model(self) -> str:
         """Return the configured model name with a stable default."""
         return str(self.window.settings.get("ai_model", "gemini-3-flash-preview") or "gemini-3-flash-preview")
 
     def _ai_private_mode_enabled(self) -> bool:
-        """Handle AI private mode enabled."""
+        """Return whether AI private mode is enabled in the current window settings."""
         return bool(self.window.settings.get("ai_private_mode", False))
 
     def _guard_ai_private_mode(self, title: str) -> bool:
@@ -490,7 +596,7 @@ class AIController:
 
     @staticmethod
     def _estimate_tokens(text: str) -> int:
-        """Handle estimate tokens."""
+        """Estimate token usage for request-size hints and lightweight metrics."""
         return max(1, int(len(text) / 4)) if text else 0
 
     def _record_ai_metrics(self, *, action: str, prompt: str, response: str, model: str) -> None:
@@ -523,15 +629,20 @@ class AIController:
         if hasattr(self.window, "save_settings_to_disk"):
             self.window.save_settings_to_disk()
 
-    def _prepare_prompt_for_send(self, prompt: str, action_title: str) -> str | None:
-        """Assemble metadata/context blocks and run redaction checks before sending."""
+    def _build_prompt_payload(
+        self,
+        prompt: str,
+        action_title: str,
+        *,
+        streaming: bool,
+        correlation_id: str | None = None,
+    ) -> dict[str, object] | None:
+        """Build a developer-inspectable snapshot of the prompt assembly process."""
         candidate = prompt.strip()
         if not candidate:
             self._log_ai(f"prepare prompt skipped (empty) action={action_title!r}")
             return None
-        self._log_ai(
-            f"prepare prompt action={action_title!r} chars={len(candidate)}"
-        )
+        self._log_ai(f"prepare prompt action={action_title!r} chars={len(candidate)}")
         app_name = str(QApplication.applicationName() or "Pypad").strip() or "Pypad"
         if self.window.settings.get("ai_last_prompt_app_name") != app_name:
             self.window.settings["ai_last_prompt_app_name"] = app_name
@@ -542,32 +653,84 @@ class AIController:
             self._build_runtime_context_block(),
             candidate,
         ]
-        candidate = "\n\n".join(part for part in blocks if str(part).strip())
+        assembled = "\n\n".join(part for part in blocks if str(part).strip())
         self._log_ai(
             "prompt assembly "
             f"knowledge_mode={self.window.settings.get('ai_knowledge_mode', 'compact')!r} "
             f"appendix={bool(self.window.settings.get('ai_include_ui_action_appendix', False))} "
             f"user_knowledge_limit={int(self.window.settings.get('ai_user_knowledge_max_chars', 1800) or 1800)} "
             f"selection_preview_limit={int(self.window.settings.get('ai_selection_preview_chars', 240) or 240)} "
-            f"assembled_chars={len(candidate)}"
+            f"assembled_chars={len(assembled)}"
         )
-        redacted, changes = sanitize_prompt_text(candidate, self.window.settings)
-        if not changes:
-            self._log_ai(
-                f"prompt redaction none action={action_title!r} final_chars={len(redacted)}"
+        redacted, changes = sanitize_prompt_text(assembled, self.window.settings)
+        api_key, key_source = self._resolve_api_key_with_source()
+        payload: dict[str, object] = {
+            "timestamp_iso": datetime.now().isoformat(timespec="seconds"),
+            "action_title": action_title,
+            "raw_prompt": prompt,
+            "assembled_prompt": assembled,
+            "sent_prompt": redacted,
+            "redaction_changes": list(changes),
+            "redaction_preview_enabled": bool(self.window.settings.get("ai_preview_redacted_prompt", True)),
+            "developer_mode_enabled": bool(self.window.settings.get("developer_mode_enabled", False)),
+            "model": self._model(),
+            "api_key_source": key_source,
+            "api_key_present": bool(api_key),
+            "streaming": bool(streaming),
+            "sent_chars": len(redacted),
+            "correlation_id": correlation_id or "",
+            "status": "prepared",
+        }
+        return payload
+
+    def _prepare_payload_for_dispatch(
+        self,
+        prompt: str,
+        action_title: str,
+        *,
+        streaming: bool,
+        correlation_id: str | None = None,
+    ) -> dict[str, object] | None:
+        """Prepare a full payload and run the appropriate send preview before dispatch."""
+        payload = self._build_prompt_payload(prompt, action_title, streaming=streaming, correlation_id=correlation_id)
+        if payload is None:
+            return None
+        self._set_last_prompt_payload(payload)
+        changes = list(payload.get("redaction_changes", []) or [])
+        if bool(self.window.settings.get("developer_mode_enabled", False)):
+            dialog = AIDeveloperPreviewDialog(self.window, payload)
+            if dialog.exec() != QDialog.Accepted:
+                self._log_ai(f"developer preview canceled action={action_title!r}")
+                self.window.show_status_message("AI request canceled.", 3000)
+                payload["status"] = "canceled"
+                self._set_last_prompt_payload(payload)
+                return None
+            self._log_ai(f"developer preview accepted action={action_title!r}")
+        elif changes and bool(self.window.settings.get("ai_preview_redacted_prompt", True)):
+            dialog = AIRedactionPreviewDialog(
+                self.window,
+                action_title,
+                changes,
+                str(payload.get("assembled_prompt", "") or ""),
+                str(payload.get("sent_prompt", "") or ""),
             )
-            return redacted
-        self._log_ai(
-            f"prompt redaction action={action_title!r} changes={','.join(changes)}"
-        )
-        if bool(self.window.settings.get("ai_preview_redacted_prompt", True)):
-            dialog = AIRedactionPreviewDialog(self.window, action_title, changes, candidate, redacted)
             if dialog.exec() != QDialog.Accepted:
                 self._log_ai(f"redaction preview canceled action={action_title!r}")
                 self.window.show_status_message("AI request canceled by redaction preview.", 3000)
+                payload["status"] = "canceled"
+                self._set_last_prompt_payload(payload)
                 return None
             self._log_ai(f"redaction preview accepted action={action_title!r}")
-        return redacted
+        payload["status"] = "dispatched"
+        self._set_last_prompt_payload(payload)
+        return payload
+
+    def _prepare_prompt_for_send(self, prompt: str, action_title: str) -> str | None:
+        """Assemble metadata/context blocks and run redaction checks before sending."""
+        payload = self._prepare_payload_for_dispatch(prompt, action_title, streaming=False)
+        if payload is None:
+            return None
+        return str(payload.get("sent_prompt", "") or "")
 
     @staticmethod
     def _probe_internet_connection(timeout_sec: float = 0.25) -> bool:
@@ -599,18 +762,19 @@ class AIController:
         on_cancel: Callable[[str], None] | None = None,
         *,
         debug_correlation_id: str | None = None,
-    ) -> None:
+    ) -> bool:
         """Run a streaming AI request and marshal callbacks back onto the UI thread."""
         self._ai_request_counter += 1
         request_id = self._ai_request_counter
         if not self._has_internet_connection():
             self._log_ai(f"stream start blocked (offline) action={action_name!r} id={request_id}")
             on_error("You're offline! Check your connection and try again.")
-            return
-        prepared_prompt = self._prepare_prompt_for_send(prompt, action_name)
-        if not prepared_prompt:
+            return False
+        payload = self._prepare_payload_for_dispatch(prompt, action_name, streaming=True, correlation_id=debug_correlation_id)
+        if payload is None:
             self._log_ai(f"stream start canceled (prepare failed) action={action_name!r} id={request_id}")
-            return
+            return False
+        prepared_prompt = str(payload.get("sent_prompt", "") or "")
         api_key = self._api_key()
         model = self._model()
         self._log_ai(
@@ -634,13 +798,13 @@ class AIController:
         def _run_ui(action: Callable[[], None]) -> None:
             # Stream worker signals are connected to Python callables; without an explicit
             # receiver object Qt may invoke them on the worker thread. Marshal to UI thread.
-            """Handle run UI."""
+            """Schedule a callback to run on the UI thread."""
             QTimer.singleShot(0, self.window, action)
 
         def _dispatch_chunk(piece: str) -> None:
-            """Handle dispatch chunk."""
+            """Forward a streamed text chunk to the caller on the UI thread."""
             def _apply() -> None:
-                """Handle apply."""
+                """Invoke the chunk callback on the UI thread."""
                 _LOGGER.debug(
                     "AIController stream callback on_chunk action=%r id=%d chars=%d",
                     action_name,
@@ -654,9 +818,9 @@ class AIController:
             _run_ui(_apply)
 
         def _dispatch_done(text: str) -> None:
-            """Handle dispatch done."""
+            """Forward the completed stream result to the caller on the UI thread."""
             def _apply() -> None:
-                """Handle apply."""
+                """Invoke the completion callback on the UI thread."""
                 _LOGGER.debug(
                     "AIController stream callback on_done action=%r id=%d cid=%r chars=%d",
                     action_name,
@@ -669,9 +833,9 @@ class AIController:
             _run_ui(_apply)
 
         def _dispatch_error(message: str) -> None:
-            """Handle dispatch error."""
+            """Forward a stream error to the caller on the UI thread."""
             def _apply() -> None:
-                """Handle apply."""
+                """Invoke the error callback on the UI thread."""
                 _LOGGER.debug(
                     "AIController stream callback on_error action=%r id=%d cid=%r message_len=%d",
                     action_name,
@@ -698,6 +862,17 @@ class AIController:
         )
         worker.finished.connect(
             lambda text: _run_ui(
+                lambda text=text: self._set_last_prompt_payload(
+                    {
+                        **(self.last_prompt_payload() or {}),
+                        "status": "success",
+                        "response_chars": len(text or ""),
+                    }
+                )
+            )
+        )
+        worker.finished.connect(
+            lambda text: _run_ui(
                 lambda text=text: self._log_ai(
                     f"stream finished action={action_name!r} id={request_id} chars={len(text)}"
                 )
@@ -711,12 +886,23 @@ class AIController:
                 )
             )
         )
+        worker.failed.connect(
+            lambda message: _run_ui(
+                lambda message=message: self._set_last_prompt_payload(
+                    {
+                        **(self.last_prompt_payload() or {}),
+                        "status": "error",
+                        "error": message,
+                    }
+                )
+            )
+        )
         worker.failed.connect(_dispatch_error)
         if on_cancel is not None:
             def _dispatch_cancel(text: str) -> None:
-                """Handle dispatch cancel."""
+                """Forward a cancellation result to the caller on the UI thread."""
                 def _apply() -> None:
-                    """Handle apply."""
+                    """Invoke the cancellation callback on the UI thread."""
                     _LOGGER.debug(
                         "AIController stream callback on_cancel action=%r id=%d cid=%r chars=%d",
                         action_name,
@@ -747,6 +933,7 @@ class AIController:
         self.window.show_status_message(f"AI generating ({model})...", 0)
         _LOGGER.debug("AIController stream thread start action=%r id=%d cid=%r", action_name, request_id, debug_correlation_id)
         thread.start()
+        return True
 
     def _insert_generated_text(self, text: str) -> bool:
         """Insert generated text into the active tab, adding spacing when needed."""
@@ -779,10 +966,11 @@ class AIController:
                 "You're offline! Check your connection and try again.",
             )
             return
-        prepared_prompt = self._prepare_prompt_for_send(prompt, action_name)
-        if not prepared_prompt:
+        payload = self._prepare_payload_for_dispatch(prompt, action_name, streaming=False)
+        if payload is None:
             self._log_ai(f"start canceled (prepare failed) action={action_name!r} id={request_id}")
             return
+        prepared_prompt = str(payload.get("sent_prompt", "") or "")
         api_key = self._api_key()
         model = self._model()
         self._log_ai(
@@ -801,6 +989,15 @@ class AIController:
                 f"finished action={action_name!r} id={request_id} chars={len(text)}"
             )
         )
+        worker.finished.connect(
+            lambda text: self._set_last_prompt_payload(
+                {
+                    **(self.last_prompt_payload() or {}),
+                    "status": "success",
+                    "response_chars": len(text or ""),
+                }
+            )
+        )
         worker.finished.connect(lambda text: self._on_result(thread, result_title, text, auto_insert, on_result=on_result))
         if on_error is None:
             worker.failed.connect(
@@ -808,11 +1005,29 @@ class AIController:
                     f"failed action={action_name!r} id={request_id} error={message!r}"
                 )
             )
+            worker.failed.connect(
+                lambda message: self._set_last_prompt_payload(
+                    {
+                        **(self.last_prompt_payload() or {}),
+                        "status": "error",
+                        "error": message,
+                    }
+                )
+            )
             worker.failed.connect(lambda message: self._on_error(thread, message, result_title, model))
         else:
             worker.failed.connect(
                 lambda message: self._log_ai(
                     f"failed action={action_name!r} id={request_id} error={message!r}"
+                )
+            )
+            worker.failed.connect(
+                lambda message: self._set_last_prompt_payload(
+                    {
+                        **(self.last_prompt_payload() or {}),
+                        "status": "error",
+                        "error": message,
+                    }
                 )
             )
             worker.failed.connect(on_error)
@@ -843,7 +1058,7 @@ class AIController:
         auto_insert: bool,
         on_result: Callable[[str], None] | None = None,
     ) -> None:
-        """Handle successful non-streaming completions and optionally insert the output."""
+        """Process the result."""
         self._log_ai(f"result delivered title={title!r} chars={len(text)} auto_insert={auto_insert}")
         if on_result is not None:
             on_result(text)
@@ -960,7 +1175,7 @@ class AIController:
             QTimer.singleShot(0, self.window, action)
 
         def on_rewrite_result(result: str) -> None:
-            """Handle on rewrite result."""
+            """Process the rewrite result."""
             progress.close()
             progress.deleteLater()
             requires_approval = bool(self.window.settings.get("ai_rewrite_require_approval", True))
@@ -976,9 +1191,9 @@ class AIController:
             self.window.show_status_message("AI rewrite applied (copied to clipboard).", 3000)
 
         def on_rewrite_error(message: str) -> None:
-            """Handle on rewrite error."""
+            """Process the rewrite error."""
             def _apply() -> None:
-                """Handle apply."""
+                """Close progress UI and report the rewrite failure."""
                 progress.close()
                 progress.deleteLater()
                 model = self._model()
@@ -989,14 +1204,14 @@ class AIController:
         chunks: list[str] = []
 
         def on_chunk(piece: str) -> None:
-            """Handle on chunk."""
+            """Process an incoming streamed chunk."""
             if piece:
                 chunks.append(piece)
 
         def on_cancel(partial: str) -> None:
-            """Handle on cancel."""
+            """Process cancellation."""
             def _apply() -> None:
-                """Handle apply."""
+                """Close progress UI after the rewrite is canceled."""
                 progress.close()
                 progress.deleteLater()
                 self.window.show_status_message("AI rewrite canceled.", 3000)
@@ -1004,7 +1219,7 @@ class AIController:
             _run_ui(_apply)
 
         def on_done(text: str) -> None:
-            """Handle on done."""
+            """Finalize the stream after completion."""
             if not text and chunks:
                 text = "".join(chunks).strip()
             _run_ui(lambda: on_rewrite_result(text))
@@ -1051,19 +1266,19 @@ class AIController:
         on_cancel: Callable[[str], None] | None = None,
         *,
         debug_correlation_id: str | None = None,
-    ) -> None:
+    ) -> bool:
         """Submit a chat-style AI request whose output is consumed incrementally by the caller."""
         if self._guard_ai_private_mode("AI Chat"):
-            return
+            return False
         if self._guard_untrusted_tab_ai("AI Chat"):
-            return
+            return False
         _LOGGER.debug(
             "AIController.ask_ai_chat prompt_chars=%d on_cancel=%s cid=%r",
             len(prompt or ""),
             on_cancel is not None,
             debug_correlation_id,
         )
-        self._start_stream_generation(
+        return self._start_stream_generation(
             prompt,
             "AI Chat",
             on_chunk,

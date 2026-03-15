@@ -158,7 +158,7 @@ class WorkspaceController:
         self.window.show_status_message("Indexing workspace in background...", 2000)
 
         def worker() -> None:
-            """Handle worker."""
+            """Worker."""
             try:
                 files = collect_workspace_files(
                     root=root,
@@ -234,7 +234,7 @@ class WorkspaceController:
                 layout.addWidget(buttons, 6, 0, 1, 2)
 
             def values(self) -> tuple[str, bool, bool, bool, list[str], list[str], int]:
-                """Handle values."""
+                """Values."""
                 max_results = 800
                 try:
                     max_results = max(50, min(5000, int(self.max_results_edit.text().strip() or "800")))
@@ -369,7 +369,7 @@ class WorkspaceController:
                 layout.addWidget(buttons, 6, 0, 1, 2)
 
             def values(self) -> tuple[str, str, bool, bool, bool, list[str], list[str]]:
-                """Handle values."""
+                """Values."""
                 return (
                     self.find_edit.text(),
                     self.replace_edit.text(),
@@ -621,7 +621,7 @@ class WorkspaceController:
         return restored
 
     def handle_dropped_urls(self, local_paths: list[str]) -> bool:
-        """Handle dropped file URLs and open or import the referenced files."""
+        """Dropped urls."""
         if not local_paths:
             return False
         media_ext = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".svg", ".pdf"}

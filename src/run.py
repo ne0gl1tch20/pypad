@@ -19,11 +19,70 @@ from PySide6.QtCore import QObject, QEvent, Qt, QTimer, qInstallMessageHandler, 
 _MAIN_WINDOW = None
 
 
+class _DiagnosticsSplashScreen(QSplashScreen):
+    """Splash screen that can arm hidden startup diagnostics via repeated input."""
+
+    def __init__(self, pixmap: QPixmap, flags) -> None:
+        super().__init__(pixmap, flags)
+        self._trigger_count = 0
+        self._trigger_target = 7
+        self._last_trigger_at = 0.0
+        self._trigger_window_sec = 2.5
+        self._armed = False
+
+    def _register_trigger(self) -> None:
+        """Track repeated splash interactions and arm diagnostics when the threshold is met."""
+        now = perf_counter()
+        if now - self._last_trigger_at > self._trigger_window_sec:
+            self._trigger_count = 0
+        self._last_trigger_at = now
+        self._trigger_count += 1
+        remaining = max(0, self._trigger_target - self._trigger_count)
+        _startup_log(
+            f"[Startup] Splash diagnostics trigger progress count={self._trigger_count}/{self._trigger_target}"
+        )
+        if self._trigger_count >= self._trigger_target:
+            self._arm_diagnostics()
+            return
+        self.showMessage(
+            f"Advanced diagnostics: {remaining} more",
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignBottom,
+            Qt.GlobalColor.white,
+        )
+
+    def _arm_diagnostics(self) -> None:
+        """Persist the splash startup-recovery request onto the application instance."""
+        if self._armed:
+            return
+        self._armed = True
+        app = QApplication.instance()
+        if app is not None:
+            app.setProperty("startup_open_recovery_dialog", True)
+        _startup_log("[Startup] Splash diagnostics trigger armed; startup recovery dialog will open after startup.")
+        self.showMessage(
+            "Startup recovery armed",
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignBottom,
+            Qt.GlobalColor.white,
+        )
+
+    def mousePressEvent(self, event) -> None:  # type: ignore[override]
+        """Treat repeated clicks on the splash screen as the hidden diagnostics gesture."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._register_trigger()
+        super().mousePressEvent(event)
+
+    def keyPressEvent(self, event) -> None:  # type: ignore[override]
+        """Allow keyboard mashing as an accessibility-friendly alternative to clicking."""
+        if event.key() in (Qt.Key.Key_Space, Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_D):
+            self._register_trigger()
+        super().keyPressEvent(event)
+
+
 def _configure_startup_runtime_env() -> None:
     # Read any existing Chromium/WebEngine flags so startup keeps user- or
     # environment-provided options intact.
     # Reduce Chromium/WebEngine stderr noise from benign GPU/direct-composition diagnostics.
-    """Handle configure startup runtime env."""
+    """Configure environment variables needed before Qt startup."""
     flags = str(os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "") or "").strip()
     # These flags suppress verbose Chromium logging that is not actionable for normal users.
     desired_parts = ["--disable-logging", "--log-level=3"]
@@ -96,7 +155,7 @@ LOGGER = get_logger(__name__)
 def _build_shell_open_command() -> str:
     # The shell command differs between frozen and source runs. Explorer passes the
     # clicked file path in place of %1.
-    """Build shell open command."""
+    """Build the shell command used by Explorer to open files with Pypad."""
     if getattr(sys, "frozen", False):
         exe = Path(sys.executable).resolve()
         return f'"{exe}" "%1"'
@@ -106,7 +165,7 @@ def _build_shell_open_command() -> str:
 
 
 def _register_windows_shell_menu() -> None:
-    """Handle register windows shell menu."""
+    """Register the Windows Explorer context-menu entry for Pypad."""
     if os.name != "nt":
         raise RuntimeError("Windows shell integration is only supported on Windows.")
     import winreg
@@ -124,7 +183,7 @@ def _register_windows_shell_menu() -> None:
 
 
 def _delete_registry_tree(root, subkey: str) -> None:
-    """Handle delete registry tree."""
+    """Recursively delete a Windows registry tree."""
     import winreg
 
     # Recursively delete child keys first because Windows registry keys must be empty
@@ -140,7 +199,7 @@ def _delete_registry_tree(root, subkey: str) -> None:
 
 
 def _unregister_windows_shell_menu() -> None:
-    """Handle unregister windows shell menu."""
+    """Remove the Windows Explorer context-menu entry for Pypad."""
     if os.name != "nt":
         raise RuntimeError("Windows shell integration is only supported on Windows.")
     import winreg
@@ -153,7 +212,7 @@ def _unregister_windows_shell_menu() -> None:
 
 
 def _save_startup_traceback(traceback_text: str) -> None:
-    """Save startup traceback."""
+    """Append startup crash details to the persistent crash log."""
     try:
         # Append instead of overwrite so repeated startup failures preserve history.
         path = get_crash_logs_file_path()
@@ -169,7 +228,7 @@ def _save_startup_traceback(traceback_text: str) -> None:
 
 def _startup_log(message: str) -> None:
     # Small wrapper used for startup-focused messages so the call sites stay concise.
-    """Handle startup log."""
+    """Write a startup-focused message to the application logger."""
     LOGGER.info(message)
 
 
@@ -203,7 +262,7 @@ def _install_startup_exception_hooks() -> None:
     def _qt_message_handler(mode, context, message) -> None:
         # Qt can pass either enum values or compatibility shims depending on bindings,
         # so normalize the mode into a readable label first.
-        """Handle Qt message handler."""
+        """Capture Qt log messages and persist warnings or worse during startup."""
         if isinstance(mode, QtMsgType):
             mode_name = mode.name
         else:
@@ -362,8 +421,10 @@ if __name__ == "__main__":
     painter.end()
 
     # Show splash
-    splash = QSplashScreen(pixmap, Qt.WindowType.WindowStaysOnTopHint)
+    splash = _DiagnosticsSplashScreen(pixmap, Qt.WindowType.WindowStaysOnTopHint)
     splash.show()
+    splash.raise_()
+    splash.activateWindow()
 
     def mark_app_started(window) -> None:
         # Centralize startup completion so timing and splash teardown happen once no
@@ -374,7 +435,8 @@ if __name__ == "__main__":
         startup_reported[0] = True
         _startup_log("[Startup] App marked started; closing splash and releasing visibility gate.")
         if splash.isVisible():
-            splash.finish(window)
+            splash.hide()
+            splash.close()
         elapsed_ms = int((perf_counter() - startup_started_at) * 1000)
         elapsed_sec = elapsed_ms / 1000.0
         _startup_log(f"Took {elapsed_ms}ms (or {elapsed_sec:.2f} seconds) to intialize!")
@@ -406,9 +468,10 @@ if __name__ == "__main__":
         # Keep a strong reference so Qt doesn't destroy the window.
         global _MAIN_WINDOW
         _MAIN_WINDOW = window
+        
         # Diagnostics for unexpected exits (connect before showing in case startup quits immediately)
         def _log_quit(reason: str) -> None:
-            """Handle log quit."""
+            """Record an application-quit breadcrumb for startup diagnostics."""
             _startup_log(f"App quitting ({reason})")
 
         app.aboutToQuit.connect(lambda: _log_quit("aboutToQuit"))
@@ -421,8 +484,18 @@ if __name__ == "__main__":
         def _show_and_activate_main_window() -> None:
             # Separate showing from construction so startup code can delay visibility
             # until internal initialization is complete.
-            """Show and activate main window."""
+            """Show the main window, finish deferred startup work, and request focus."""
             _startup_log("[Startup] Showing main window...")
+            _startup_log(
+                "[StartupTrace] gated_reveal "
+                f"allow_show={bool(getattr(window, '_startup_allow_show', False))} "
+                f"hold={bool(getattr(window, '_startup_hold_main_window_visible', False))} "
+                f"visible={window.isVisible()} "
+                f"state={window.windowState()}"
+            )
+            window._startup_allow_show = True
+            window.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen, False)
+            window.setWindowOpacity(1.0)
             if window.isMinimized():
                 window.showNormal()
             else:
@@ -440,9 +513,14 @@ if __name__ == "__main__":
                 except Exception as exc:
                     _startup_log(f"Warning: deferred layout restore failed: {exc}")
             mark_app_started(window)
+            if bool(app.property("startup_open_recovery_dialog")):
+                _startup_log("[Startup] Opening armed startup recovery dialog.")
+                window.hide()
+                QTimer.singleShot(0, lambda: window.open_startup_recovery_dialog(force=True))
+                return
             # Defer native activation calls; they can be fragile during first show on some setups.
             def _activate_main_window() -> None:
-                """Handle activate main window."""
+                """Raise and activate the main window after startup completes."""
                 try:
                     if not window.isVisible():
                         window.show()
@@ -457,7 +535,7 @@ if __name__ == "__main__":
         def _check_window_visibility() -> None:
             # Record a delayed visibility snapshot because some startup failures only
             # appear after the first event-loop turns.
-            """Handle check window visibility."""
+            """Log a delayed snapshot of the main-window visibility state."""
             try:
                 visible = window.isVisible()
                 minimized = window.isMinimized()
@@ -472,13 +550,13 @@ if __name__ == "__main__":
 
         def _show_when_startup_ready() -> None:
             # Poll lightweight readiness flags instead of blocking the event loop.
-            """Show when startup ready."""
+            """Wait for startup readiness signals, then reveal the main window."""
             max_wait_ms = 15000
             poll_ms = 50
             waited = {"ms": 0}
 
             def _poll() -> None:
-                """Handle poll."""
+                """Poll startup readiness without blocking the Qt event loop."""
                 try:
                     # The window is considered ready when either the app has already
                     # reported startup completion or the window's own startup sequence

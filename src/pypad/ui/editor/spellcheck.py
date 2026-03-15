@@ -19,7 +19,7 @@ WORD_RE = re.compile(r"\b[A-Za-z][A-Za-z'_-]{1,}\b")
 
 
 def iter_words(text: str) -> list[tuple[str, int, int]]:
-    """Handle iter words."""
+    """Iter words."""
     rows: list[tuple[str, int, int]] = []
     for match in WORD_RE.finditer(str(text or "")):
         rows.append((match.group(0), match.start(), match.end()))
@@ -27,7 +27,7 @@ def iter_words(text: str) -> list[tuple[str, int, int]]:
 
 
 def word_span_at(text: str, index: int) -> tuple[str, int, int] | None:
-    """Handle word span at."""
+    """Word span at."""
     probe = str(text or "")
     cursor = max(0, min(len(probe), int(index)))
     for word, start, end in iter_words(probe):
@@ -38,7 +38,7 @@ def word_span_at(text: str, index: int) -> tuple[str, int, int] | None:
 
 @lru_cache(maxsize=8)
 def _spellchecker_for_language(language: str):
-    """Handle spellchecker for language."""
+    """Spellchecker for language."""
     if SpellChecker is None:
         return None
     normalized = str(language or "en").strip().lower() or "en"
@@ -52,12 +52,12 @@ def _spellchecker_for_language(language: str):
 
 
 def spellcheck_available() -> bool:
-    """Handle spellcheck available."""
+    """Spellcheck available."""
     return SpellChecker is not None
 
 
 def _dictionary_words(engine) -> list[str]:
-    """Handle dictionary words."""
+    """Dictionary words."""
     word_frequency = getattr(engine, "word_frequency", None)
     if word_frequency is None:
         return []
@@ -79,7 +79,7 @@ def _dictionary_words(engine) -> list[str]:
 
 
 def _safe_candidates(engine, word: str) -> list[str]:
-    """Handle safe candidates."""
+    """Safe candidates."""
     try:
         raw = engine.candidates(word)
     except Exception:

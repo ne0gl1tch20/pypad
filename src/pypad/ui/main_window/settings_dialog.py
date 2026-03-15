@@ -285,7 +285,7 @@ class SettingsDialog(QDialog):
 
     @staticmethod
     def _clean_nav_title(name: str) -> str:
-        """Handle clean nav title."""
+        """Clean nav title."""
         text = str(name or "").strip()
         if text.startswith("N++ "):
             return text.replace("N++ ", "", 1)
@@ -306,7 +306,7 @@ class SettingsDialog(QDialog):
         return f"{header}\n{base}{suffix}" if header else f"{base}{suffix}"
 
     def _page_description_for_name(self, name: str) -> str:
-        """Handle page description for name."""
+        """Page description for name."""
         text = str(name or "")
         key = self._normalize_route_key(text.replace("N++", ""))
         descriptions = {
@@ -390,7 +390,7 @@ class SettingsDialog(QDialog):
                 return
 
     def _register_route_aliases(self, idx: int, *aliases: str) -> None:
-        """Handle register route aliases."""
+        """Register route aliases."""
         for alias in aliases:
             key = self._normalize_route_key(alias)
             if key:
@@ -416,7 +416,7 @@ class SettingsDialog(QDialog):
         return True
 
     def _register_search(self, category_idx: int, label: str, widget: QWidget) -> None:
-        """Handle register search."""
+        """Register search."""
         self._search_entries.append((category_idx, label.lower(), widget))
 
     def _add_combo(self, form: QFormLayout, category_idx: int, label: str, options: list[str]) -> QComboBox:
@@ -559,7 +559,7 @@ class SettingsDialog(QDialog):
 
     @staticmethod
     def _status_preview_label_for_key(key: str) -> str:
-        """Handle status preview label for key."""
+        """Status preview label for key."""
         labels = {
             "status_show_position": "Ln 1, Col 1",
             "status_show_zoom": "100%",
@@ -595,7 +595,7 @@ class SettingsDialog(QDialog):
             rate_spin.setEnabled(bool(blink_toggle.isChecked()))
 
     def _on_follow_system_theme_changed(self) -> None:
-        """Handle on follow system theme changed."""
+        """React to changes in the follow-system-theme setting."""
         self._sync_theme_controls_enabled()
         self._apply_dialog_theme()
 
@@ -1494,7 +1494,7 @@ class SettingsDialog(QDialog):
         return preview_settings
 
     def _log_theme_probe(self, stage: str) -> None:
-        """Handle log theme probe."""
+        """Log theme probe."""
         try:
             tokens = build_tokens_from_settings(self._theme_probe_preview_settings())
             host = self.settings_pages.currentWidget() if hasattr(self, "settings_pages") else None
@@ -1503,7 +1503,7 @@ class SettingsDialog(QDialog):
             body = host.findChild(QWidget, "settingsPageBody") if isinstance(host, QWidget) else None
 
             def _palette_snapshot(widget: QWidget | None) -> str:
-                """Handle palette snapshot."""
+                """Palette snapshot."""
                 if not isinstance(widget, QWidget):
                     return "n/a"
                 pal = widget.palette()
@@ -1545,7 +1545,7 @@ class SettingsDialog(QDialog):
             self._log_theme_probe("first_paint")
 
     def _npp_dark_mode_preference_combo(self) -> QComboBox | None:
-        """Handle npp dark mode preference combo."""
+        """Npp dark mode preference combo."""
         controls = getattr(self, "_npp_pref_controls", {})
         if not isinstance(controls, dict):
             return None
@@ -1572,12 +1572,12 @@ class SettingsDialog(QDialog):
         self._apply_dialog_theme()
 
     def _label_color_value(self, label: QLabel) -> str:
-        """Handle label color value."""
+        """Label color value."""
         text = label.text().strip()
         return "" if text == "(auto)" else text
 
     def _style_token_label(self, token: str) -> QLabel:
-        """Handle style token label."""
+        """Style token label."""
         mapping = {
             "keyword": self.scintilla_style_keyword_label,
             "string": self.scintilla_style_string_label,
@@ -1587,7 +1587,7 @@ class SettingsDialog(QDialog):
         return mapping[token]
 
     def _effective_scintilla_style_color(self, token: str, language: str) -> str:
-        """Handle effective scintilla style color."""
+        """Effective scintilla style color."""
         theme_name = str(self.scintilla_style_theme_combo.currentText() or "default").strip().lower()
         theme = SYNTAX_THEME_PRESETS.get(theme_name, SYNTAX_THEME_PRESETS.get("default", {}))
         fallback = str(theme.get(token, "#000000"))
@@ -1686,13 +1686,13 @@ class SettingsDialog(QDialog):
             self._scintilla_style_overrides_working.pop(lang, None)
 
     def _on_scintilla_style_language_changed(self, language: str) -> None:
-        """Handle on scintilla style language changed."""
+        """React to changes in the selected Scintilla style language."""
         self._capture_current_scintilla_style_language_controls()
         self._scintilla_style_current_language = str(language or "python").strip().lower() or "python"
         self._load_scintilla_style_language_controls(self._scintilla_style_current_language)
 
     def _reset_scintilla_style_language_overrides(self) -> None:
-        """Handle reset scintilla style language overrides."""
+        """Reset scintilla style language overrides."""
         self._capture_current_scintilla_style_language_controls()
         lang = str(self.scintilla_style_language_combo.currentText() or "python").strip().lower() or "python"
         self._scintilla_style_overrides_working.pop(lang, None)
@@ -2007,7 +2007,8 @@ class SettingsDialog(QDialog):
         s["shortcut_conflict_policy"] = self.shortcut_conflict_combo.currentText()
         s["shortcut_show_unassigned"] = self.shortcut_show_unassigned_checkbox.isChecked()
 
-        s["gemini_api_key"] = self.gemini_api_key_edit.text().strip()
+        entered_api_key = self.gemini_api_key_edit.text().strip()
+        s["gemini_api_key"] = entered_api_key
         s["ai_model"] = self.ai_model_edit.text().strip() or "gemini-3-flash-preview"
         s["ai_app_knowledge_override"] = self.ai_app_knowledge_edit.toPlainText().strip()
         s["ai_personality_advanced"] = self.ai_personality_advanced_edit.toPlainText().strip()
@@ -2023,7 +2024,12 @@ class SettingsDialog(QDialog):
         s["ai_send_redact_paths"] = self.ai_send_redact_paths_checkbox.isChecked()
         s["ai_send_redact_tokens"] = self.ai_send_redact_tokens_checkbox.isChecked()
         s["ai_preview_redacted_prompt"] = self.ai_preview_redacted_prompt_checkbox.isChecked()
-        s["ai_key_storage_mode"] = self.ai_key_storage_mode_combo.currentText()
+        storage_mode = self.ai_key_storage_mode_combo.currentText()
+        if entered_api_key and storage_mode == "env_only":
+            # If the user typed a key into the settings UI, prefer the matching
+            # storage mode instead of silently ignoring that value at runtime.
+            storage_mode = "settings"
+        s["ai_key_storage_mode"] = storage_mode
         s["ai_private_mode"] = self.ai_private_mode_checkbox.isChecked()
         s["ai_rewrite_require_approval"] = self.ai_rewrite_approval_checkbox.isChecked()
         s["ai_apply_review_mode"] = self.ai_apply_review_mode_combo.currentText()
@@ -2137,6 +2143,10 @@ class SettingsDialog(QDialog):
 
     def _capture_security_profile_controls(self) -> dict[str, object]:
         """Capture profile-scoped controls from the dialog."""
+        entered_api_key = self.gemini_api_key_edit.text().strip()
+        storage_mode = self.ai_key_storage_mode_combo.currentText()
+        if entered_api_key and storage_mode == "env_only":
+            storage_mode = "settings"
         return {
             "trust_known_workspace_files": self.trust_known_workspace_files_checkbox.isChecked(),
             "file_trust_prompt_on_external_open": self.file_trust_prompt_checkbox.isChecked(),
@@ -2146,7 +2156,7 @@ class SettingsDialog(QDialog):
             "ai_send_redact_emails": self.ai_send_redact_emails_checkbox.isChecked(),
             "ai_send_redact_paths": self.ai_send_redact_paths_checkbox.isChecked(),
             "ai_send_redact_tokens": self.ai_send_redact_tokens_checkbox.isChecked(),
-            "ai_key_storage_mode": self.ai_key_storage_mode_combo.currentText(),
+            "ai_key_storage_mode": storage_mode,
             "update_require_signed_metadata": self.update_require_signed_checkbox.isChecked(),
             "security_profile_custom_overrides": {
                 "plugin_policy": self.custom_plugin_policy_combo.currentText(),
@@ -2229,7 +2239,7 @@ class SettingsDialog(QDialog):
         self._load_controls_from_settings(defaults)
 
     def _reset_onboarding_tips_history(self) -> None:
-        """Handle reset onboarding tips history."""
+        """Reset onboarding tips history."""
         state = self._settings.get("onboarding_state")
         if not isinstance(state, dict):
             state = {}
@@ -2243,7 +2253,7 @@ class SettingsDialog(QDialog):
         )
 
     def _reset_onboarding_progress(self) -> None:
-        """Handle reset onboarding progress."""
+        """Reset onboarding progress."""
         confirm = QMessageBox.question(
             self,
             "Reset Onboarding Progress",
@@ -2347,7 +2357,7 @@ class SettingsDialog(QDialog):
         self._load_scintilla_profile_controls(profile)
 
     def _reset_scintilla_profile_defaults(self) -> None:
-        """Handle reset scintilla profile defaults."""
+        """Reset scintilla profile defaults."""
         defaults = self._parent_window._build_default_settings()
         self._load_scintilla_profile_controls(ScintillaProfile.from_settings(defaults))
 
@@ -2370,7 +2380,7 @@ class SettingsDialog(QDialog):
         self._load_controls_from_settings(self._settings)
 
     def _pick_backup_output_dir(self) -> None:
-        """Handle pick backup output dir."""
+        """Pick backup output dir."""
         start_dir = self.backup_output_dir_edit.text().strip() or ""
         picked = themed_file_dialog_get_existing_directory(self, "Choose Backup Output Folder", start_dir)
         if picked:

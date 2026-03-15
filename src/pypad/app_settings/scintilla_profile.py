@@ -27,7 +27,7 @@ def _normalize_hex(value: Any) -> str | None:
 
 
 def _sanitize_style_overrides(raw: Any) -> dict[str, dict[str, str]]:
-    """Handle sanitize style overrides."""
+    """Sanitize style overrides."""
     out: dict[str, dict[str, str]] = {}
     if not isinstance(raw, dict):
         return out
@@ -112,7 +112,7 @@ class ScintillaProfile:
         ).sanitized()
 
     def sanitized(self) -> "ScintillaProfile":
-        """Handle sanitized."""
+        """Return the sanitized value."""
         mode = self.wrap_mode.strip().lower()
         if mode not in {"word", "none"}:
             mode = "word"

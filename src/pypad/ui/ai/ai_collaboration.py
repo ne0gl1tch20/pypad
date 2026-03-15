@@ -12,7 +12,7 @@ import re
 
 @dataclass(frozen=True)
 class CitationSnippet:
-    """citation snippet."""
+    """Represent the citation snippet."""
     path: str
     excerpt: str
     score: int
@@ -29,7 +29,7 @@ def strip_model_fences(text: str) -> str:
 
 
 def paragraph_bounds(text: str, cursor_index: int) -> tuple[int, int]:
-    """Handle paragraph bounds."""
+    """Paragraph bounds."""
     if not text:
         return 0, 0
     idx = max(0, min(len(text), int(cursor_index)))
@@ -47,12 +47,12 @@ def paragraph_bounds(text: str, cursor_index: int) -> tuple[int, int]:
 
 
 def _keywords(question: str) -> set[str]:
-    """Handle keywords."""
+    """Keywords."""
     return {w.lower() for w in WORD_RE.findall(question or "") if len(w) >= 3}
 
 
 def _line_score(line: str, keys: set[str]) -> int:
-    """Handle line score."""
+    """Line score."""
     if not line.strip():
         return 0
     lowered = line.lower()
@@ -64,7 +64,7 @@ def _line_score(line: str, keys: set[str]) -> int:
 
 
 def _safe_read_text(path: Path) -> str:
-    """Handle safe read text."""
+    """Safe read text."""
     try:
         raw = path.read_text(encoding="utf-8")
     except Exception:

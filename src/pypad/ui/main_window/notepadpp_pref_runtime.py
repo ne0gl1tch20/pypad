@@ -17,7 +17,7 @@ from pypad.app_settings.notepadpp_prefs import SEARCH_ENGINE_PRESETS
 
 
 def _shorten_middle(text: str, max_len: int) -> str:
-    """Handle shorten middle."""
+    """Shorten middle."""
     if max_len <= 0 or len(text) <= max_len:
         return text
     if max_len <= 3:
@@ -30,7 +30,7 @@ def _shorten_middle(text: str, max_len: int) -> str:
 
 
 def recent_file_menu_label(settings: dict, path: str) -> str:
-    """Handle recent file menu label."""
+    """Recent file menu label."""
     display_mode = str(settings.get("npp_recent_display_mode", "full_path") or "full_path")
     if display_mode == "only_file_name":
         label = Path(path).name or path
@@ -43,7 +43,7 @@ def recent_file_menu_label(settings: dict, path: str) -> str:
 
 
 def recent_file_max_entries(settings: dict) -> int:
-    """Handle recent file max entries."""
+    """Recent file max entries."""
     try:
         value = int(settings.get("npp_recent_max_entries", 15))
     except Exception:
@@ -88,7 +88,7 @@ def search_engine_display_name(settings: dict) -> str:
 
 
 def allowed_clickable_schemes(settings: dict) -> set[str]:
-    """Handle allowed clickable schemes."""
+    """Allowed clickable schemes."""
     if not bool(settings.get("npp_clickable_links_enabled", True)):
         return set()
     raw = str(settings.get("npp_clickable_link_schemes", "") or "")
@@ -176,7 +176,7 @@ def apply_notepadpp_runtime_settings(window) -> None:
 
 
 def _npp_encoding_to_app_encoding(value: str) -> str:
-    """Handle npp encoding to app encoding."""
+    """Npp encoding to app encoding."""
     text = str(value or "").strip().lower()
     mapping = {
         "ansi": "cp1252",
@@ -194,7 +194,7 @@ def _npp_encoding_to_app_encoding(value: str) -> str:
 
 
 def _npp_eol_to_app_eol(value: str) -> str:
-    """Handle npp eol to app eol."""
+    """Npp eol to app eol."""
     text = str(value or "").strip().lower()
     if text == "windows":
         return "CRLF"
@@ -204,7 +204,7 @@ def _npp_eol_to_app_eol(value: str) -> str:
 
 
 def new_document_defaults(settings: dict) -> dict[str, Any]:
-    """Handle new document defaults."""
+    """New document defaults."""
     return {
         "encoding": _npp_encoding_to_app_encoding(str(settings.get("npp_new_doc_encoding", "UTF-8"))),
         "eol_mode": _npp_eol_to_app_eol(str(settings.get("npp_new_doc_eol", "windows"))),
@@ -213,7 +213,7 @@ def new_document_defaults(settings: dict) -> dict[str, Any]:
 
 
 def _indent_defaults_for_language(settings: dict, language_hint: str | None) -> tuple[int, bool, bool]:
-    """Handle indent defaults for language."""
+    """Indent defaults for language."""
     lang = str(language_hint or "").strip().lower()
     width = int(settings.get("npp_indent_size", settings.get("tab_width", 4)) or 4)
     use_tabs = str(settings.get("npp_indent_using", "space")) == "tab"
@@ -282,7 +282,7 @@ def apply_indentation_defaults_to_tab(window, tab, *, language_hint: str | None 
 
 
 def _render_print_template_part(part: str, tab) -> str:
-    """Handle render print template part."""
+    """Render print template part."""
     text = str(part or "")
     if not text:
         return ""

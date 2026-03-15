@@ -23,7 +23,7 @@ class MiscExportMixin:
             ...
 
     def _export_document_html(self, tab: EditorTab) -> str:
-        """Handle export document html."""
+        """Export document html."""
         text = tab.text_edit.get_text()
         return render_text_to_html(
             text,

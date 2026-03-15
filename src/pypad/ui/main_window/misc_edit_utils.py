@@ -44,21 +44,21 @@ class MiscEditUtilsMixin:
 
     # ---------- Edit extensions ----------
     def edit_insert_datetime_short(self) -> None:
-        """Handle edit insert datetime short."""
+        """Perform the insert date/time short action."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
         tab.text_edit.insert_text(datetime.now().strftime("%Y-%m-%d"))
 
     def edit_insert_datetime_long(self) -> None:
-        """Handle edit insert datetime long."""
+        """Perform the insert date/time long action."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
         tab.text_edit.insert_text(datetime.now().strftime("%A, %B %d, %Y %H:%M:%S"))
 
     def edit_insert_datetime_custom(self) -> None:
-        """Handle edit insert datetime custom."""
+        """Perform the insert date/time custom action."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -71,28 +71,28 @@ class MiscEditUtilsMixin:
             QMessageBox.warning(self, "Date Time", f"Invalid format string:\n{exc}")
 
     def edit_copy_current_full_file_path(self) -> None:
-        """Handle edit copy current full file path."""
+        """Perform the copy current full file path action."""
         tab = self.active_tab()
         if tab is None or not tab.current_file:
             return
         QApplication.clipboard().setText(tab.current_file)
 
     def edit_copy_current_filename(self) -> None:
-        """Handle edit copy current filename."""
+        """Perform the copy current filename action."""
         tab = self.active_tab()
         if tab is None or not tab.current_file:
             return
         QApplication.clipboard().setText(Path(tab.current_file).name)
 
     def edit_copy_current_dir_path(self) -> None:
-        """Handle edit copy current dir path."""
+        """Perform the copy current dir path action."""
         tab = self.active_tab()
         if tab is None or not tab.current_file:
             return
         QApplication.clipboard().setText(str(Path(tab.current_file).parent))
 
     def edit_copy_all_filenames(self) -> None:
-        """Handle edit copy all filenames."""
+        """Perform the copy all filenames action."""
         names: list[str] = []
         for i in range(self.tab_widget.count()):
             tab = self._tab_at_index(i)
@@ -103,7 +103,7 @@ class MiscEditUtilsMixin:
             QApplication.clipboard().setText("\n".join(names))
 
     def edit_copy_all_filepaths(self) -> None:
-        """Handle edit copy all filepaths."""
+        """Perform the copy all filepaths action."""
         paths: list[str] = []
         for i in range(self.tab_widget.count()):
             tab = self._tab_at_index(i)
@@ -115,7 +115,7 @@ class MiscEditUtilsMixin:
             QApplication.clipboard().setText("\n".join(paths))
 
     def edit_column_editor(self) -> None:
-        """Handle edit column editor."""
+        """Perform the column editor action."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -156,7 +156,7 @@ class MiscEditUtilsMixin:
         form.addRow("Leading:", leading_combo)
 
         def _toggle_number_widgets(checked: bool) -> None:
-            """Handle toggle number widgets."""
+            """Toggle number widgets."""
             number_group.setEnabled(checked)
             initial_input.setEnabled(checked)
             increment_input.setEnabled(checked)
@@ -165,7 +165,7 @@ class MiscEditUtilsMixin:
             text_input.setEnabled(not checked)
 
         def _toggle_hex_case() -> None:
-            """Handle toggle hex case."""
+            """Toggle hex case."""
             hex_case.setEnabled(format_hex.isChecked())
 
         format_hex.toggled.connect(lambda _checked: _toggle_hex_case())
@@ -271,7 +271,7 @@ class MiscEditUtilsMixin:
         tab.text_edit.set_modified(True)
 
     def edit_character_panel(self) -> None:
-        """Handle edit character panel."""
+        """Perform the character panel action."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -301,7 +301,7 @@ class MiscEditUtilsMixin:
         layout.addWidget(buttons)
 
         def _selected_char() -> str:
-            """Handle selected char."""
+            """Return the selected char."""
             row = table.currentRow()
             if row < 0:
                 return ""
@@ -309,7 +309,7 @@ class MiscEditUtilsMixin:
             return item.text() if item is not None else ""
 
         def _insert() -> None:
-            """Handle insert."""
+            """Insert."""
             ch = _selected_char()
             if not ch:
                 return
@@ -317,7 +317,7 @@ class MiscEditUtilsMixin:
             dlg.accept()
 
         def _copy() -> None:
-            """Handle copy."""
+            """Copy."""
             ch = _selected_char()
             if ch:
                 QApplication.clipboard().setText(ch)
@@ -328,7 +328,7 @@ class MiscEditUtilsMixin:
         dlg.exec()
 
     def _edit_replace_selection_or_all(self, transform) -> None:
-        """Handle edit replace selection or all."""
+        """Perform the replace selection or all action."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -341,21 +341,21 @@ class MiscEditUtilsMixin:
         tab.text_edit.set_modified(True)
 
     def edit_convert_uppercase(self) -> None:
-        """Handle edit convert uppercase."""
+        """Perform the convert uppercase action."""
         self._edit_replace_selection_or_all(lambda s: s.upper())
 
     def edit_convert_lowercase(self) -> None:
-        """Handle edit convert lowercase."""
+        """Perform the convert lowercase action."""
         self._edit_replace_selection_or_all(lambda s: s.lower())
 
     def edit_convert_proper_case(self) -> None:
-        """Handle edit convert proper case."""
+        """Perform the convert proper case action."""
         self._edit_replace_selection_or_all(lambda s: " ".join(word.capitalize() for word in s.split(" ")))
 
     def edit_convert_sentence_case(self) -> None:
-        """Handle edit convert sentence case."""
+        """Perform the convert sentence case action."""
         def _sentence(s: str) -> str:
-            """Handle sentence."""
+            """Sentence."""
             parts = re.split(r"([.!?]\s+)", s)
             out: list[str] = []
             for idx in range(0, len(parts), 2):
@@ -368,23 +368,23 @@ class MiscEditUtilsMixin:
         self._edit_replace_selection_or_all(_sentence)
 
     def edit_convert_invert_case(self) -> None:
-        """Handle edit convert invert case."""
+        """Perform the convert invert case action."""
         def _invert(s: str) -> str:
-            """Handle invert."""
+            """Invert."""
             return "".join(ch.lower() if ch.isupper() else ch.upper() if ch.islower() else ch for ch in s)
 
         self._edit_replace_selection_or_all(_invert)
 
     def edit_convert_random_case(self) -> None:
-        """Handle edit convert random case."""
+        """Perform the convert random case action."""
         def _random_case(s: str) -> str:
-            """Handle random case."""
+            """Random case."""
             return "".join(ch.upper() if ch.isalpha() and random.random() > 0.5 else ch.lower() if ch.isalpha() else ch for ch in s)
 
         self._edit_replace_selection_or_all(_random_case)
 
     def _edit_line_bounds(self) -> tuple[int, int]:
-        """Handle edit line bounds."""
+        """Perform the line bounds action."""
         tab = self.active_tab()
         if tab is None:
             return 0, 0
@@ -396,7 +396,7 @@ class MiscEditUtilsMixin:
         return line, len(lines)
 
     def _edit_selected_line_range(self) -> tuple[int, int]:
-        """Handle edit selected line range."""
+        """Perform the selected line range action."""
         tab = self.active_tab()
         if tab is None:
             return 0, -1
@@ -412,7 +412,7 @@ class MiscEditUtilsMixin:
         return line1, line2
 
     def edit_indent_selection(self) -> None:
-        """Handle edit indent selection."""
+        """Perform the indent selection action."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -430,7 +430,7 @@ class MiscEditUtilsMixin:
         tab.text_edit.set_modified(True)
 
     def edit_unindent_selection(self) -> None:
-        """Handle edit unindent selection."""
+        """Perform the unindent selection action."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -453,7 +453,7 @@ class MiscEditUtilsMixin:
         tab.text_edit.set_modified(True)
 
     def _text_eol_mode(self, text: str) -> str:
-        """Handle text eol mode."""
+        """Text eol mode."""
         if hasattr(self, "_detect_eol_mode"):
             try:
                 return self._detect_eol_mode(text)
@@ -466,7 +466,7 @@ class MiscEditUtilsMixin:
         return "LF"
 
     def edit_trim_trailing_spaces(self) -> None:
-        """Handle edit trim trailing spaces."""
+        """Perform the trim trailing spaces action."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -486,7 +486,7 @@ class MiscEditUtilsMixin:
             self.show_status_message("Trimmed trailing spaces.", 2500)
 
     def edit_trim_leading_spaces(self) -> None:
-        """Handle edit trim leading spaces."""
+        """Perform the trim leading spaces action."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -506,7 +506,7 @@ class MiscEditUtilsMixin:
             self.show_status_message("Trimmed leading spaces.", 2500)
 
     def edit_remove_leading_blank_lines(self) -> None:
-        """Handle edit remove leading blank lines."""
+        """Perform the remove leading blank lines action."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -530,7 +530,7 @@ class MiscEditUtilsMixin:
         self.show_status_message("Removed leading blank lines.", 2500)
 
     def edit_remove_trailing_blank_lines(self) -> None:
-        """Handle edit remove trailing blank lines."""
+        """Perform the remove trailing blank lines action."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -554,7 +554,7 @@ class MiscEditUtilsMixin:
         self.show_status_message("Removed trailing blank lines.", 2500)
 
     def edit_begin_end_select(self) -> None:
-        """Handle edit begin end select."""
+        """Perform the begin end select action."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -572,7 +572,7 @@ class MiscEditUtilsMixin:
         self._begin_select_anchor = None
 
     def edit_begin_end_select_column(self) -> None:
-        """Handle edit begin end select column."""
+        """Perform the begin end select column action."""
         tab = self.active_tab()
         if tab is None or not tab.text_edit.is_scintilla:
             return
@@ -601,7 +601,7 @@ class MiscEditUtilsMixin:
         self._begin_select_anchor = None
 
     def edit_line_duplicate_current(self) -> None:
-        """Handle edit line duplicate current."""
+        """Perform the line duplicate current action."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -614,7 +614,7 @@ class MiscEditUtilsMixin:
         tab.text_edit.set_modified(True)
 
     def edit_line_join_selected(self) -> None:
-        """Handle edit line join selected."""
+        """Perform the line join selected action."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -632,7 +632,7 @@ class MiscEditUtilsMixin:
         tab.text_edit.set_modified(True)
 
     def edit_line_split_selected(self) -> None:
-        """Handle edit line split selected."""
+        """Perform the line split selected action."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -642,7 +642,7 @@ class MiscEditUtilsMixin:
         tab.text_edit.replace_selection("\n".join(selected.split()))
 
     def edit_line_move_up(self) -> None:
-        """Handle edit line move up."""
+        """Perform the line move up action."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -656,7 +656,7 @@ class MiscEditUtilsMixin:
         tab.text_edit.set_cursor_position(line - 1, 0)
 
     def edit_line_move_down(self) -> None:
-        """Handle edit line move down."""
+        """Perform the line move down action."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -670,7 +670,7 @@ class MiscEditUtilsMixin:
         tab.text_edit.set_cursor_position(line + 1, 0)
 
     def edit_line_remove_duplicate_lines(self) -> None:
-        """Handle edit line remove duplicate lines."""
+        """Perform the line remove duplicate lines action."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -685,7 +685,7 @@ class MiscEditUtilsMixin:
         tab.text_edit.set_modified(True)
 
     def edit_line_remove_consecutive_duplicate_lines(self) -> None:
-        """Handle edit line remove consecutive duplicate lines."""
+        """Perform the line remove consecutive duplicate lines action."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -700,7 +700,7 @@ class MiscEditUtilsMixin:
         tab.text_edit.set_modified(True)
 
     def edit_line_insert_blank_above(self) -> None:
-        """Handle edit line insert blank above."""
+        """Perform the line insert blank above action."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -716,7 +716,7 @@ class MiscEditUtilsMixin:
         tab.text_edit.set_cursor_position(line, 0)
 
     def edit_line_insert_blank_below(self) -> None:
-        """Handle edit line insert blank below."""
+        """Perform the line insert blank below action."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -732,7 +732,7 @@ class MiscEditUtilsMixin:
         tab.text_edit.set_cursor_position(line + 1, 0)
 
     def edit_line_remove_empty(self, include_whitespace: bool = True) -> None:
-        """Handle edit line remove empty."""
+        """Perform the line remove empty action."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -745,7 +745,7 @@ class MiscEditUtilsMixin:
         tab.text_edit.set_modified(True)
 
     def edit_line_reverse(self) -> None:
-        """Handle edit line reverse."""
+        """Perform the line reverse action."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -755,7 +755,7 @@ class MiscEditUtilsMixin:
         tab.text_edit.set_modified(True)
 
     def edit_line_sort(self, ascending: bool = True, ignore_case: bool = False) -> None:
-        """Handle edit line sort."""
+        """Perform the line sort action."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -766,7 +766,7 @@ class MiscEditUtilsMixin:
         tab.text_edit.set_modified(True)
 
     def _line_comment_prefix(self) -> str:
-        """Handle line comment prefix."""
+        """Line comment prefix."""
         tab = self.active_tab()
         lang = self._detect_language_for_tab(tab) if tab is not None else "plain"
         if lang in {"python", "markdown", "yaml", "toml"}:
@@ -776,7 +776,7 @@ class MiscEditUtilsMixin:
         return "# "
 
     def edit_single_line_comment(self) -> None:
-        """Handle edit single line comment."""
+        """Perform the single line comment action."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -787,7 +787,7 @@ class MiscEditUtilsMixin:
         tab.text_edit.set_modified(True)
 
     def edit_single_line_uncomment(self) -> None:
-        """Handle edit single line uncomment."""
+        """Perform the single line uncomment action."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -803,7 +803,7 @@ class MiscEditUtilsMixin:
         tab.text_edit.set_modified(True)
 
     def edit_toggle_single_line_comment(self) -> None:
-        """Handle edit toggle single line comment."""
+        """Perform the toggle single line comment action."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -815,7 +815,7 @@ class MiscEditUtilsMixin:
             self.edit_single_line_comment()
 
     def edit_block_comment(self) -> None:
-        """Handle edit block comment."""
+        """Perform the block comment action."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only() or not tab.text_edit.has_selection():
             return
@@ -824,7 +824,7 @@ class MiscEditUtilsMixin:
         tab.text_edit.set_modified(True)
 
     def edit_block_uncomment(self) -> None:
-        """Handle edit block uncomment."""
+        """Perform the block uncomment action."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -835,11 +835,11 @@ class MiscEditUtilsMixin:
             tab.text_edit.set_modified(True)
 
     def edit_set_eol_mac(self) -> None:
-        """Handle edit set eol mac."""
+        """Perform the set eol mac action."""
         self.set_tab_eol_mode("CR")
 
     def edit_open_selection_file(self) -> None:
-        """Handle edit open selection file."""
+        """Perform the open selection file action."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -851,7 +851,7 @@ class MiscEditUtilsMixin:
             self._open_file_path(str(path))
 
     def edit_open_selection_folder(self) -> None:
-        """Handle edit open selection folder."""
+        """Perform the open selection folder action."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -864,7 +864,7 @@ class MiscEditUtilsMixin:
             os.startfile(str(folder))  # type: ignore[attr-defined]
 
     def edit_search_selection_internet(self) -> None:
-        """Handle edit search selection internet."""
+        """Perform the search selection internet action."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -874,7 +874,7 @@ class MiscEditUtilsMixin:
         webbrowser.open(build_search_internet_url(self.settings, query))
 
     def edit_toggle_read_only_current(self) -> None:
-        """Handle edit toggle read only current."""
+        """Perform the toggle read only current action."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -887,7 +887,7 @@ class MiscEditUtilsMixin:
         self.update_action_states()
 
     def edit_toggle_read_only_all(self) -> None:
-        """Handle edit toggle read only all."""
+        """Perform the toggle read only all action."""
         for i in range(self.tab_widget.count()):
             tab = self._tab_at_index(i)
             if tab is None:
@@ -900,7 +900,7 @@ class MiscEditUtilsMixin:
         self.update_action_states()
 
     def edit_clear_read_only_all(self) -> None:
-        """Handle edit clear read only all."""
+        """Perform the clear read only all action."""
         for i in range(self.tab_widget.count()):
             tab = self._tab_at_index(i)
             if tab is None:

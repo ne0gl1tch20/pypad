@@ -73,19 +73,19 @@ PRESET_SHORTCUTS: dict[str, dict[str, str]] = {
 
 @dataclass
 class ShortcutActionRow:
-    """shortcut action row."""
+    """Represent the shortcut action row."""
     action_id: str
     label: str
     action: QAction
 
 
 def sequence_to_string(seq: QKeySequence) -> str:
-    """Handle sequence to string."""
+    """Sequence to string."""
     return seq.toString(QKeySequence.SequenceFormat.NativeText)
 
 
 def _read_action_shortcuts(action: QAction) -> list[str]:
-    """Handle read action shortcuts."""
+    """Read action shortcuts."""
     seqs = [sequence_to_string(seq).strip() for seq in action.shortcuts() if not seq.isEmpty()]
     if not seqs:
         fallback = action.shortcut()
@@ -104,7 +104,7 @@ def parse_shortcut_value(value: str | list[str]) -> list[QKeySequence]:
 
 
 class KeyCaptureDialog(QDialog):
-    """key capture dialog."""
+    """Represent the key capture dialog."""
     def __init__(self, parent: QWidget | None = None) -> None:
         """Build the key-capture dialog used to record shortcut input."""
         super().__init__(parent)
@@ -124,12 +124,12 @@ class KeyCaptureDialog(QDialog):
         self.cancel_btn.clicked.connect(self.reject)
 
     def _clear(self) -> None:
-        """Handle clear."""
+        """Clear."""
         self.captured = QKeySequence()
         self.accept()
 
     def keyPressEvent(self, event) -> None:  # type: ignore[override]
-        """Handle key press input for this widget."""
+        """Process key press events."""
         key = int(event.key())
         mod = int(event.modifiers())
         if key in (Qt.Key.Key_Control, Qt.Key.Key_Shift, Qt.Key.Key_Alt, Qt.Key.Key_Meta):
@@ -141,7 +141,7 @@ class KeyCaptureDialog(QDialog):
 
 
 class ShortcutMapperDialog(QDialog):
-    """shortcut mapper dialog."""
+    """Represent the shortcut mapper dialog."""
     def __init__(
         self,
         parent: "Notepad",
@@ -215,7 +215,7 @@ class ShortcutMapperDialog(QDialog):
         self._refresh_table()
 
     def _effective_map(self) -> dict[str, list[str]]:
-        """Handle effective map."""
+        """Effective map."""
         profile = self.preset_combo.currentText()
         combined: dict[str, list[str]] = dict(self._defaults)
         preset = PRESET_SHORTCUTS.get(profile, {})
@@ -234,7 +234,7 @@ class ShortcutMapperDialog(QDialog):
             self.table.item(row_idx, 1).setText(", ".join(current))
 
     def _find_conflict(self, target_id: str, text: str) -> str | None:
-        """Handle find conflict."""
+        """Find conflict."""
         mapping = self._effective_map()
         for aid, seqs in mapping.items():
             if aid == target_id:
@@ -272,7 +272,7 @@ class ShortcutMapperDialog(QDialog):
         self._refresh_table()
 
     def _reset_shortcut_for(self, action_id: str) -> None:
-        """Handle reset shortcut for."""
+        """Reset shortcut for."""
         self._working_map.pop(action_id, None)
         self._refresh_table()
 
@@ -281,7 +281,7 @@ class ShortcutMapperDialog(QDialog):
         self._refresh_table()
 
     def _import_json(self) -> None:
-        """Handle import json."""
+        """Import json."""
         path, _ = QFileDialog.getOpenFileName(self, "Import Shortcut Map", "", "JSON (*.json);;All Files (*.*)")
         if not path:
             return
@@ -307,7 +307,7 @@ class ShortcutMapperDialog(QDialog):
             QMessageBox.critical(self, "Import Failed", f"Could not import shortcut map:\n{exc}")
 
     def _export_json(self) -> None:
-        """Handle export json."""
+        """Export json."""
         path, _ = QFileDialog.getSaveFileName(self, "Export Shortcut Map", "", "JSON (*.json);;All Files (*.*)")
         if not path:
             return
@@ -347,7 +347,7 @@ class ShortcutMapperDialog(QDialog):
         self._window.save_settings_to_disk()
 
     def _accept_with_apply(self) -> None:
-        """Handle accept with apply."""
+        """Accept with apply."""
         self.apply_live()
         self.accept()
 

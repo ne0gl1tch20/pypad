@@ -19,6 +19,7 @@ import sys
 import time
 import webbrowser
 import subprocess
+import tempfile
 import threading
 import traceback
 from typing import TYPE_CHECKING, Any
@@ -110,6 +111,8 @@ THEME_SETTINGS_KEYS: tuple[str, ...] = (
 )
 
 from pypad.ui.debug.debug_logs_dialog import DebugLogsDialog
+from pypad.ui.debug.developer_hub_dialog import DeveloperHubDialog
+from pypad.ui.debug.startup_recovery_dialog import StartupRecoveryDialog
 from pypad.ui.editor.detachable_tab_bar import DetachableTabBar
 from pypad.ui.editor.editor_tab import EditorTab
 from ...app_settings import (
@@ -182,7 +185,7 @@ class _TerminalOutputEdit(QTextEdit):
         super().focusInEvent(event)
 
     def mousePressEvent(self, event) -> None:
-        """Handle mouse press input for this widget."""
+        """Keep terminal selection behavior intact while restoring the live prompt cursor."""
         super().mousePressEvent(event)
         try:
             QTimer.singleShot(0, self._owner._terminal_move_cursor_to_end)
@@ -190,7 +193,7 @@ class _TerminalOutputEdit(QTextEdit):
             pass
 
     def mouseDoubleClickEvent(self, event) -> None:
-        """Handle mouse double click input for this widget."""
+        """Preserve double-click selection while snapping the caret back to the prompt end."""
         super().mouseDoubleClickEvent(event)
         try:
             QTimer.singleShot(0, self._owner._terminal_move_cursor_to_end)
@@ -198,7 +201,7 @@ class _TerminalOutputEdit(QTextEdit):
             pass
 
     def mouseReleaseEvent(self, event) -> None:
-        """Handle mouse release input for this widget."""
+        """Restore the prompt caret after mouse-based selection changes."""
         super().mouseReleaseEvent(event)
         try:
             QTimer.singleShot(0, self._owner._terminal_move_cursor_to_end)
@@ -206,7 +209,7 @@ class _TerminalOutputEdit(QTextEdit):
             pass
 
     def keyPressEvent(self, event) -> None:
-        """Handle key press input for this widget."""
+        """Process key press events."""
         try:
             if self._owner._handle_terminal_output_keypress(event):
                 event.accept()
@@ -506,7 +509,7 @@ class MiscMixin(
             super().paintEvent(event)
 
         def mousePressEvent(self, event) -> None:  # type: ignore[override]
-            """Handle mouse press input for this widget."""
+            """Mouse press event."""
             if event.button() == Qt.MouseButton.LeftButton:
                 self._dragging = True
                 self._drag_offset = event.position().toPoint()
@@ -516,7 +519,7 @@ class MiscMixin(
             super().mousePressEvent(event)
 
         def mouseMoveEvent(self, event) -> None:  # type: ignore[override]
-            """Handle mouse movement for this widget."""
+            """Mouse move event."""
             if self._dragging:
                 target = self.mapToParent(event.position().toPoint() - self._drag_offset)
                 bounded = self._bounded_pos(target)
@@ -526,7 +529,7 @@ class MiscMixin(
             super().mouseMoveEvent(event)
 
         def mouseReleaseEvent(self, event) -> None:  # type: ignore[override]
-            """Handle mouse release input for this widget."""
+            """Mouse release event."""
             if event.button() == Qt.MouseButton.LeftButton and self._dragging:
                 self._dragging = False
                 self.setCursor(Qt.CursorShape.OpenHandCursor)
@@ -1079,7 +1082,7 @@ class MiscMixin(
             super().paintEvent(event)
 
         def mousePressEvent(self, event) -> None:  # type: ignore[override]
-            """Handle mouse press input for this widget."""
+            """Mouse press event."""
             if event.button() == Qt.MouseButton.LeftButton:
                 center = QPoint(int(self._pos_x + self._diameter / 2), int(self._pos_y + self._diameter / 2))
                 if math.hypot(event.position().x() - center.x(), event.position().y() - center.y()) <= self._diameter:
@@ -1091,7 +1094,7 @@ class MiscMixin(
             super().mousePressEvent(event)
 
         def mouseMoveEvent(self, event) -> None:  # type: ignore[override]
-            """Handle mouse movement for this widget."""
+            """Mouse move event."""
             if self._dragging:
                 target = event.position().toPoint() - self._drag_offset
                 if self._event_active("reverse"):
@@ -1102,7 +1105,7 @@ class MiscMixin(
             super().mouseMoveEvent(event)
 
         def mouseReleaseEvent(self, event) -> None:  # type: ignore[override]
-            """Handle mouse release input for this widget."""
+            """Mouse release event."""
             if event.button() == Qt.MouseButton.LeftButton and self._dragging:
                 self._dragging = False
                 self.setCursor(Qt.CursorShape.OpenHandCursor)
@@ -1132,14 +1135,14 @@ class MiscMixin(
             super().mouseReleaseEvent(event)
 
         def mouseDoubleClickEvent(self, event) -> None:  # type: ignore[override]
-            """Handle mouse double click input for this widget."""
+            """Mouse double click event."""
             self._paused = not self._paused
             self._show_spark("Paused" if self._paused else "Resume")
             self.update()
             super().mouseDoubleClickEvent(event)
 
         def keyPressEvent(self, event) -> None:  # type: ignore[override]
-            """Handle key press input for this widget."""
+            """Process key press events."""
             if event.key() == Qt.Key.Key_Space:
                 self._paused = not self._paused
                 self._show_spark("Paused" if self._paused else "Resume")
@@ -3230,15 +3233,351 @@ class MiscMixin(
 
     def run_backup_now(self) -> None:
         """Run an immediate backup using the current backup settings."""
-        self.advanced_features.backup_now()
+        self.advanced_features.backup_now(prompt_for_destination=True)
 
     def export_diagnostics_bundle(self) -> None:
         """Export a diagnostics bundle with logs and environment details for troubleshooting."""
         self.advanced_features.export_diagnostics()
 
+    def _sync_developer_mode_actions(self) -> None:
+        """Show or hide developer-only menu actions based on the persisted mode flag."""
+        enabled = bool(self.settings.get("developer_mode_enabled", False))
+        developer_menu = getattr(self, "developer_menu", None)
+        if developer_menu is not None:
+            developer_menu.menuAction().setVisible(enabled)
+        for name in (
+            "developer_hub_action",
+            "show_debug_logs_action",
+            "show_debug_info_action",
+            "developer_ai_prompt_inspector_action",
+            "developer_show_last_ai_payload_action",
+            "developer_copy_last_ai_payload_action",
+            "developer_export_snapshot_action",
+        ):
+            action = getattr(self, name, None)
+            if action is not None:
+                action.setVisible(enabled)
+
+    def toggle_developer_mode_enabled(self, enabled: bool | None = None) -> None:
+        """Toggle the hidden developer mode and refresh related UI surfaces."""
+        next_state = not bool(self.settings.get("developer_mode_enabled", False)) if enabled is None else bool(enabled)
+        self.settings["developer_mode_enabled"] = next_state
+        self._sync_developer_mode_actions()
+        if hasattr(self, "save_settings_to_disk"):
+            self.save_settings_to_disk()
+        self.show_status_message(f"Developer mode {'enabled' if next_state else 'disabled'}.", 3000)
+
+    def _open_local_path(self, path: str) -> bool:
+        """Open a local file or directory in the shell when it exists."""
+        target = Path(str(path or "").strip())
+        if not target.exists():
+            return False
+        try:
+            os.startfile(str(target))  # type: ignore[attr-defined]
+            return True
+        except Exception:
+            return False
+
+    def build_runtime_state_snapshot(self) -> dict[str, Any]:
+        """Return a structured snapshot of the current user-visible runtime state."""
+        tab = self.active_tab() if hasattr(self, "active_tab") else None
+        return {
+            "active_tab": {
+                "label": self._tab_display_name(tab) if tab is not None and hasattr(self, "_tab_display_name") else "",
+                "file_path": str(getattr(tab, "current_file", "") or ""),
+                "read_only": bool(getattr(tab, "read_only", False)) if tab is not None else False,
+                "trust_state": str(getattr(tab, "trust_state", "") or "") if tab is not None else "",
+            },
+            "open_tabs_count": int(self.tab_widget.count()) if hasattr(self, "tab_widget") else 0,
+            "open_tabs": [self.tab_widget.tabText(i) for i in range(self.tab_widget.count())] if hasattr(self, "tab_widget") else [],
+            "workspace_root": str(self.settings.get("workspace_root", "") or ""),
+            "language": str(self.settings.get("language", "") or ""),
+            "theme": str(self.settings.get("theme", "") or ""),
+            "app_style": str(self.settings.get("app_style", "") or ""),
+            "ui_density": str(self.settings.get("ui_density", "") or ""),
+            "simple_mode": bool(self.settings.get("simple_mode", False)),
+            "focus_mode": bool(getattr(self, "focus_mode_action", None).isChecked()) if getattr(self, "focus_mode_action", None) is not None else False,
+            "keyboard_only_mode": bool(self.settings.get("keyboard_only_mode", False)),
+            "dark_mode": bool(self.settings.get("dark_mode", False)),
+            "autosave_enabled": bool(self.settings.get("autosave_enabled", True)),
+            "ai_private_mode": bool(self.settings.get("ai_private_mode", False)),
+            "window_state": {
+                "visible": bool(self.isVisible()),
+                "minimized": bool(self.isMinimized()),
+                "maximized": bool(self.isMaximized()),
+                "fullscreen": bool(self.isFullScreen()),
+                "active_window": bool(self.isActiveWindow()),
+                "geometry": [int(self.geometry().x()), int(self.geometry().y()), int(self.geometry().width()), int(self.geometry().height())],
+            },
+        }
+
+    def build_layout_state_snapshot(self) -> dict[str, Any]:
+        """Return current and persisted layout diagnostics."""
+        docks: list[dict[str, object]] = []
+        for dock in self.findChildren(QDockWidget):
+            docks.append(
+                {
+                    "object_name": str(dock.objectName() or ""),
+                    "title": str(dock.windowTitle() or ""),
+                    "visible": bool(dock.isVisible()),
+                    "floating": bool(dock.isFloating()),
+                    "geometry": [int(dock.x()), int(dock.y()), int(dock.width()), int(dock.height())],
+                }
+            )
+        saved = dict(self.settings.get("layout_snapshot", {}) or {})
+        return {
+            "current_window_mode": self._current_window_mode() if hasattr(self, "_current_window_mode") else "normal",
+            "current_primary_dock_sizes": self._capture_primary_horizontal_dock_sizes() if hasattr(self, "_capture_primary_horizontal_dock_sizes") else None,
+            "saved_primary_dock_sizes": list(saved.get("primary_dock_sizes", []) or []),
+            "saved_ai_chat_dock_width": int(saved.get("ai_chat_dock_width", 0) or 0),
+            "current_ai_chat_dock_width": int(getattr(getattr(self, "ai_chat_dock", None), "width", lambda: 0)()),
+            "visible_docks": docks,
+            "saved_layout_keys": sorted(saved.keys()),
+        }
+
+    def build_updater_state_snapshot(self) -> dict[str, Any]:
+        """Return current updater-controller state for diagnostics."""
+        updater = getattr(self, "updater_controller", None)
+        info = getattr(updater, "_last_info", None)
+        info_payload = {}
+        if info is not None:
+            info_payload = {
+                "version": str(getattr(info, "version", "") or ""),
+                "download_url": str(getattr(info, "download_url", "") or ""),
+                "pub_date": str(getattr(info, "pub_date", "") or ""),
+                "notes": str(getattr(info, "notes", "") or ""),
+                "sha256": str(getattr(info, "sha256", "") or ""),
+            }
+        pending_path = str(self.settings.get("pending_update_installer_path", "") or "")
+        return {
+            "current_version": str(resolve_asset_path("version.txt").read_text(encoding="utf-8").strip() if resolve_asset_path("version.txt") is not None else "v?.?.?"),
+            "feed_url": str(getattr(updater, "_last_feed_url", self.settings.get("update_feed_url", DEFAULT_UPDATE_FEED_URL)) or ""),
+            "check_in_progress": bool(getattr(updater, "_check_in_progress", False)),
+            "pending_capsule_path": pending_path,
+            "pending_capsule_version": str(self.settings.get("pending_update_version", "") or ""),
+            "pending_capsule_exists": bool(pending_path and Path(pending_path).exists()),
+            "last_info": info_payload,
+            "manual_check": bool(getattr(updater, "_manual_check", False)),
+            "require_signed_metadata": bool(profile_setting(self.settings, "update_require_signed_metadata", True)),
+            "pending_capsule_state": str(getattr(updater, "_pending_capsule_state_text", lambda: "unknown")()),
+        }
+
+    def build_plugin_state_snapshot(self) -> dict[str, Any]:
+        """Return plugin inventory and diagnostics suitable for the developer hub."""
+        controller = getattr(self, "advanced_features", None)
+        plugins: list[dict[str, object]] = []
+        if controller is not None and hasattr(controller, "discover"):
+            try:
+                for rec in controller.discover():
+                    plugins.append(controller.plugin_diagnostics_snapshot(rec))
+            except Exception as exc:
+                plugins.append({"error": str(exc)})
+        return {
+            "enabled_plugins": list(self.settings.get("enabled_plugins", []) or []),
+            "quarantined_plugins": list(self.settings.get("quarantined_plugins", []) or []),
+            "trusted_plugin_hashes_count": len(dict(self.settings.get("trusted_plugin_hashes", {}) or {})),
+            "plugins": plugins,
+        }
+
+    def build_recovery_state_snapshot(self) -> dict[str, Any]:
+        """Return autosave and crash-recovery state for diagnostics."""
+        store = getattr(self, "recovery_state_store", None)
+        snapshot_exists = False
+        snapshot_tabs = 0
+        if store is not None and hasattr(store, "load_crash_snapshot"):
+            try:
+                payload = store.load_crash_snapshot()
+                snapshot_exists = bool(payload)
+                snapshot_tabs = len(list(payload.get("tabs", []) or [])) if isinstance(payload, dict) else 0
+            except Exception:
+                snapshot_exists = False
+        crash_log = self._get_crash_logs_file_path() if hasattr(self, "_get_crash_logs_file_path") else None
+        crash_excerpt = ""
+        if crash_log is not None and Path(crash_log).exists():
+            try:
+                crash_excerpt = "\n".join(Path(crash_log).read_text(encoding="utf-8", errors="replace").splitlines()[-20:])
+            except Exception:
+                crash_excerpt = ""
+        return {
+            "crash_snapshot_enabled": bool(self.settings.get("crash_snapshot_enabled", True)),
+            "crash_snapshot_present": snapshot_exists,
+            "crash_snapshot_tabs": snapshot_tabs,
+            "autosave_enabled": bool(self.settings.get("autosave_enabled", True)),
+            "recovery_mode": str(self.settings.get("recovery_mode", "ask") or "ask"),
+            "recovery_discard_after_days": int(self.settings.get("recovery_discard_after_days", 14) or 14),
+            "crash_log_path": str(crash_log) if crash_log is not None else "",
+            "crash_log_excerpt": crash_excerpt,
+        }
+
+    def build_startup_state_snapshot(self) -> dict[str, Any]:
+        """Return startup timing and startup-log focused diagnostics."""
+        combined_logs = list(getattr(self, "_combined_debug_log_lines", lambda: [])())
+        startup_lines = [line for line in combined_logs if "[startup]" in line.lower()]
+        return {
+            "startup_ui_ready": bool(getattr(self, "_startup_ui_ready", False)),
+            "startup_first_paint_ready": bool(getattr(self, "_startup_first_paint_ready", False)),
+            "startup_sequence_done": bool(getattr(self, "_startup_sequence_done", False)),
+            "startup_hold_main_window_visible": bool(getattr(self, "_startup_hold_main_window_visible", False)),
+            "startup_stages": list(getattr(self, "_startup_stages", [])),
+            "startup_total_ms": int(getattr(self, "_startup_total_ms", 0) or 0),
+            "startup_deferred_stages": dict(getattr(self, "_startup_deferred_stages", {}) or {}),
+            "fast_startup_mode": bool(self.settings.get("fast_startup_mode", True)),
+            "startup_log_lines": startup_lines[-120:],
+        }
+
+    def build_settings_resolution_snapshot(self) -> dict[str, Any]:
+        """Return raw and effective settings snapshots for diagnosing config conflicts."""
+        resolved = resolve_security_policy(self.settings)
+        _api_key, key_source = getattr(self.ai_controller, "_resolve_api_key_with_source")()
+        active_profile_id = str(self.settings.get("security_profile_id", "balanced") or "balanced")
+        profile_states = dict(self.settings.get("security_profile_states", {}) or {})
+        active_profile_state = dict(profile_states.get(active_profile_id, {}) or {})
+        return {
+            "security_profile_id": active_profile_id,
+            "active_profile_state": active_profile_state,
+            "effective_policy": {
+                "plugin_policy": resolved.plugin_policy,
+                "ai_policy": resolved.ai_policy,
+                "update_policy": resolved.update_policy,
+                "save_policy": resolved.save_policy,
+                "persist_trust_decisions": resolved.persist_trust_decisions,
+                "allow_persistent_trust": resolved.allow_persistent_trust,
+            },
+            "ai_settings": {
+                "gemini_api_key_present": bool(str(self.settings.get("gemini_api_key", "") or "").strip()),
+                "ai_key_storage_mode": str(self.settings.get("ai_key_storage_mode", "") or ""),
+                "resolved_key_source": key_source,
+                "ai_model": str(self.settings.get("ai_model", "") or ""),
+                "ai_send_redact_emails": bool(profile_setting(self.settings, "ai_send_redact_emails", True)),
+                "ai_send_redact_paths": bool(profile_setting(self.settings, "ai_send_redact_paths", True)),
+                "ai_send_redact_tokens": bool(profile_setting(self.settings, "ai_send_redact_tokens", True)),
+                "ai_preview_redacted_prompt": bool(self.settings.get("ai_preview_redacted_prompt", True)),
+                "ai_private_mode": bool(self.settings.get("ai_private_mode", False)),
+            },
+            "updater_settings": {
+                "update_feed_url": str(self.settings.get("update_feed_url", DEFAULT_UPDATE_FEED_URL) or ""),
+                "update_require_signed_metadata": bool(profile_setting(self.settings, "update_require_signed_metadata", True)),
+            },
+            "developer_mode_enabled": bool(self.settings.get("developer_mode_enabled", False)),
+        }
+
+    def build_developer_overview_snapshot(self) -> dict[str, Any]:
+        """Return a concise overview snapshot for the developer hub landing tab."""
+        _api_key, key_source = getattr(self.ai_controller, "_resolve_api_key_with_source")()
+        runtime = self.build_runtime_state_snapshot()
+        layout = self.build_layout_state_snapshot()
+        updater = self.build_updater_state_snapshot()
+        plugins = self.build_plugin_state_snapshot()
+        startup = self.build_startup_state_snapshot()
+        return {
+            "app_version": updater.get("current_version", ""),
+            "build_mode": "frozen" if getattr(sys, "frozen", False) else "source",
+            "python_version": sys.version,
+            "platform": sys.platform,
+            "active_security_profile": str(self.settings.get("security_profile_id", "balanced") or "balanced"),
+            "developer_mode_enabled": bool(self.settings.get("developer_mode_enabled", False)),
+            "startup_timing": {
+                "total_ms": startup.get("startup_total_ms", 0),
+                "stages": startup.get("startup_stages", []),
+            },
+            "workspace_root": runtime.get("workspace_root", ""),
+            "active_file_path": dict(runtime.get("active_tab", {})).get("file_path", ""),
+            "dock_summary": {
+                "visible_dock_count": len(list(layout.get("visible_docks", []) or [])),
+                "current_primary_dock_sizes": layout.get("current_primary_dock_sizes"),
+            },
+            "ai_key_source": key_source,
+            "pending_updater_state": updater.get("pending_capsule_state", ""),
+            "plugin_count": len(list(plugins.get("plugins", []) or [])),
+            "quarantined_plugin_count": len(list(plugins.get("quarantined_plugins", []) or [])),
+            "debug_log_count": len(list(getattr(self, "debug_logs", []) or [])),
+        }
+
+    def open_developer_hub(self, initial_tab: str | None = None, *, force: bool = False) -> None:
+        """Open the developer diagnostics hub when developer mode is enabled or explicitly forced."""
+        if not force and not bool(self.settings.get("developer_mode_enabled", False)):
+            return
+        dialog = DeveloperHubDialog(self, initial_tab=initial_tab)
+        dialog.exec()
+
+    def open_startup_recovery_dialog(self, *, force: bool = False) -> None:
+        """Open the dedicated startup recovery dialog when explicitly requested."""
+        if not force and not bool(self.settings.get("developer_mode_enabled", False)):
+            return
+        if force:
+            self.hide()
+        dialog = StartupRecoveryDialog(self)
+        dialog.exec()
+
+    def open_ai_prompt_inspector(self) -> None:
+        """Open the developer hub focused on the AI tab."""
+        self.open_developer_hub("AI")
+
+    def show_last_ai_payload(self) -> None:
+        """Show the latest captured AI payload in a simple read-only dialog."""
+        payload = getattr(self.ai_controller, "last_prompt_payload", lambda: None)()
+        if not payload:
+            QMessageBox.information(self, "Last AI Payload", "No AI payload has been captured yet.")
+            return
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Last AI Payload")
+        dlg.resize(920, 640)
+        apply_dialog_theme_from_window(self, dlg)
+        layout = QVBoxLayout(dlg)
+        output = QTextEdit(dlg)
+        output.setReadOnly(True)
+        output.setPlainText(json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=False))
+        layout.addWidget(output, 1)
+        buttons = QDialogButtonBox(QDialogButtonBox.Close, Qt.Horizontal, dlg)
+        copy_btn = QPushButton("Copy", dlg)
+        buttons.addButton(copy_btn, QDialogButtonBox.ActionRole)
+        copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(output.toPlainText()))
+        buttons.rejected.connect(dlg.reject)
+        buttons.accepted.connect(dlg.accept)
+        layout.addWidget(buttons)
+        dlg.exec()
+
+    def copy_last_ai_payload(self) -> None:
+        """Copy the latest AI payload snapshot to the clipboard."""
+        payload = getattr(self.ai_controller, "last_prompt_payload", lambda: None)()
+        if not payload:
+            self.show_status_message("No AI payload has been captured yet.", 3000)
+            return
+        QApplication.clipboard().setText(json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=False))
+        self.show_status_message("Last AI payload copied.", 3000)
+
+    def export_developer_snapshot(self) -> None:
+        """Export a structured JSON snapshot of the current developer diagnostics state."""
+        snapshot = {
+            "overview": self.build_developer_overview_snapshot(),
+            "runtime": self.build_runtime_state_snapshot(),
+            "settings_resolution": self.build_settings_resolution_snapshot(),
+            "startup": self.build_startup_state_snapshot(),
+            "layout": self.build_layout_state_snapshot(),
+            "updater": self.build_updater_state_snapshot(),
+            "plugins": self.build_plugin_state_snapshot(),
+            "recovery": self.build_recovery_state_snapshot(),
+            "last_ai_payload": getattr(self.ai_controller, "last_prompt_payload", lambda: None)(),
+            "recent_ai_payloads": getattr(self.ai_controller, "recent_prompt_payloads", lambda: [])(),
+            "debug_logs": list(getattr(self, "_combined_debug_log_lines", lambda: [])())[-400:],
+        }
+        path, _ = QFileDialog.getSaveFileName(self, "Export Developer Snapshot", str(Path.cwd() / "developer_snapshot.json"), "JSON Files (*.json)")
+        if not path:
+            return
+        try:
+            Path(path).write_text(json.dumps(snapshot, indent=2, sort_keys=True, ensure_ascii=False), encoding="utf-8")
+        except Exception as exc:
+            QMessageBox.critical(self, "Export Developer Snapshot", f"Could not export snapshot:\n{exc}")
+            return
+        self.show_status_message(f"Developer snapshot exported: {path}", 3200)
+
     def toggle_keyboard_only_mode(self, checked: bool) -> None:
         """Enable or disable keyboard-only accessibility mode."""
         self.advanced_features.toggle_keyboard_only(checked)
+
+    def open_accessibility_quick_access(self) -> None:
+        """Jump directly to the accessibility settings page for keyboard-first setup."""
+        self.open_settings("accessibility")
 
     def apply_accessibility_high_contrast(self) -> None:
         """Apply the high-contrast accessibility theme adjustments."""
@@ -3792,7 +4131,7 @@ class MiscMixin(
         self.quit_quiz_mode()
 
     def ai_commit_message_generator(self) -> None:
-        """Handle AI commit message generator."""
+        """Ai commit message generator."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -3804,7 +4143,7 @@ class MiscMixin(
         self._send_ai_chat_prompt(prompt=prompt, visible_prompt="Generate Commit/Changelog Draft")
 
     def ai_batch_refactor_preview(self) -> None:
-        """Handle AI batch refactor preview."""
+        """Ai batch refactor preview."""
         root = self._workspace_root()
         if not root:
             QMessageBox.information(self, "Batch Refactor", "Set a workspace folder first.")
@@ -3843,7 +4182,7 @@ class MiscMixin(
         )
 
         def _on_done(text: str) -> None:
-            """Handle the AI planner response once the batch refactor plan arrives."""
+            """Finalize the stream after completion."""
             plan = self._parse_batch_refactor_plan(text, candidate_files, max_files=max_files)
             self._log_ai_feature(
                 "batch planner parsed "
@@ -4097,7 +4436,7 @@ class MiscMixin(
         )
 
     def ai_ask_file_with_citations(self) -> None:
-        """Handle AI ask file with citations."""
+        """Ai ask file with citations."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -4118,7 +4457,7 @@ class MiscMixin(
             self.ai_chat_dock.send_prompt(prompt=prompt, visible_prompt=question.strip())
 
     def ai_inline_edit_with_preview(self) -> None:
-        """Handle AI inline edit with preview."""
+        """Ai inline edit with preview."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -4167,7 +4506,7 @@ class MiscMixin(
         )
 
     def ai_ask_workspace_with_citations(self) -> None:
-        """Handle AI ask workspace with citations."""
+        """Ai ask workspace with citations."""
         root = self._workspace_root()
         if not root:
             QMessageBox.information(self, "Workspace Q&A", "Set a workspace folder first.")
@@ -4265,7 +4604,7 @@ class MiscMixin(
             )
 
     def ai_review_current_file_with_citations(self) -> None:
-        """Handle AI review current file with citations."""
+        """Ai review current file with citations."""
         tab = self.active_tab()
         if tab is None:
             QMessageBox.information(self, "AI Code Review", "Open a tab first.")
@@ -4281,7 +4620,7 @@ class MiscMixin(
         self._send_ai_chat_prompt(prompt=prompt, visible_prompt="Review Current File (Citations)")
 
     def ai_review_workspace_snippets_with_citations(self) -> None:
-        """Handle AI review workspace snippets with citations."""
+        """Ai review workspace snippets with citations."""
         root = self._workspace_root()
         if not root:
             QMessageBox.information(self, "Workspace Code Review", "Set a workspace folder first.")
@@ -4323,7 +4662,7 @@ class MiscMixin(
             self._evaluate_easter_eggs("workspace_review")
 
     def ai_rewrite_selection(self, mode: str) -> None:
-        """Handle AI rewrite selection."""
+        """Ai rewrite selection."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -5251,10 +5590,21 @@ class MiscMixin(
 
     @staticmethod
     def _atomic_write_bytes(path: Path, data: bytes) -> None:
-        """Atomically replace a file by writing bytes to a temp file and renaming it."""
-        temp_path = path.with_suffix(path.suffix + ".tmp")
-        temp_path.write_bytes(data)
-        os.replace(temp_path, path)
+        """Atomically replace a file by writing bytes to a unique temp file and renaming it."""
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd, temp_name = tempfile.mkstemp(prefix=f"{path.name}.", suffix=".tmp", dir=str(path.parent))
+        try:
+            with os.fdopen(fd, "wb") as handle:
+                handle.write(data)
+                handle.flush()
+            os.replace(temp_name, path)
+        finally:
+            try:
+                temp_path = Path(temp_name)
+                if temp_path.exists():
+                    temp_path.unlink()
+            except Exception:
+                pass
 
     @staticmethod
     def _normalize_hex_color(value: str) -> str | None:
@@ -5714,6 +6064,8 @@ class MiscMixin(
                 app.setQuitOnLastWindowClosed(prev_quit_on_last)
         self._refresh_ai_usage_label()
         self.apply_language()
+        if hasattr(self, "_sync_developer_mode_actions"):
+            self._sync_developer_mode_actions()
         apply_notepadpp_runtime_settings(self)
         _mark("finalize")
         _log_breakdown()
@@ -6157,6 +6509,27 @@ class MiscMixin(
         """Restart the application process immediately."""
         self._restart_app_with_message("The app will now reload.")
 
+    def restart_in_startup_safe_mode(self) -> None:
+        """Persist startup safe mode and relaunch the application immediately."""
+        self.settings["plugin_startup_safe_mode"] = True
+        self.settings["fast_startup_mode"] = True
+        self.save_settings_to_disk(synchronous=True)
+        if hasattr(self, "show_status_message"):
+            self.show_status_message("Restarting in startup safe mode...", 2500)
+        self._restart_app_with_message(
+            "The app will now restart in startup safe mode.\n\nPlugin startup safe mode has been enabled."
+        )
+
+    def restart_normally_from_safe_mode(self) -> None:
+        """Clear startup safe mode and relaunch the application immediately."""
+        self.settings["plugin_startup_safe_mode"] = False
+        self.save_settings_to_disk(synchronous=True)
+        if hasattr(self, "show_status_message"):
+            self.show_status_message("Restarting with normal startup...", 2500)
+        self._restart_app_with_message(
+            "The app will now restart with normal startup.\n\nPlugin startup safe mode has been disabled."
+        )
+
     def _restart_app_with_message(self, message: str) -> None:
         """Show a status message and relaunch the application process."""
         command = self._build_restart_command()
@@ -6288,7 +6661,7 @@ class MiscMixin(
         self._request_app_quit("settings_factory_reset")
 
     def keyPressEvent(self, event) -> None:  # type: ignore[override]
-        """Handle key press input for this widget."""
+        """Process key press events."""
         if (
             event.key() == Qt.Key_Escape
             and hasattr(self, "focus_mode_action")
@@ -8947,7 +9320,7 @@ class MiscMixin(
         self._terminal_prompt_cursor = cursor.position()
 
     def _handle_terminal_output_keypress(self, event) -> bool:
-        """Handle terminal key presses while preserving the prompt editing rules."""
+        """Terminal output keypress."""
         edit = getattr(self, "terminal_output", None)
         if edit is None:
             return False
@@ -10034,6 +10407,23 @@ class MiscMixin(
     def _apply_window_mode(self, mode: str) -> None:
         """Apply the requested top-level window mode to the main window."""
         normalized = str(mode or "normal").strip().lower()
+        app = QApplication.instance()
+        startup_hold = bool(getattr(self, "_startup_hold_main_window_visible", False))
+        app_started = bool(app.property("app_started")) if app is not None else False
+        if startup_hold and not app_started:
+            state = self.windowState() & ~Qt.WindowState.WindowMinimized
+            if normalized == "fullscreen":
+                state = state & ~Qt.WindowState.WindowMaximized
+                self.setWindowState(state | Qt.WindowState.WindowFullScreen)
+                return
+            if normalized == "maximized":
+                state = state & ~Qt.WindowState.WindowFullScreen
+                self.setWindowState(state | Qt.WindowState.WindowMaximized)
+                return
+            state = state & ~Qt.WindowState.WindowMaximized
+            state = state & ~Qt.WindowState.WindowFullScreen
+            self.setWindowState(state)
+            return
         if normalized == "fullscreen":
             self.showFullScreen()
             return
@@ -10860,7 +11250,7 @@ class MiscMixin(
             f"""
     <a href="easteregg"><b>Pypad</b></a><br>
     Simple Pypad implemented with PySide6<br>
-    Version: <b>{version}</b><br><br>
+    Version: <a href="devmode"><b>{version}</b></a><br><br>
     <b>{html_escape(app_mode_text)}</b><br><br>
     Pending update capsule: <b>{capsule_text}</b><br><br>
 
@@ -10876,23 +11266,36 @@ class MiscMixin(
         text_label = about_box.findChild(QLabel, "qt_msgbox_label")
         if text_label is not None:
             text_label.setOpenExternalLinks(False)
-            def _about_easter_egg(link: str) -> None:
-                """Launch the hidden easter egg when the special About dialog link is clicked."""
-                if link != "easteregg":
+            def _about_link(link: str) -> None:
+                """About link."""
+                if link not in {"easteregg", "devmode"}:
                     return
                 now = time.time()
-                last = float(getattr(self, "_easter_egg_link_ts", 0.0))
-                clicks = int(getattr(self, "_easter_egg_link_clicks", 0))
+                if link == "devmode":
+                    last = float(getattr(self, "_developer_mode_link_ts", 0.0))
+                    clicks = int(getattr(self, "_developer_mode_link_clicks", 0))
+                else:
+                    last = float(getattr(self, "_easter_egg_link_ts", 0.0))
+                    clicks = int(getattr(self, "_easter_egg_link_clicks", 0))
                 clicks = clicks + 1 if now - last <= 2.5 else 1
-                self._easter_egg_link_ts = now
-                self._easter_egg_link_clicks = clicks
-                self.log_event("Info", f"About dialog easter egg link clicked ({clicks}/3)")
+                if link == "devmode":
+                    self._developer_mode_link_ts = now
+                    self._developer_mode_link_clicks = clicks
+                    self.log_event("Info", f"About dialog developer mode link clicked ({clicks}/3)")
+                else:
+                    self._easter_egg_link_ts = now
+                    self._easter_egg_link_clicks = clicks
+                    self.log_event("Info", f"About dialog easter egg link clicked ({clicks}/3)")
                 if clicks >= 3:
-                    self._easter_egg_link_clicks = 0
-                    about_box.done(0)
-                    self.trigger_easter_egg()
+                    if link == "devmode":
+                        self._developer_mode_link_clicks = 0
+                        self.toggle_developer_mode_enabled()
+                    else:
+                        self._easter_egg_link_clicks = 0
+                        about_box.done(0)
+                        self.trigger_easter_egg()
 
-            text_label.linkActivated.connect(_about_easter_egg)
+            text_label.linkActivated.connect(_about_link)
 
         about_box.exec()
 

@@ -34,7 +34,7 @@ STYLE_TOKENS: tuple[str, ...] = ("keyword", "string", "comment", "number")
 
 
 def _fmt(color: str, bold: bool = False, italic: bool = False) -> QTextCharFormat:
-    """Handle fmt."""
+    """Fmt."""
     fmt = QTextCharFormat()
     fmt.setForeground(QColor(color))
     if bold:
@@ -45,7 +45,7 @@ def _fmt(color: str, bold: bool = False, italic: bool = False) -> QTextCharForma
 
 
 class CodeSyntaxHighlighter(QSyntaxHighlighter):
-    """code syntax highlighter."""
+    """Represent the code syntax highlighter."""
     def __init__(
         self,
         document,
@@ -78,7 +78,7 @@ class CodeSyntaxHighlighter(QSyntaxHighlighter):
 
     @staticmethod
     def _sanitize_style_overrides(raw: dict[str, dict[str, str]]) -> dict[str, dict[str, str]]:
-        """Handle sanitize style overrides."""
+        """Sanitize style overrides."""
         out: dict[str, dict[str, str]] = {}
         if not isinstance(raw, dict):
             return out
@@ -101,7 +101,7 @@ class CodeSyntaxHighlighter(QSyntaxHighlighter):
         return out
 
     def _style_color(self, language: str, token: str) -> str:
-        """Handle style color."""
+        """Style color."""
         theme = self.style_theme if self.style_theme in THEME_PRESETS else "default"
         fallback = THEME_PRESETS[theme][token]
         language_key = str(language or "plain").strip().lower()
@@ -184,7 +184,7 @@ class CodeSyntaxHighlighter(QSyntaxHighlighter):
                 self.setFormat(start, end - start, fmt)
 
     def highlightBlock(self, text: str) -> None:
-        """Handle highlight block."""
+        """Highlight block."""
         language = self.language.lower()
         if language in {"markdown", "md"}:
             in_code = self.previousBlockState() == 1

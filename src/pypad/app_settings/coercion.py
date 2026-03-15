@@ -49,13 +49,13 @@ def normalize_ui_visibility_settings(settings: dict) -> dict:
 
 
 def _coerce_enum(value: object, allowed: set[str], default: str) -> str:
-    """Handle coerce enum."""
+    """Coerce enum."""
     text = str(value or "").strip().lower()
     return text if text in allowed else default
 
 
 def _coerce_int_clamped(value: object, default: int, min_value: int, max_value: int) -> int:
-    """Handle coerce int clamped."""
+    """Coerce int clamped."""
     try:
         num = int(value)  # type: ignore[arg-type]
     except Exception:
@@ -64,7 +64,7 @@ def _coerce_int_clamped(value: object, default: int, min_value: int, max_value: 
 
 
 def _coerce_hex(value: object, default: str) -> str:
-    """Handle coerce hex."""
+    """Coerce hex."""
     text = str(value or "").strip()
     if not text:
         return default
@@ -78,14 +78,14 @@ def _coerce_hex(value: object, default: str) -> str:
 
 
 def _coerce_logging_level(value: object, default: str = "INFO") -> str:
-    """Handle coerce logging level."""
+    """Coerce logging level."""
     allowed = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
     text = str(value or "").strip().upper()
     return text if text in allowed else default
 
 
 def _coerce_float_clamped(value: object, default: float, min_value: float, max_value: float) -> float:
-    """Handle coerce float clamped."""
+    """Coerce float clamped."""
     try:
         num = float(value)  # type: ignore[arg-type]
     except Exception:
@@ -94,7 +94,7 @@ def _coerce_float_clamped(value: object, default: float, min_value: float, max_v
 
 
 def _coerce_cmd_list(value: object, default: list[str]) -> list[str]:
-    """Handle coerce cmd list."""
+    """Coerce cmd list."""
     if isinstance(value, str):
         items = [part.strip() for part in value.split(",")]
         cleaned = [item for item in items if item]
@@ -106,14 +106,14 @@ def _coerce_cmd_list(value: object, default: list[str]) -> list[str]:
 
 
 def _coerce_str_list(value: object) -> list[str]:
-    """Handle coerce str list."""
+    """Coerce str list."""
     if isinstance(value, list):
         return [str(item).strip() for item in value if str(item).strip()]
     return []
 
 
 def _sanitize_update_feed_url(value: object, default: str) -> str:
-    """Handle sanitize update feed url."""
+    """Sanitize update feed url."""
     raw = str(value or "").strip() or default
     if "neogl1tch20server" in raw or raw.endswith("/updates/notepad.xml"):
         raw = default
@@ -184,6 +184,7 @@ def migrate_settings(settings: dict) -> dict:
         )
         current["save_debug_logs_to_appdata"] = coerce_bool(current.get("save_debug_logs_to_appdata", False), False)
         current["logging_level"] = _coerce_logging_level(current.get("logging_level", "INFO"))
+        current["developer_mode_enabled"] = coerce_bool(current.get("developer_mode_enabled", False), False)
         current["gamification_enabled"] = coerce_bool(current.get("gamification_enabled", True), True)
         current["session_review_enabled"] = coerce_bool(current.get("session_review_enabled", False), False)
         custom_events = current.get("gamification_custom_events", [])
@@ -562,6 +563,7 @@ def migrate_settings(settings: dict) -> dict:
     current["debug_telemetry_enabled"] = coerce_bool(current.get("debug_telemetry_enabled", False), False)
     current["save_debug_logs_to_appdata"] = coerce_bool(current.get("save_debug_logs_to_appdata", False), False)
     current["logging_level"] = _coerce_logging_level(current.get("logging_level", "INFO"))
+    current["developer_mode_enabled"] = coerce_bool(current.get("developer_mode_enabled", False), False)
     current["gamification_enabled"] = coerce_bool(current.get("gamification_enabled", True), True)
     current["session_review_enabled"] = coerce_bool(current.get("session_review_enabled", False), False)
     custom_events = current.get("gamification_custom_events", [])

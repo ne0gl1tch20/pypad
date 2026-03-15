@@ -31,7 +31,7 @@ class MiscQuickOpenMixin:
             ...
 
     def _quick_open_entries(self) -> list[QuickOpenEntry]:
-        """Handle quick open entries."""
+        """Quick open entries."""
         entries: list[QuickOpenEntry] = []
         seen_paths: set[str] = set()
 
@@ -84,7 +84,7 @@ class MiscQuickOpenMixin:
         return entries
 
     def _quick_open_workspace_entries_cached(self) -> list[QuickOpenEntry]:
-        """Handle quick open workspace entries cached."""
+        """Quick open workspace entries cached."""
         root = str(self._workspace_root() or "").strip()
         if not root:
             return []
@@ -134,7 +134,7 @@ class MiscQuickOpenMixin:
         return cache_items
 
     def _schedule_quick_open_index_refresh(self) -> None:
-        """Handle schedule quick open index refresh."""
+        """Schedule quick open index refresh."""
         if bool(getattr(self, "_quick_open_indexing", False)):
             return
         root = str(self._workspace_root() or "").strip()
@@ -143,7 +143,7 @@ class MiscQuickOpenMixin:
         self._quick_open_indexing = True
 
         def _build() -> list[QuickOpenEntry]:
-            """Handle build."""
+            """Build."""
             out: list[QuickOpenEntry] = []
             try:
                 root_path = Path(root)
@@ -176,11 +176,11 @@ class MiscQuickOpenMixin:
             return out
 
         def _worker() -> None:
-            """Handle worker."""
+            """Worker."""
             items = _build()
 
             def _apply() -> None:
-                """Handle apply."""
+                """Apply."""
                 self._quick_open_workspace_cache = items
                 self._quick_open_cache_root = root
                 self._quick_open_cache_built_at = time.time()
@@ -211,7 +211,7 @@ class MiscQuickOpenMixin:
         threading.Thread(target=_worker, name="pypad-quick-open-index", daemon=True).start()
 
     def _quick_open_current_symbols(self) -> list[QuickOpenEntry]:
-        """Handle quick open current symbols."""
+        """Quick open current symbols."""
         tab = self.active_tab()
         if tab is None:
             return []
@@ -235,7 +235,7 @@ class MiscQuickOpenMixin:
         ]
 
     def _schedule_workspace_symbol_index_refresh(self) -> None:
-        """Handle schedule workspace symbol index refresh."""
+        """Schedule workspace symbol index refresh."""
         if bool(getattr(self, "_quick_open_workspace_symbol_indexing", False)):
             return
         root = str(self._workspace_root() or "").strip()
@@ -244,7 +244,7 @@ class MiscQuickOpenMixin:
         self._quick_open_workspace_symbol_indexing = True
 
         def _guess_lang(path: str) -> str:
-            """Handle guess lang."""
+            """Guess lang."""
             suffix = Path(path).suffix.lower()
             return {
                 ".py": "python",
@@ -254,7 +254,7 @@ class MiscQuickOpenMixin:
             }.get(suffix, "plain")
 
         def _build() -> list[QuickOpenEntry]:
-            """Handle build."""
+            """Build."""
             out: list[QuickOpenEntry] = []
             file_entries = list(getattr(self, "_quick_open_workspace_cache", []) or [])
             if not file_entries:
@@ -295,11 +295,11 @@ class MiscQuickOpenMixin:
             return out
 
         def _worker() -> None:
-            """Handle worker."""
+            """Worker."""
             items = _build()
 
             def _apply() -> None:
-                """Handle apply."""
+                """Apply."""
                 self._quick_open_workspace_symbol_cache = items
                 self._quick_open_workspace_symbol_cache_root = root
                 self._quick_open_workspace_symbol_cache_built_at = time.time()
@@ -331,7 +331,7 @@ class MiscQuickOpenMixin:
         threading.Thread(target=_worker, name="pypad-quick-open-symbol-index", daemon=True).start()
 
     def _quick_open_workspace_symbols_cached(self) -> list[QuickOpenEntry]:
-        """Handle quick open workspace symbols cached."""
+        """Quick open workspace symbols cached."""
         root = str(self._workspace_root() or "").strip()
         if not root:
             return []
@@ -382,7 +382,7 @@ class MiscQuickOpenMixin:
         return cache_items
 
     def _quick_open_status_text(self) -> str:
-        """Handle quick open status text."""
+        """Quick open status text."""
         parts: list[str] = []
         if bool(getattr(self, "_quick_open_indexing", False)):
             parts.append("Indexing workspace...")
@@ -393,7 +393,7 @@ class MiscQuickOpenMixin:
         return " | ".join(parts)
 
     def _quick_open_apply_selection(self, entry: QuickOpenEntry, *, line: int | None, col: int | None) -> None:
-        """Handle quick open apply selection."""
+        """Quick open apply selection."""
         if entry.kind == "open_tab":
             target_idx = entry.tab_index
             if isinstance(target_idx, int) and 0 <= target_idx < self.tab_widget.count():
@@ -462,13 +462,21 @@ class MiscQuickOpenMixin:
             self._onboarding_mark_step("used_command_palette")
         actions: list[PaletteItem] = []
         for entry in discover_window_actions(self):
+            keywords = [entry.action_id, entry.section]
+            action_id_text = entry.action_id.lower()
+            label_text = entry.label.lower()
+            section_text = entry.section.lower()
+            if "access" in label_text or "access" in section_text or "keyboard" in label_text or "shortcut" in label_text:
+                keywords.extend(["accessibility", "a11y", "keyboard", "quick access"])
+            if "settings" in section_text or "preferences" in label_text:
+                keywords.extend(["settings", "preferences"])
             actions.append(
                 PaletteItem(
                     label=entry.label,
                     section=entry.section,
                     action=entry.action,
                     shortcut=entry.shortcut_text,
-                    keywords=f"{entry.action_id} {entry.section}",
+                    keywords=" ".join(keywords + [action_id_text]),
                 )
             )
         dialog = CommandPaletteDialog(self, actions, initial_query=initial_query)

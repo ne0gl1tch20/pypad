@@ -13,6 +13,7 @@ The format is based on Keep a Changelog, and this project uses Semantic Versioni
 - New accessibility coverage across major custom UI surfaces, including accessible names/descriptions for the trust banner, AI chat dock, workspace dialogs, plugin dialogs, tutorial flow, and core dock panels.
 - New accessibility presets for `Large Text` and `Low Stimulation`, alongside the existing high-contrast and dyslexic-font presets.
 - New accessibility smoke coverage for keyboard-first navigation and major dialog metadata.
+- A hidden splash-screen startup gesture now opens a dedicated `Startup Recovery / Safe Mode` dashboard with restart, recovery, log, and diagnostics controls.
 
 ### Changed
 - Trust, safe-save, AI privacy, and update-signature enforcement now resolve through the active security profile instead of relying on one shared global set of security toggles.
@@ -26,7 +27,9 @@ The format is based on Keep a Changelog, and this project uses Semantic Versioni
 - Custom dialogs, docks, and interactive widgets now use stronger global focus-ring styling for clearer keyboard focus visibility.
 - Reduced-motion preferences now suppress remaining custom UI animations such as tutorial fades and AI typing animation states.
 - Keyboard navigation is more consistent across trust actions, AI chat controls, workspace dialogs, plugin dialogs, terminal/tasks, and Git dock controls.
+- Developer diagnostics entry points for debug logs and runtime info now live under the Developer Hub instead of as separate Help-menu dialogs.
 - App/version metadata has been aligned to the `1.8.2` release line across release files, summaries, and update feed metadata.
+- Startup recovery now presents as a dedicated dashboard layout, keeps the main editor hidden while recovery mode is active, and provides one-click restart paths for safe-mode and normal relaunch.
 
 ### Fixed
 - Plugin event emission and plugin write APIs no longer bypass untrusted-note protections when plugin blocking is enabled.
@@ -35,8 +38,13 @@ The format is based on Keep a Changelog, and this project uses Semantic Versioni
 - Enabling note encryption from `File > More > Security` now persists the encrypted form of the current file instead of only toggling in-memory state.
 - Theme preset switches no longer leave those named palettes partially unsupported when dark mode is enabled.
 - AI chat assistant bubbles no longer pin code blocks and action links to a hard-coded dark appearance in light themes.
+- AI prompt redaction no longer mistakes internal `pypad://...` deep links for filesystem paths during redacted-send preview.
+- Entering a Gemini API key in `Settings > Preferences > AI & Updates` now automatically switches AI key storage to settings-backed mode so first-time saves work immediately.
+- Hidden developer mode now exposes a deeper diagnostics hub, AI payload inspection, and developer-only debugging tools after triple-clicking the About dialog version text.
 - Terminal & Tasks dock no longer forces a dark-only output surface regardless of the selected palette.
 - Keyboard and screen-reader users now get clearer metadata on major custom widgets instead of relying on unnamed controls.
+- `Tools > More > Run Backup Now` now prompts for a destination zip path instead of always writing to the configured backup folder.
+- Closing the startup recovery dashboard during an armed splash-triggered recovery launch now exits the current app session instead of revealing the hidden main window underneath.
 
 ## [1.8.1] - 2026-03-14
 

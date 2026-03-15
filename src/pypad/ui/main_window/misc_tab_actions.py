@@ -25,7 +25,7 @@ class MiscTabActionsMixin:
             ...
 
     def _move_to_recycle_bin(self, path: str) -> bool:
-        """Handle move to recycle bin."""
+        """Move to recycle bin."""
         try:
             import ctypes
             from ctypes import wintypes
@@ -39,7 +39,7 @@ class MiscTabActionsMixin:
         FOF_NOERRORUI = 0x0400
 
         class SHFILEOPSTRUCTW(ctypes.Structure):
-            """s h f i l e o p s t r u c t w."""
+            """Represent the s h f i l e o p s t r u c t w."""
             _fields_ = [
                 ("hwnd", wintypes.HWND),
                 ("wFunc", wintypes.UINT),
@@ -251,7 +251,7 @@ class MiscTabActionsMixin:
         self.favorite_tab_action.setText("&Unfavorite Tab" if tab.favorite else "&Favorite Tab")
 
     def edit_active_tab_tags(self) -> None:
-        """Handle edit active tab tags."""
+        """Perform the active tab tags action."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -264,14 +264,14 @@ class MiscTabActionsMixin:
         self._refresh_tab_title(tab)
 
     def rename_active_tab_file(self) -> None:
-        """Handle rename active tab file."""
+        """Rename active tab file."""
         tab = self.active_tab()
         if tab is None:
             return
         self.rename_tab_file(tab)
 
     def move_active_tab_to_recycle_bin(self) -> None:
-        """Handle move active tab to recycle bin."""
+        """Move active tab to recycle bin."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -296,7 +296,7 @@ class MiscTabActionsMixin:
             QMessageBox.warning(self, "Move to Recycle Bin", "Could not move file to Recycle Bin.")
 
     def rename_tab_file(self, tab: EditorTab) -> None:
-        """Handle rename tab file."""
+        """Rename tab file."""
         if not tab.current_file:
             QMessageBox.information(
                 self,
@@ -340,7 +340,7 @@ class MiscTabActionsMixin:
         self.show_status_message(f'Renamed to "{new_path.name}"', 3000)
 
     def new_tab_from_template(self, template_name: str) -> None:
-        """Handle new tab from template."""
+        """New tab from template."""
         template = self.templates.get(template_name)
         if template is None:
             return

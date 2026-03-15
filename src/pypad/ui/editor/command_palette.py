@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
 
 @dataclass(frozen=True)
 class PaletteItem:
-    """palette item."""
+    """Represent the palette item."""
     label: str
     section: str
     action: QAction
@@ -32,7 +32,7 @@ class PaletteItem:
 
 
 def _score(query: str, candidate: str) -> int:
-    """Handle score."""
+    """Compute the score for this item."""
     if not query:
         return 0
     q = query.lower().strip()
@@ -50,12 +50,16 @@ def _score(query: str, candidate: str) -> int:
 
 
 class CommandPaletteDialog(QDialog):
-    """command palette dialog."""
+    """Browse and run commands from a searchable command palette."""
     def __init__(self, parent, items: list[PaletteItem], *, initial_query: str = "") -> None:
         """Build the command palette dialog and initialize its search model."""
         super().__init__(parent)
         self.setWindowTitle("Command Palette")
         self.resize(560, 440)
+        self.setAccessibleName("Command palette")
+        self.setAccessibleDescription(
+            "Search application commands, settings, panels, and feature actions from the keyboard."
+        )
         self._items = items
         self.selected_action: QAction | None = None
 
@@ -64,17 +68,30 @@ class CommandPaletteDialog(QDialog):
         top.addWidget(QLabel("Search:", self))
         self.search_edit = QLineEdit(self)
         self.search_edit.setPlaceholderText("Type a command...")
+        self.search_edit.setAccessibleName("Command search")
+        self.search_edit.setAccessibleDescription(
+            "Type to filter commands. Use arrow keys to move through results and press Enter to run the selected action."
+        )
         top.addWidget(self.search_edit, 1)
         layout.addLayout(top)
 
+        self.help_label = QLabel("Search features, settings, and panels. Use Up/Down then Enter to run.", self)
+        self.help_label.setWordWrap(True)
+        self.help_label.setObjectName("commandPaletteHelpLabel")
+        layout.addWidget(self.help_label)
+
         self.list_widget = QListWidget(self)
         self.list_widget.setAlternatingRowColors(True)
+        self.list_widget.setAccessibleName("Command results")
+        self.list_widget.setAccessibleDescription("Filtered command results.")
         layout.addWidget(self.list_widget, 1)
 
         buttons = QHBoxLayout()
         buttons.addStretch(1)
         self.run_btn = QPushButton("Run", self)
         self.cancel_btn = QPushButton("Cancel", self)
+        self.run_btn.setAccessibleDescription("Run the selected command.")
+        self.cancel_btn.setAccessibleDescription("Close the command palette without running a command.")
         buttons.addWidget(self.run_btn)
         buttons.addWidget(self.cancel_btn)
         layout.addLayout(buttons)
@@ -110,7 +127,7 @@ class CommandPaletteDialog(QDialog):
             self.list_widget.setCurrentRow(0)
 
     def _accept_selected(self) -> None:
-        """Handle accept selected."""
+        """Accept selected."""
         item = self.list_widget.currentItem()
         if item is None:
             self.reject()

@@ -27,7 +27,7 @@ from pypad.ui.theme.theme_tokens import build_quick_open_qss, build_tokens_from_
 
 @dataclass(frozen=True)
 class QuickOpenEntry:
-    """quick open entry."""
+    """Represent the quick open entry."""
     kind: str  # file | open_tab | symbol
     label: str
     subtitle: str
@@ -39,7 +39,7 @@ class QuickOpenEntry:
 
 @dataclass(frozen=True)
 class QuickOpenQuery:
-    """quick open query."""
+    """Represent the quick open query."""
     needle: str
     line: int | None = None  # 1-based
     col: int | None = None   # 1-based
@@ -146,7 +146,7 @@ def extract_symbol_rows(language: str, text: str) -> list[tuple[int, str]]:
 
 
 def score_quick_open_match(query: str, candidate: str) -> int:
-    """Handle score quick open match."""
+    """Compute quick open match."""
     q = str(query or "").strip().lower()
     c = str(candidate or "").lower()
     if not q:
@@ -191,7 +191,7 @@ def split_workspace_symbol_scope(raw_query: str) -> tuple[str | None, str]:
 
 
 class QuickOpenDialog(QDialog):
-    """quick open dialog."""
+    """Search and open files, symbols, and commands from one dialog."""
     def __init__(
         self,
         parent,
@@ -298,7 +298,7 @@ class QuickOpenDialog(QDialog):
     @staticmethod
     def _entries_signature(entries: list[QuickOpenEntry]) -> int:
         # Lightweight content hash to detect updates even when counts are unchanged.
-        """Handle entries signature."""
+        """Entries signature."""
         acc = 1469598103934665603  # FNV offset basis (64-bit)
         for i, e in enumerate(entries[:5120]):
             token = (
@@ -322,7 +322,7 @@ class QuickOpenDialog(QDialog):
         return acc & 0xFFFFFFFFFFFFFFFF
 
     def _poll_providers_and_refresh(self) -> None:
-        """Handle poll providers and refresh."""
+        """Poll providers and refresh."""
         changed = False
         if callable(self._items_provider):
             try:
@@ -366,7 +366,7 @@ class QuickOpenDialog(QDialog):
         self.list_widget.addItem(item)
 
     def _entry_row_text(self, entry: QuickOpenEntry, *, line_suffix: str = "") -> str:
-        """Handle entry row text."""
+        """Entry row text."""
         prefix = f"[{entry.source}] " if entry.source else ""
         text = f"{prefix}{entry.label}"
         if entry.subtitle:
@@ -399,7 +399,7 @@ class QuickOpenDialog(QDialog):
         self.search_edit.setFocus()
 
     def _current_mode(self) -> str:
-        """Handle current mode."""
+        """Return the current mode."""
         parsed = parse_quick_open_query(self.search_edit.text())
         if parsed.command_query is not None:
             return "command"
@@ -410,7 +410,7 @@ class QuickOpenDialog(QDialog):
         return "file"
 
     def _toggle_mode(self, *, reverse: bool = False) -> bool:
-        """Handle toggle mode."""
+        """Toggle mode."""
         cur = self._current_mode()
         try:
             idx = self._mode_cycle.index(cur)
@@ -546,7 +546,7 @@ class QuickOpenDialog(QDialog):
                     break
 
     def _accept_current(self) -> None:
-        """Handle accept current."""
+        """Accept current."""
         item = self.list_widget.currentItem()
         if item is None:
             self.reject()

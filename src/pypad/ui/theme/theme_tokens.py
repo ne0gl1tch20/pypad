@@ -31,18 +31,18 @@ def _normalize_hex(value: object, fallback: str) -> str:
 
 
 def _hex_to_rgb(value: str) -> tuple[int, int, int]:
-    """Handle hex to rgb."""
+    """Hex to rgb."""
     text = _normalize_hex(value, "#000000")
     return int(text[1:3], 16), int(text[3:5], 16), int(text[5:7], 16)
 
 
 def _rgb_to_hex(r: int, g: int, b: int) -> str:
-    """Handle rgb to hex."""
+    """Rgb to hex."""
     return "#{:02x}{:02x}{:02x}".format(max(0, min(255, r)), max(0, min(255, g)), max(0, min(255, b)))
 
 
 def _mix(a: str, b: str, t: float) -> str:
-    """Handle mix."""
+    """Mix."""
     ar, ag, ab = _hex_to_rgb(a)
     br, bg, bb = _hex_to_rgb(b)
     t = max(0.0, min(1.0, float(t)))
@@ -54,23 +54,23 @@ def _mix(a: str, b: str, t: float) -> str:
 
 
 def _lighten(color: str, amount: float) -> str:
-    """Handle lighten."""
+    """Lighten."""
     return _mix(color, "#ffffff", amount)
 
 
 def _darken(color: str, amount: float) -> str:
-    """Handle darken."""
+    """Darken."""
     return _mix(color, "#000000", amount)
 
 
 def _relative_luma(color: str) -> float:
-    """Handle relative luma."""
+    """Relative luma."""
     r, g, b = _hex_to_rgb(color)
     return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255.0
 
 
 def _contrast_fg(bg: str, *, dark: str = "#111111", light: str = "#ffffff", threshold: float = 0.58) -> str:
-    """Handle contrast fg."""
+    """Contrast fg."""
     return dark if _relative_luma(bg) >= threshold else light
 
 
@@ -417,13 +417,13 @@ def build_tokens_from_settings(settings: dict[str, Any]) -> UIThemeTokens:
 
 
 def tokens_signature(tokens: UIThemeTokens) -> str:
-    """Handle tokens signature."""
+    """Tokens signature."""
     payload = json.dumps(asdict(tokens), sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha1(payload).hexdigest()
 
 
 def tokens_to_css_vars_qss(tokens: UIThemeTokens) -> str:
-    """Handle tokens to css vars QSS."""
+    """Tokens to css vars qss."""
     rows = asdict(tokens)
     lines = ["/* pypad theme tokens"]
     for key in sorted(rows):

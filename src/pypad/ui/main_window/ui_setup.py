@@ -43,8 +43,6 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QColorDialog,
     QComboBox,
-    QDialog,
-    QDialogButtonBox,
     QFileDialog,
     QFontDialog,
     QFrame,
@@ -75,7 +73,6 @@ from PySide6.QtWidgets import (
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtPrintSupport import QPrintDialog, QPrintPreviewDialog, QPrinter
 
-from pypad.ui.debug.debug_logs_dialog import DebugLogsDialog
 from pypad.ui.editor.detachable_tab_bar import DetachableTabBar
 from pypad.ui.editor.editor_tab import EditorTab
 from ...app_settings import build_default_settings
@@ -194,13 +191,13 @@ class _EmptyTabsRecentFileRow(QFrame):
         layout.addLayout(text_col, 1)
 
     def mousePressEvent(self, event) -> None:
-        """Handle mouse press input for this widget."""
+        """Mouse press event."""
         if event.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit(self._path)
         super().mousePressEvent(event)
 
     def keyPressEvent(self, event) -> None:
-        """Handle key press input for this widget."""
+        """Process key press events."""
         if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):
             self.clicked.emit(self._path)
             event.accept()
@@ -373,7 +370,7 @@ class UiSetupMixin:
             """
         )
     def _active_logging_level(self) -> str:
-        """Handle active logging level."""
+        """Return the active logging level."""
         settings = getattr(self, "settings", {}) or {}
         return normalize_log_level_name(settings.get("logging_level", "INFO"))
 
@@ -498,7 +495,7 @@ class UiSetupMixin:
         return scroll
 
     def _configure_empty_tabs_button(self, button: QPushButton, icon_name: str, *, accent: bool = False) -> None:
-        """Handle configure empty tabs button."""
+        """Configure empty tabs button."""
         settings = getattr(self, "settings", {})
         tokens = build_tokens_from_settings(settings if isinstance(settings, dict) else {})
         button.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -714,13 +711,13 @@ class UiSetupMixin:
             self.central_stack.setCurrentWidget(self.tab_widget)
 
     def active_tab(self) -> EditorTab | None:
-        """Handle active tab."""
+        """Return the active tab."""
         widget = self.tab_widget.currentWidget()
         return widget if isinstance(widget, EditorTab) else None
 
     @property
     def text_edit(self):
-        """Handle text edit."""
+        """Return the text editor for the active tab."""
         tab = self.active_tab()
         if tab is None:
             raise RuntimeError("No active tab")
@@ -728,7 +725,7 @@ class UiSetupMixin:
 
     @property
     def markdown_preview(self):
-        """Handle markdown preview."""
+        """Return the shared markdown preview pane."""
         pane = getattr(self, "markdown_preview_pane", None)
         if pane is None:
             raise RuntimeError("Markdown preview pane unavailable")
@@ -736,7 +733,7 @@ class UiSetupMixin:
 
     @property
     def editor_splitter(self) -> QSplitter:
-        """Handle editor splitter."""
+        """Return the editor splitter for the active tab."""
         tab = self.active_tab()
         if tab is None:
             raise RuntimeError("No active tab")
@@ -744,45 +741,45 @@ class UiSetupMixin:
 
     @property
     def current_file(self) -> str | None:
-        """Handle current file."""
+        """Return the current file."""
         tab = self.active_tab()
         return tab.current_file if tab is not None else None
 
     @current_file.setter
     def current_file(self, value: str | None) -> None:
-        """Handle current file."""
+        """Update the current file path for the active tab."""
         tab = self.active_tab()
         if tab is not None:
             tab.current_file = value
 
     @property
     def zoom_steps(self) -> int:
-        """Handle zoom steps."""
+        """Return the zoom-step value for the active tab."""
         tab = self.active_tab()
         return tab.zoom_steps if tab is not None else 0
 
     @zoom_steps.setter
     def zoom_steps(self, value: int) -> None:
-        """Handle zoom steps."""
+        """Set the zoom-step value for the active tab."""
         tab = self.active_tab()
         if tab is not None:
             tab.zoom_steps = value
 
     @property
     def markdown_mode_enabled(self) -> bool:
-        """Handle markdown mode enabled."""
+        """Return whether markdown mode is enabled for the active tab."""
         tab = self.active_tab()
         return tab.markdown_mode_enabled if tab is not None else False
 
     @markdown_mode_enabled.setter
     def markdown_mode_enabled(self, value: bool) -> None:
-        """Handle markdown mode enabled."""
+        """Enable or disable markdown mode for the active tab."""
         tab = self.active_tab()
         if tab is not None:
             tab.markdown_mode_enabled = value
 
     def _tab_display_name(self, tab: EditorTab) -> str:
-        """Handle tab display name."""
+        """Build the user-visible tab title, including state badges."""
         base = Path(tab.current_file).name if tab.current_file else "Untitled"
         prefix = ""
         if tab.encryption_enabled:
@@ -823,7 +820,7 @@ class UiSetupMixin:
 
     @staticmethod
     def _append_line_to_log_file(path: Path, line: str) -> None:
-        """Handle append line to log file."""
+        """Append a single line to a log file, creating parent directories if needed."""
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             with open(path, "a", encoding="utf-8") as handle:
@@ -842,7 +839,7 @@ class UiSetupMixin:
             self._append_line_to_log_file(self._get_crash_logs_file_path(), line)
 
     def clear_debug_logs(self) -> None:
-        """Clear debug logs."""
+        """Clear in-memory debug logs and refresh any open log views."""
         self.debug_logs.clear()
         clear_console_log_lines()
         if self.debug_logs_dialog is not None:
@@ -850,7 +847,7 @@ class UiSetupMixin:
         self.log_event("Info", "Debug logs cleared")
 
     def _combined_debug_log_lines(self) -> list[str]:
-        """Handle combined debug log lines."""
+        """Combine application and captured console logs into one ordered list."""
         app_lines = list(self.debug_logs)
         console_lines = get_console_log_lines()
         if not console_lines:
@@ -864,25 +861,18 @@ class UiSetupMixin:
         return lines
 
     def show_debug_logs(self) -> None:
-        """Show debug logs."""
-        if self.debug_logs_dialog is None:
-            self.debug_logs_dialog = DebugLogsDialog(self)
-            self.debug_logs_dialog.clear_button.clicked.disconnect()
-            self.debug_logs_dialog.clear_button.clicked.connect(self.clear_debug_logs)
-        self.debug_logs_dialog.set_lines(self._combined_debug_log_lines())
-        self.debug_logs_dialog.show()
-        self.debug_logs_dialog.raise_()
-        self.debug_logs_dialog.activateWindow()
-        self.log_event("Info", "Opened debug logs dialog")
+        """Open the developer hub focused on the logs tab."""
+        self.open_developer_hub("Logs")
+        self.log_event("Info", "Opened developer hub logs tab")
 
     @staticmethod
     def _on_off(value: bool) -> str:
-        """Handle on off."""
+        """Format the disabled state label."""
         return "ON" if bool(value) else "OFF"
 
     @staticmethod
     def _debug_target_path() -> Path:
-        """Handle debug target path."""
+        """Return the executable or script path shown in debug information."""
         if getattr(sys, "frozen", False):
             return Path(sys.executable).resolve()
         try:
@@ -891,7 +881,7 @@ class UiSetupMixin:
             return Path(__file__).resolve()
 
     def _windows_display_adapters(self) -> list[tuple[str, str]]:
-        """Handle windows display adapters."""
+        """Query Windows for installed display adapters and their driver versions."""
         if os.name != "nt":
             return []
         command = (
@@ -928,7 +918,7 @@ class UiSetupMixin:
         return out
 
     def _installed_plugins_for_debug(self) -> list[str]:
-        """Handle installed plugins for debug."""
+        """Summarize installed plugins for the developer diagnostics view."""
         host = getattr(getattr(self, "advanced_features", None), "plugin_host", None)
         if host is None:
             return []
@@ -1073,26 +1063,9 @@ class UiSetupMixin:
         return "\n".join(lines)
 
     def show_debug_info(self) -> None:
-        """Show debug info."""
-        text = self.build_debug_info_text()
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Debug Info")
-        dialog.resize(920, 640)
-        layout = QVBoxLayout(dialog)
-        output = QTextEdit(dialog)
-        output.setReadOnly(True)
-        output.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
-        output.setPlainText(text)
-        layout.addWidget(output, 1)
-        buttons = QDialogButtonBox(QDialogButtonBox.Close, Qt.Horizontal, dialog)
-        copy_btn = QPushButton("Copy", dialog)
-        buttons.addButton(copy_btn, QDialogButtonBox.ActionRole)
-        copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(output.toPlainText()))
-        buttons.rejected.connect(dialog.reject)
-        buttons.accepted.connect(dialog.accept)
-        layout.addWidget(buttons)
-        dialog.exec()
-        self.log_event("Info", "Opened debug info dialog")
+        """Open the developer hub focused on runtime diagnostics."""
+        self.open_developer_hub("Runtime")
+        self.log_event("Info", "Opened developer hub runtime tab")
 
     @staticmethod
     def _default_style_name() -> str:
@@ -1116,13 +1089,13 @@ class UiSetupMixin:
 
     @staticmethod
     def _settings_protection_key() -> bytes:
-        """Handle settings protection key."""
+        """Derive the machine-local key used to obfuscate stored settings secrets."""
         machine = f"{os.environ.get('COMPUTERNAME', '')}|{os.environ.get('USERNAME', '')}|{Path.home()}"
         return hashlib.sha256(machine.encode("utf-8")).digest()
 
     @staticmethod
     def _protect_settings_secret(value: str) -> str:
-        """Handle protect settings secret."""
+        """Obfuscate a settings secret before it is written to disk."""
         raw = value.encode("utf-8")
         key = UiSetupMixin._settings_protection_key()
         stream = bytes(key[i % len(key)] for i in range(len(raw)))
@@ -1131,7 +1104,7 @@ class UiSetupMixin:
 
     @staticmethod
     def _unprotect_settings_secret(value: str) -> str:
-        """Handle unprotect settings secret."""
+        """Decode an obfuscated settings secret loaded from disk."""
         if not value:
             return ""
         try:
@@ -1144,7 +1117,7 @@ class UiSetupMixin:
             return ""
 
     def _tab_icon_for(self, tab: EditorTab) -> QIcon:
-        """Handle tab icon for."""
+        """Build the tab icon, including overlays such as the read-only lock."""
         fallback = self._standard_style_icon("SP_FileIcon")
         base_icon = self._file_icon_for_tab(tab, fallback)
 
@@ -1164,7 +1137,7 @@ class UiSetupMixin:
         return QIcon(base_pixmap)
 
     def _file_icon_for_tab(self, tab: EditorTab, fallback: QIcon) -> QIcon:
-        """Handle file icon for tab."""
+        """Choose the base file icon for a tab from its mode or file extension."""
         if tab.markdown_mode_enabled:
             markdown_icon = self._svg_icon_colored("file-markdown", size=18)
             if not markdown_icon.isNull():
@@ -1249,7 +1222,7 @@ class UiSetupMixin:
         return self._svg_icon_colored(name, size=18)
 
     def _standard_style_icon(self, enum_name: str) -> QIcon:
-        """Handle standard style icon."""
+        """Standard style icon."""
         style = self.style()
         enum_value = getattr(QStyle, enum_name, None)
         if enum_value is None:
@@ -1257,7 +1230,7 @@ class UiSetupMixin:
         return style.standardIcon(enum_value)
 
     def _svg_icon_colored(self, name: str, size: int = 18, color: str | QColor | None = None) -> QIcon:
-        """Handle svg icon colored."""
+        """Svg icon colored."""
         icon_path = resolve_asset_path("icons", f"{name}.svg")
         if icon_path is None:
             return QIcon()
@@ -1374,7 +1347,7 @@ class UiSetupMixin:
             )
 
     def _disconnect_tab_signals(self, tab: EditorTab) -> None:
-        """Handle disconnect tab signals."""
+        """Disconnect editor, splitter, and notification signals for a tab."""
         try:
             tab.text_edit.modificationChanged.disconnect(self._on_modification_changed)
         except (TypeError, RuntimeError):
@@ -1429,7 +1402,7 @@ class UiSetupMixin:
                 pass
 
     def _tab_for_editor(self, editor) -> EditorTab | None:
-        """Handle tab for editor."""
+        """Return the tab that owns the given editor widget."""
         for index in range(self.tab_widget.count()):
             tab = self.tab_widget.widget(index)
             if not isinstance(tab, EditorTab):
@@ -1439,7 +1412,7 @@ class UiSetupMixin:
         return None
 
     def _emit_plugin_event(self, event_name: str, tab: EditorTab | None = None, **extra) -> None:
-        """Handle emit plugin event."""
+        """Emit a plugin event for the active or supplied tab when policy allows it."""
         host = getattr(getattr(self, "advanced_features", None), "plugin_host", None)
         if host is None:
             return
@@ -1482,7 +1455,7 @@ class UiSetupMixin:
         self._emit_plugin_event("change", tab=tab)
 
     def _schedule_deferred_editor_refresh(self) -> None:
-        """Handle schedule deferred editor refresh."""
+        """Schedule deferred editor refresh."""
         timer = getattr(self, "_editor_refresh_timer", None)
         if timer is None:
             self.update_status_bar()
@@ -1491,7 +1464,7 @@ class UiSetupMixin:
         timer.start()
 
     def _schedule_deferred_gamification_refresh(self) -> None:
-        """Handle schedule deferred gamification refresh."""
+        """Schedule deferred gamification refresh."""
         timer = getattr(self, "_gamification_refresh_timer", None)
         if timer is None:
             if hasattr(self, "_gamification_on_text_changed"):
@@ -1513,7 +1486,7 @@ class UiSetupMixin:
         self._emit_plugin_event("selection_changed", tab=tab)
 
     def _handle_scintilla_notification(self, payload: dict) -> None:
-        """Handle Scintilla compatibility notifications from the active editor."""
+        """Forward a Scintilla notification to the plugin event bridge."""
         sender = self.sender()
         tab = None
         if sender is not None:
@@ -1531,7 +1504,7 @@ class UiSetupMixin:
         )
 
     def _seed_version_history(self, tab: EditorTab, label: str = "Opened") -> None:
-        """Handle seed version history."""
+        """Create the initial version-history snapshot for a tab."""
         if tab.large_file:
             return
         tab.version_history.max_entries = int(self.settings.get("version_history_max_entries", 50))
@@ -1543,7 +1516,7 @@ class UiSetupMixin:
             self._persist_tab_local_history(tab)
 
     def _maybe_snapshot_version(self, tab: EditorTab) -> None:
-        """Handle maybe snapshot version."""
+        """Add an automatic version snapshot when the configured interval elapses."""
         if tab.large_file:
             return
         if not self.settings.get("version_history_enabled", True):
@@ -1558,7 +1531,7 @@ class UiSetupMixin:
                 self._persist_tab_local_history(tab)
 
     def _detect_language_for_tab(self, tab: EditorTab) -> str:
-        """Handle detect language for tab."""
+        """Resolve the syntax-highlighting language for a tab."""
         mode = str(self.settings.get("syntax_highlighting_mode", "Auto"))
         if tab.syntax_language_override:
             return tab.syntax_language_override
@@ -1807,7 +1780,7 @@ class UiSetupMixin:
         return QMainWindow.eventFilter(cast(QMainWindow, self), source, event)
 
     def _schedule_main_toolbar_overflow_update(self) -> None:
-        """Handle schedule main toolbar overflow update."""
+        """Schedule main toolbar overflow update."""
         if getattr(self, "_main_toolbar_overflow_update_scheduled", False):
             return
         self._main_toolbar_overflow_update_scheduled = True
@@ -1825,17 +1798,17 @@ class UiSetupMixin:
         QTimer.singleShot(40, _run_update)
 
     def _on_main_toolbar_overflow_menu_show(self) -> None:
-        """Handle on main toolbar overflow menu show."""
+        """React when the main-toolbar overflow menu opens."""
         self._main_toolbar_overflow_menu_open = True
 
     def _on_main_toolbar_overflow_menu_hide(self) -> None:
-        """Handle on main toolbar overflow menu hide."""
+        """React when the main-toolbar overflow menu closes."""
         self._main_toolbar_overflow_menu_open = False
         if getattr(self, "_main_toolbar_overflow_update_pending", False):
             self._schedule_main_toolbar_overflow_update()
 
     def _position_main_toolbar_overflow_button(self) -> None:
-        """Handle position main toolbar overflow button."""
+        """Position main toolbar overflow button."""
         toolbar = getattr(self, "main_toolbar", None)
         button = getattr(self, "main_toolbar_overflow_button", None)
         if toolbar is None or button is None or not button.isVisible():
@@ -1862,7 +1835,7 @@ class UiSetupMixin:
         return widget
 
     def _insert_existing_tab(self, tab: EditorTab, insert_index: int = -1, make_current: bool = True) -> int:
-        """Handle insert existing tab."""
+        """Insert existing tab."""
         tab.setParent(self.tab_widget)
         self._connect_tab_signals(tab)
         target_index = insert_index if insert_index >= 0 else self.tab_widget.count()
@@ -1889,7 +1862,7 @@ class UiSetupMixin:
             return None
 
     def receive_external_tab(self, source_window_id: int, source_index: int, insert_index: int) -> bool:
-        """Handle receive external tab."""
+        """Receive external tab."""
         source_window = type(self).windows_by_id.get(source_window_id)
         if source_window is None or source_window is self:
             return False
@@ -2184,7 +2157,7 @@ class UiSetupMixin:
         QMainWindow.dragMoveEvent(cast(QMainWindow, self), event)
 
     def dropEvent(self, event) -> None:  # type: ignore[override]
-        """Handle drop event."""
+        """Drop event."""
         if event.mimeData().hasUrls():
             local_paths = [
                 url.toLocalFile()
@@ -2235,7 +2208,7 @@ class UiSetupMixin:
 
     @staticmethod
     def _action_label(text: str) -> str:
-        """Handle action label."""
+        """Action label."""
         return text.replace("&", "").replace("...", "").strip()
 
     def configure_action_tooltips(self) -> None:
@@ -2516,7 +2489,7 @@ class UiSetupMixin:
         QApplication.clipboard().dataChanged.connect(self._capture_clipboard_history)
 
     def _connect_action_debug_tracing(self) -> None:
-        """Handle connect action debug tracing."""
+        """Connect action debug tracing."""
         for attr_name, action in vars(self).items():
             if not attr_name.endswith("_action") or not isinstance(action, QAction):
                 continue
@@ -2591,7 +2564,7 @@ class UiSetupMixin:
             self.search_bing_action.setText(f"Search with &{provider_text}")
 
     def _demo_template_names(self) -> list[str]:
-        """Handle demo template names."""
+        """Demo template names."""
         templates = getattr(self, "templates", {})
         if not isinstance(templates, dict):
             return []
@@ -3377,6 +3350,9 @@ class UiSetupMixin:
         self.command_palette_action = QAction("Command Palette...", self)
         self.command_palette_action.setShortcut(QKeySequence("Ctrl+Shift+P"))
         self.command_palette_action.triggered.connect(self.open_command_palette)
+        self.accessibility_quick_access_action = QAction("Accessibility && Quick Access...", self)
+        self.accessibility_quick_access_action.setShortcut(QKeySequence("Ctrl+Alt+A"))
+        self.accessibility_quick_access_action.triggered.connect(self.open_accessibility_quick_access)
         self.simple_mode_action = QAction("Simple Mode", self)
         self.simple_mode_action.setCheckable(True)
         self.simple_mode_action.setChecked(bool(self.settings.get("simple_mode", False)))
@@ -3397,6 +3373,7 @@ class UiSetupMixin:
         self.spell_check_word_action = QAction("Spelling Suggestions", self)
         self.spell_check_word_action.triggered.connect(self.show_spellcheck_suggestions_for_current_word)
         self.what_can_i_do_action = QAction("What Can I Do Here?", self)
+        self.what_can_i_do_action.setShortcut(QKeySequence("F1"))
         self.what_can_i_do_action.triggered.connect(self.show_discoverability_guide)
         self.gamification_dashboard_action = QAction("Gamification Dashboard", self)
         self.gamification_dashboard_action.triggered.connect(self.open_gamification_dashboard)
@@ -4241,9 +4218,26 @@ class UiSetupMixin:
         self.update_available_menu_action.setVisible(False)
         self.update_available_menu_action.triggered.connect(lambda _checked=False: self.check_for_updates(manual=True))
         self.show_debug_logs_action = QAction("Show Debug Logs", self)
+        self.show_debug_logs_action.setProperty("developerOnly", True)
         self.show_debug_logs_action.triggered.connect(self.show_debug_logs)
         self.show_debug_info_action = QAction("Show Debug Info", self)
+        self.show_debug_info_action.setProperty("developerOnly", True)
         self.show_debug_info_action.triggered.connect(self.show_debug_info)
+        self.developer_hub_action = QAction("Developer Hub...", self)
+        self.developer_hub_action.setProperty("developerOnly", True)
+        self.developer_hub_action.triggered.connect(self.open_developer_hub)
+        self.developer_ai_prompt_inspector_action = QAction("AI Prompt Inspector...", self)
+        self.developer_ai_prompt_inspector_action.setProperty("developerOnly", True)
+        self.developer_ai_prompt_inspector_action.triggered.connect(self.open_ai_prompt_inspector)
+        self.developer_show_last_ai_payload_action = QAction("Show Last AI Payload...", self)
+        self.developer_show_last_ai_payload_action.setProperty("developerOnly", True)
+        self.developer_show_last_ai_payload_action.triggered.connect(self.show_last_ai_payload)
+        self.developer_copy_last_ai_payload_action = QAction("Copy Last AI Payload", self)
+        self.developer_copy_last_ai_payload_action.setProperty("developerOnly", True)
+        self.developer_copy_last_ai_payload_action.triggered.connect(self.copy_last_ai_payload)
+        self.developer_export_snapshot_action = QAction("Export Developer Snapshot...", self)
+        self.developer_export_snapshot_action.setProperty("developerOnly", True)
+        self.developer_export_snapshot_action.triggered.connect(self.export_developer_snapshot)
         self.open_source_licenses_action = QAction("Open Source Licenses...", self)
         self.open_source_licenses_action.triggered.connect(self.show_open_source_licenses)
         self.shortcut_mapper_action = QAction("Shortcut Mapper...", self)
@@ -4535,7 +4529,7 @@ class UiSetupMixin:
                 widget.setVisible(visible)
 
         def _toolbar_action_visible(action: QAction) -> bool:
-            """Handle toolbar action visible."""
+            """Toolbar action visible."""
             widget = toolbar.widgetForAction(action)
             return bool(widget and widget.isVisible())
 
@@ -5157,6 +5151,7 @@ class UiSetupMixin:
         self.settings_menu.addAction(self.settings_action)
         self.settings_menu.addAction(self.shortcut_mapper_action)
         self.settings_menu.addAction(self.command_palette_action)
+        self.settings_menu.addAction(self.accessibility_quick_access_action)
         self.settings_menu.addAction(self.simple_mode_action)
         self.ui_presets_menu = self.settings_menu.addMenu("UI Presets")
         self.ui_presets_menu.addAction(self.preset_reading_action)
@@ -5275,12 +5270,22 @@ class UiSetupMixin:
         self.help_menu.addSeparator()
         self.help_menu.addAction(self.check_updates_action)
         self.help_menu.addSeparator()
-        self.help_menu.addAction(self.show_debug_logs_action)
-        self.help_menu.addAction(self.show_debug_info_action)
+        self.developer_menu = self.help_menu.addMenu("Developer")
+        self.developer_menu.menuAction().setProperty("developerOnly", True)
+        self.developer_menu.addAction(self.developer_hub_action)
+        self.developer_menu.addAction(self.show_debug_logs_action)
+        self.developer_menu.addAction(self.show_debug_info_action)
+        self.developer_menu.addSeparator()
+        self.developer_menu.addAction(self.developer_ai_prompt_inspector_action)
+        self.developer_menu.addAction(self.developer_show_last_ai_payload_action)
+        self.developer_menu.addAction(self.developer_copy_last_ai_payload_action)
+        self.developer_menu.addAction(self.developer_export_snapshot_action)
         self.help_menu.addAction(self.open_source_licenses_action)
         self.help_menu.addSeparator()
         self.help_menu.addAction(self.about_action)
         menu_bar.addAction(self.update_available_menu_action)
+        if hasattr(self, "_sync_developer_mode_actions"):
+            self._sync_developer_mode_actions()
 
         if hasattr(self, "log_event"):
             try:
@@ -5505,7 +5510,7 @@ class UiSetupMixin:
         self._layout_top_toolbars()
 
     def _layout_top_toolbars(self) -> None:
-        """Handle layout top toolbars."""
+        """Layout top toolbars."""
         main_toolbar = getattr(self, "main_toolbar", None)
         markdown_toolbar = getattr(self, "markdown_toolbar", None)
         search_toolbar = getattr(self, "search_toolbar", None)

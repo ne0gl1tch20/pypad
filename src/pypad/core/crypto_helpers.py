@@ -11,12 +11,12 @@ import hmac
 
 
 def b64encode_bytes(data: bytes) -> str:
-    """Handle b64encode bytes."""
+    """Base64-encode raw bytes."""
     return base64.urlsafe_b64encode(data).decode("ascii")
 
 
 def b64decode_text(data: str) -> bytes:
-    """Handle b64decode text."""
+    """Base64-decode text into bytes."""
     return base64.urlsafe_b64decode(data.encode("ascii"))
 
 
@@ -26,7 +26,7 @@ def derive_key_pbkdf2(password: str, salt: bytes, rounds: int, dklen: int = 32) 
 
 
 def hmac_digest(key: bytes, data: bytes) -> bytes:
-    """Handle hmac digest."""
+    """Compute the HMAC digest for the payload."""
     return hmac.new(key, data, hashlib.sha256).digest()
 
 
@@ -36,12 +36,12 @@ def compare_digest(a: bytes, b: bytes) -> bool:
 
 
 def xor_bytes(left: bytes, right: bytes) -> bytes:
-    """Handle xor bytes."""
+    """XOR two byte strings."""
     return bytes(a ^ b for a, b in zip(left, right))
 
 
 def hmac_counter_keystream(key: bytes, nonce: bytes, length: int) -> bytes:
-    """Handle hmac counter keystream."""
+    """Build an HMAC-based counter keystream."""
     out = bytearray()
     counter = 0
     while len(out) < length:

@@ -80,27 +80,27 @@ class _FlowLayout(QLayout):
         self._v_spacing = v_spacing
 
     def addItem(self, item: QLayoutItem) -> None:
-        """Add item."""
+        """Add a child item to the flow layout."""
         self._items.append(item)
 
     def count(self) -> int:
-        """Handle count."""
+        """Return the number of layout items."""
         return len(self._items)
 
     def itemAt(self, index: int) -> QLayoutItem | None:
-        """Handle item at."""
+        """Return the layout item at the requested index."""
         if 0 <= index < len(self._items):
             return self._items[index]
         return None
 
     def takeAt(self, index: int) -> QLayoutItem | None:
-        """Handle take at."""
+        """Remove and return the layout item at the requested index."""
         if 0 <= index < len(self._items):
             return self._items.pop(index)
         return None
 
     def expandingDirections(self):  # type: ignore[override]
-        """Handle expanding directions."""
+        """Return the layout expansion directions."""
         return Qt.Orientation(0)
 
     def hasHeightForWidth(self) -> bool:
@@ -108,20 +108,20 @@ class _FlowLayout(QLayout):
         return True
 
     def heightForWidth(self, width: int) -> int:
-        """Handle height for width."""
+        """Return the layout height needed for the given width."""
         return self._do_layout(QRect(0, 0, max(0, width), 0), test_only=True)
 
     def setGeometry(self, rect: QRect) -> None:
-        """Set geometry."""
+        """Lay out child items within the provided rectangle."""
         super().setGeometry(rect)
         self._do_layout(rect, test_only=False)
 
     def sizeHint(self) -> QSize:
-        """Handle size hint."""
+        """Return the preferred size for the layout."""
         return self.minimumSize()
 
     def minimumSize(self) -> QSize:
-        """Handle minimum size."""
+        """Return the minimum size needed by the layout."""
         size = QSize(0, 0)
         for item in self._items:
             size = size.expandedTo(item.minimumSize())
@@ -130,7 +130,7 @@ class _FlowLayout(QLayout):
         return size
 
     def _do_layout(self, rect: QRect, *, test_only: bool) -> int:
-        """Handle do layout."""
+        """Lay out child items and return the resulting height."""
         margins = self.contentsMargins()
         x = rect.x() + margins.left()
         y = rect.y() + margins.top()
@@ -271,7 +271,7 @@ class _Bubble(QFrame):
         self._sync_height()
 
     def append_text(self, text: str) -> None:
-        """Append text."""
+        """Append streamed text to the bubble and rerender it."""
         self._raw_text += text
         self._render_markdown()
         self._sync_height()
@@ -293,7 +293,7 @@ class _Bubble(QFrame):
         return build_tokens_from_settings(settings if isinstance(settings, dict) else {})
 
     def _render_markdown(self) -> None:
-        """Handle render markdown."""
+        """Render the current bubble content as markdown or rich assistant HTML."""
         if self._should_use_mathjax():
             self._render_markdown_mathjax()
             return
@@ -309,7 +309,7 @@ class _Bubble(QFrame):
         card_idx = 0
 
         def _replace_fenced(match: re.Match[str]) -> str:
-            """Handle replace fenced."""
+            """Convert a fenced code block into the chat dock's copyable code card."""
             nonlocal card_idx
             tokens = self._theme_tokens()
             raw_label = (match.group(1) or "").strip()
@@ -349,7 +349,7 @@ class _Bubble(QFrame):
         processed = re.sub(r"```([^\n`]*)\n(.*?)```", _replace_fenced, clean_text, flags=re.DOTALL)
 
         def _replace_pypad_with_placeholder(match: re.Match[str]) -> str:
-            """Handle replace pypad with placeholder."""
+            """Swap deep links for placeholders until the markdown HTML is generated."""
             href = str(match.group(1) or "").strip()
             if not href:
                 return ""
@@ -375,7 +375,7 @@ class _Bubble(QFrame):
         self._view.setHtml(html)
 
     def _should_use_mathjax(self) -> bool:
-        """Handle should use mathjax."""
+        """Return whether this message should be rendered through the MathJax path."""
         if self._web_view is None:
             return False
         text = str(self._raw_text or "")
@@ -384,7 +384,7 @@ class _Bubble(QFrame):
         return bool(self._MATH_RE.search(text))
 
     def _render_markdown_mathjax(self) -> None:
-        """Handle render markdown mathjax."""
+        """Render the current bubble through the MathJax-enabled web view."""
         if self._web_view is None:
             return
         tokens = self._theme_tokens()
@@ -408,7 +408,7 @@ class _Bubble(QFrame):
             self._web_view.setFixedHeight(180)
 
     def _apply_web_height(self, value) -> None:
-        """Apply web height."""
+        """Apply the measured web-content height to the bubble view."""
         try:
             height = int(float(value))
         except Exception:
@@ -436,7 +436,7 @@ class _Bubble(QFrame):
         value = str(text or "")
 
         def _replace(match: re.Match[str]) -> str:
-            """Handle replace."""
+            """Collapse a unary Peano number into its integer form."""
             token = match.group(0)
             n = token.count("S(")
             # Keep output bounded/safe for huge nested chains.
@@ -450,12 +450,12 @@ class _Bubble(QFrame):
     def _normalize_broken_pypad_buttons(cls, text: str) -> str:
         """Normalize broken pypad buttons."""
         def _replace_markdown_link(match: re.Match[str]) -> str:
-            """Handle replace markdown link."""
+            """Normalize markdown-wrapped Pypad links."""
             href = cls._normalize_pypad_href(str(match.group(2) or ""))
             return href or match.group(0)
 
         def _replace_anchor(match: re.Match[str]) -> str:
-            """Handle replace anchor."""
+            """Normalize malformed HTML anchors targeting Pypad links."""
             href = cls._normalize_pypad_href(str(match.group(1) or ""))
             label = str(match.group(2) or "").strip()
             if not href:
@@ -472,7 +472,7 @@ class _Bubble(QFrame):
         )
 
         def _replace(match: re.Match[str]) -> str:
-            """Handle replace."""
+            """Rewrite legacy button-style markup into a normalized Pypad link."""
             path = str(match.group(1) or "").strip().strip("/")
             if not path:
                 return match.group(0)
@@ -482,7 +482,7 @@ class _Bubble(QFrame):
 
     @staticmethod
     def _normalize_pypad_href(href: str) -> str:
-        """Normalize pypad href."""
+        """Normalize a Pypad deep link so later rendering and routing stay consistent."""
         value = str(href or "").strip()
         if not value:
             return ""
@@ -494,7 +494,7 @@ class _Bubble(QFrame):
 
     @staticmethod
     def _label_for_pypad_link(href: str) -> str:
-        """Handle label for pypad link."""
+        """Build the display label for a Pypad link."""
         normalized = _Bubble._normalize_pypad_href(href).lower()
         mapping = {
             "pypad://settings": "Open Settings",
@@ -514,7 +514,7 @@ class _Bubble(QFrame):
         return f"Open {target}"
 
     def _pypad_link_html(self, href: str) -> str:
-        """Handle pypad link html."""
+        """Build the HTML markup for a Pypad link."""
         href = self._normalize_pypad_href(href)
         if not href:
             return ""
@@ -529,7 +529,7 @@ class _Bubble(QFrame):
         )
 
     def _on_anchor_clicked(self, url: QUrl) -> None:
-        """Handle on anchor clicked."""
+        """Process clicks on rendered anchors."""
         href = self._normalize_pypad_href(url.toString())
         window = self.window()
         settings = getattr(window, "settings", {}) if window is not None else {}
@@ -553,7 +553,7 @@ class _Bubble(QFrame):
             QApplication.clipboard().setText(self._code_blocks[index])
 
     def _sync_height(self) -> None:
-        """Sync height."""
+        """Resize the bubble to match the height of its rendered content."""
         if self._web_view is not None and self._web_view.isVisible():
             try:
                 self._web_view.page().runJavaScript(
@@ -606,7 +606,7 @@ class _DockTitleBar(QWidget):
         self.setMinimumHeight(28)
 
     def _toggle_floating(self) -> None:
-        """Handle toggle floating."""
+        """Toggle whether the chat dock is floating or docked."""
         self._dock.setFloating(not self._dock.isFloating())
 
 
@@ -618,7 +618,7 @@ class _AIChatInputEdit(QPlainTextEdit):
         self._on_send = on_send
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
-        """Handle key press input for this widget."""
+        """Process key press events."""
         modifiers = event.modifiers()
         key = event.key()
         if modifiers == Qt.KeyboardModifier.ControlModifier and key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
@@ -870,9 +870,9 @@ class AIChatDock(QDockWidget):
         status_action.setEnabled(False)
 
     def _setup_shortcuts(self) -> None:
-        """Handle setup shortcuts."""
+        """Register keyboard shortcuts used within the AI chat dock."""
         def _dock_shortcut(sequence: str, callback: Callable[[], None]) -> None:
-            """Handle dock shortcut."""
+            """Create a dock-scoped shortcut and bind it to a callback."""
             shortcut = QShortcut(QKeySequence(sequence), self)
             shortcut.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
             shortcut.activated.connect(callback)
@@ -883,7 +883,7 @@ class AIChatDock(QDockWidget):
         _dock_shortcut("Alt+M", self._choose_chat_model)
 
     def _log_ai_chat(self, message: str) -> None:
-        """Handle log AI chat."""
+        """Write an AI-chat diagnostic message through the main window logger."""
         window = getattr(self.ai_controller, "window", None)
         if window is None:
             return
@@ -898,7 +898,7 @@ class AIChatDock(QDockWidget):
                 logger("Info", f"[AI Chat] {message}")
 
     def _new_response_correlation_id(self) -> str:
-        """Handle new response correlation id."""
+        """Create a new response correlation ID."""
         self._ai_response_correlation_seq += 1
         return f"chatresp-{self._ai_response_correlation_seq:05d}"
 
@@ -911,7 +911,7 @@ class AIChatDock(QDockWidget):
         return bool(getattr(self.ai_controller.window, "settings", {}).get("dark_mode", False))
 
     def _icon(self, name: str, size: int = 16) -> QIcon:
-        """Handle icon."""
+        """Return the icon used for this control."""
         path = resolve_asset_path("icons", f"{name}.svg")
         if path is None:
             return QIcon()
@@ -942,7 +942,7 @@ class AIChatDock(QDockWidget):
 
     @staticmethod
     def _force_svg_monochrome(svg_text: str, color_hex: str) -> str:
-        """Handle force svg monochrome."""
+        """Force an SVG icon into monochrome mode."""
         text = re.sub(
             r'\b(stroke|fill)\b\s*=\s*["\'](?!none\b)[^"\']*["\']',
             lambda m: f'{m.group(1)}="{color_hex}"',
@@ -958,7 +958,7 @@ class AIChatDock(QDockWidget):
         return text
 
     def _setup_button_icons(self) -> None:
-        """Handle setup button icons."""
+        """Set up button icons for the chat dock."""
         clear_icon = self._icon("ai-clear", size=16)
         send_icon = self._icon("ai-send", size=18)
         stop_icon = self._icon("ai-stop", size=18)
@@ -984,7 +984,7 @@ class AIChatDock(QDockWidget):
                 btn.setMaximumWidth(38)
 
     def _copy_code_icon_uri(self) -> str:
-        """Handle copy code icon uri."""
+        """Return the copy-code icon as a data URI for inline HTML rendering."""
         path = resolve_asset_path("icons", "ai-copy.svg")
         if path is None:
             return ""
@@ -997,7 +997,7 @@ class AIChatDock(QDockWidget):
             return ""
 
     def _apply_styles(self) -> None:
-        """Apply styles."""
+        """Apply the current theme styling to the chat dock and title bar."""
         settings = getattr(self.ai_controller.window, "settings", {})
         tokens = build_tokens_from_settings(settings if isinstance(settings, dict) else {})
         body_qss, title_qss = build_ai_chat_qss(tokens)
@@ -1014,7 +1014,7 @@ class AIChatDock(QDockWidget):
         self._refresh_mathjax_indicator()
 
     def refresh_theme(self) -> None:
-        """Refresh theme."""
+        """Refresh cached icons and restyle the dock after a theme change."""
         self._icon_cache.clear()
         self._copy_code_icon_data_uri = self._copy_code_icon_uri()
         self._apply_styles()
@@ -1023,7 +1023,7 @@ class AIChatDock(QDockWidget):
         self._refresh_quick_action_icons()
 
     def _refresh_mathjax_indicator(self) -> None:
-        """Refresh mathjax indicator."""
+        """Update the title-bar indicator for MathJax availability."""
         label = getattr(self._title_bar, "mathjax_label", None)
         if label is None:
             return
@@ -1035,7 +1035,7 @@ class AIChatDock(QDockWidget):
             label.setToolTip("LaTeX rendering is enabled for math-like AI chat messages.")
 
     def _refresh_message_action_icons(self) -> None:
-        """Refresh message action icons."""
+        """Refresh icons on existing message action buttons."""
         for button in self.messages_host.findChildren(QPushButton):
             icon_name = button.property("ai_icon_name")
             if not icon_name:
@@ -1046,7 +1046,7 @@ class AIChatDock(QDockWidget):
             button.setIcon(icon)
 
     def _refresh_quick_action_icons(self) -> None:
-        """Refresh quick action icons."""
+        """Refresh icons for the dock's quick-action buttons."""
         bar = getattr(self, "quick_actions_bar", None)
         if bar is None:
             return
@@ -1079,7 +1079,7 @@ class AIChatDock(QDockWidget):
         return True
 
     def _refresh_attachment_chips(self) -> None:
-        """Refresh attachment chips."""
+        """Rebuild the attachment-chip row for the active chat session."""
         if not hasattr(self, "attachments_layout"):
             return
         while self.attachments_layout.count() > 0:
@@ -1130,13 +1130,13 @@ class AIChatDock(QDockWidget):
         self._refresh_context_usage_indicator()
 
     def _set_generation_state(self, state: str) -> None:
-        """Set generation state."""
+        """Update quick-action state based on the current generation phase."""
         value = str(state or "").strip().lower()
         normalized = value if value in {"idle", "thinking", "streaming", "error"} else "idle"
         self._build_quick_plus_menu(normalized)
 
     def _estimate_context_chars(self, prompt: str) -> tuple[int, int, bool]:
-        """Handle estimate context chars."""
+        """Estimate prompt size, attachment size, and whether the request may overflow context."""
         session = self._current_session()
         policy = self._sanitize_memory_policy(session.get("memory_policy", {})) if isinstance(session, dict) else self._default_memory_policy()
         attachments_count = 0
@@ -1166,7 +1166,7 @@ class AIChatDock(QDockWidget):
         return total, attachments_count, workspace_auto
 
     def _refresh_context_usage_indicator(self) -> None:
-        """Refresh context usage indicator."""
+        """Refresh the context-usage label for the current prompt and attachments."""
         label = getattr(self, "context_usage_label", None)
         if label is None:
             return
@@ -1176,7 +1176,7 @@ class AIChatDock(QDockWidget):
         label.setText(f"Context: {attachments_count} attachments | ~{total} chars{suffix}")
 
     def _build_quick_action_prompt(self, action_key: str) -> tuple[str, str]:
-        """Build quick action prompt."""
+        """Build the prompt and visible label for a quick-action request."""
         key = str(action_key or "").strip().lower()
         window = getattr(self.ai_controller, "window", None)
         tab = window.active_tab() if window is not None and hasattr(window, "active_tab") else None
@@ -1218,7 +1218,7 @@ class AIChatDock(QDockWidget):
         return "", ""
 
     def _run_quick_action(self, action_key: str) -> None:
-        """Run quick action."""
+        """Send the prompt generated for a quick-action button."""
         if not self.send_btn.isEnabled():
             return
         prompt, visible = self._build_quick_action_prompt(action_key)
@@ -1227,24 +1227,24 @@ class AIChatDock(QDockWidget):
         self.send_prompt(prompt=prompt, visible_prompt=visible)
 
     def focus_prompt(self) -> None:
-        """Move focus to prompt."""
+        """Move keyboard focus back to the prompt editor."""
         self.input.setFocus()
 
     def _current_model_name(self) -> str:
-        """Handle current model name."""
+        """Return the current model name."""
         window = getattr(self.ai_controller, "window", None)
         settings = getattr(window, "settings", {}) if window is not None else {}
         return str(settings.get("ai_model", "gemini-3-flash-preview") or "gemini-3-flash-preview")
 
     def _refresh_model_button_label(self) -> None:
-        """Refresh model button label."""
+        """Refresh the model button text to reflect the selected model."""
         model = self._current_model_name()
         short = model if len(model) <= 18 else model[:15] + "..."
         self.model_btn.setText(f"Model: {short}")
         self.model_btn.setToolTip(f"AI model\nCurrent: {model}\nShortcut: Alt+M")
 
     def _choose_chat_model(self) -> None:
-        """Choose chat model."""
+        """Prompt the user to choose the model used by the chat dock."""
         window = getattr(self.ai_controller, "window", None)
         if window is None:
             return
@@ -1284,12 +1284,12 @@ class AIChatDock(QDockWidget):
 
     @staticmethod
     def _new_chat_id() -> str:
-        """Handle new chat id."""
+        """Create a new chat ID."""
         return f"chat-{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
 
     @staticmethod
     def _chat_title_from_prompt(prompt: str) -> str:
-        """Handle chat title from prompt."""
+        """Build a chat title from the prompt."""
         text = (prompt or "").strip().replace("\r", " ").replace("\n", " ")
         if not text:
             return "New Chat"
@@ -1299,7 +1299,7 @@ class AIChatDock(QDockWidget):
 
     @staticmethod
     def _normalize_chat_title(value: str) -> str:
-        """Normalize chat title."""
+        """Normalize a chat title into a short, display-safe label."""
         raw = re.sub(r"\s+", " ", str(value or "").strip())
         # Defensive fallback: if a base64 payload reaches title apply, decode it here.
         maybe_b64 = raw.strip().strip("\"'")
@@ -1332,7 +1332,7 @@ class AIChatDock(QDockWidget):
         }
 
     def _memory_policy_defaults_from_settings(self) -> dict[str, object]:
-        """Handle memory policy defaults from settings."""
+        """Load the default chat memory policy from window settings."""
         window = getattr(self.ai_controller, "window", None)
         settings = getattr(window, "settings", {}) if window is not None else {}
         base = self._default_memory_policy()
@@ -1359,7 +1359,7 @@ class AIChatDock(QDockWidget):
 
     @classmethod
     def _sanitize_memory_policy(cls, raw: object) -> dict[str, object]:
-        """Handle sanitize memory policy."""
+        """Normalize an arbitrary memory-policy payload into a safe settings dict."""
         base = cls._default_memory_policy()
         if not isinstance(raw, dict):
             return dict(base)
@@ -1370,10 +1370,10 @@ class AIChatDock(QDockWidget):
 
     @staticmethod
     def _sanitize_context_attachments(raw: object) -> list[dict[str, object]]:
-        """Handle sanitize context attachments."""
+        """Normalize stored attachment metadata into the expected list shape."""
         out: list[dict[str, object]] = []
         def _to_int(v: object) -> int:
-            """Handle to int."""
+            """Best-effort integer conversion for persisted attachment fields."""
             try:
                 return int(v)
             except Exception:
@@ -1423,14 +1423,14 @@ class AIChatDock(QDockWidget):
         }
 
     def _session_sort_key(self, session: dict[str, object]) -> tuple[int, str, str]:
-        """Handle session sort key."""
+        """Build the sort key for a chat session."""
         pinned = bool(session.get("pinned", False))
         updated = str(session.get("updated_at", "") or "")
         title = str(session.get("title", "") or "New Chat").lower()
         return (0 if pinned else 1, "-" + updated, title)
 
     def _sanitize_chat_sessions(self, raw: object) -> list[dict[str, object]]:
-        """Handle sanitize chat sessions."""
+        """Normalize persisted chat-session data into the structure the dock expects."""
         sessions: list[dict[str, object]] = []
         if not isinstance(raw, list):
             return sessions
@@ -1469,7 +1469,7 @@ class AIChatDock(QDockWidget):
         return sessions
 
     def _clear_messages_ui(self) -> None:
-        """Clear messages UI."""
+        """Remove all rendered message bubbles from the transcript view."""
         while self.messages_layout.count() > 1:
             item = self.messages_layout.takeAt(0)
             widget = item.widget()
@@ -1477,7 +1477,7 @@ class AIChatDock(QDockWidget):
                 widget.deleteLater()
 
     def _current_session(self) -> dict[str, object] | None:
-        """Handle current session."""
+        """Return the current session."""
         sid = str(self._active_chat_id or "")
         for session in self._chat_sessions:
             if str(session.get("id", "")) == sid:
@@ -1485,7 +1485,7 @@ class AIChatDock(QDockWidget):
         return None
 
     def _ensure_active_session(self, *, create_if_missing: bool = True) -> dict[str, object] | None:
-        """Ensure active session."""
+        """Return the active session, creating one when requested and missing."""
         session = self._current_session()
         if session is not None:
             return session
@@ -1500,7 +1500,7 @@ class AIChatDock(QDockWidget):
         return session
 
     def _refresh_chat_session_header(self) -> None:
-        """Refresh chat session header."""
+        """Refresh the title label and badges for the active chat session."""
         session = self._current_session()
         if session is None:
             self.chat_title_label.setText("New Chat")
@@ -1518,7 +1518,7 @@ class AIChatDock(QDockWidget):
         self.chat_title_label.setToolTip(title)
 
     def _set_active_chat(self, session_id: str, *, persist: bool = True) -> None:
-        """Set active chat."""
+        """Switch the dock to the requested chat session and rebuild visible state."""
         target = None
         for session in self._chat_sessions:
             if str(session.get("id", "")) == str(session_id):
@@ -1551,14 +1551,14 @@ class AIChatDock(QDockWidget):
             self._persist_history(save=True)
 
     def _new_chat(self) -> None:
-        """Handle new chat."""
+        """Create a new chat session."""
         session = self._default_chat_session()
         self._chat_sessions.insert(0, session)
         self._set_active_chat(str(session.get("id", "")), persist=True)
         self.input.setFocus()
 
     def _rename_current_chat(self) -> None:
-        """Handle rename current chat."""
+        """Prompt the user to rename the active chat session."""
         session = self._ensure_active_session(create_if_missing=False)
         if session is None:
             return
@@ -1574,7 +1574,7 @@ class AIChatDock(QDockWidget):
         self._persist_history(save=True)
 
     def _toggle_current_chat_flag(self, key: str) -> None:
-        """Handle toggle current chat flag."""
+        """Toggle a boolean flag such as pinned or archived on the active chat."""
         session = self._ensure_active_session(create_if_missing=False)
         if session is None:
             return
@@ -1584,7 +1584,7 @@ class AIChatDock(QDockWidget):
         self._persist_history(save=True)
 
     def _delete_current_chat(self) -> None:
-        """Handle delete current chat."""
+        """Delete the active chat session after user confirmation."""
         session = self._current_session()
         if session is None:
             return
@@ -1610,7 +1610,7 @@ class AIChatDock(QDockWidget):
             self._persist_history(save=True)
 
     def _session_by_id(self, session_id: str) -> dict[str, object] | None:
-        """Handle session by id."""
+        """Return a chat session by ID."""
         wanted = str(session_id or "")
         for session in self._chat_sessions:
             if str(session.get("id", "")) == wanted:
@@ -1618,7 +1618,7 @@ class AIChatDock(QDockWidget):
         return None
 
     def _rename_chat_by_id(self, session_id: str) -> None:
-        """Handle rename chat by id."""
+        """Prompt the user to rename a saved chat identified by its session ID."""
         session = self._session_by_id(session_id)
         if session is None:
             return
@@ -1634,7 +1634,7 @@ class AIChatDock(QDockWidget):
         self._persist_history(save=True)
 
     def _toggle_chat_flag_by_id(self, session_id: str, key: str) -> None:
-        """Handle toggle chat flag by id."""
+        """Toggle a boolean session flag on a saved chat by ID."""
         session = self._session_by_id(session_id)
         if session is None:
             return
@@ -1644,7 +1644,7 @@ class AIChatDock(QDockWidget):
         self._persist_history(save=True)
 
     def _delete_chat_by_id(self, session_id: str) -> None:
-        """Handle delete chat by id."""
+        """Delete a saved chat by ID after user confirmation."""
         session = self._session_by_id(session_id)
         if session is None:
             return
@@ -1673,7 +1673,7 @@ class AIChatDock(QDockWidget):
             self._persist_history(save=True)
 
     def _chat_transcript_text(self, session: dict[str, object]) -> str:
-        """Handle chat transcript text."""
+        """Build the chat transcript text."""
         title = str(session.get("title", "") or "New Chat")
         lines = [f"# {title}", ""]
         for item in session.get("messages", []) if isinstance(session.get("messages", []), list) else []:
@@ -1767,7 +1767,7 @@ class AIChatDock(QDockWidget):
             window.show_status_message(f"Saved AI tasks: {target.name}", 3500)
 
     def _search_chat_sessions(self) -> None:
-        """Handle search chat sessions."""
+        """Search the available chat sessions."""
         if not self._chat_sessions:
             QMessageBox.information(self, "Search Chats", "No saved chats yet.")
             return
@@ -1829,7 +1829,7 @@ class AIChatDock(QDockWidget):
         return False
 
     def _on_start_menu_search_text_changed(self, text: str) -> None:
-        """Handle on start menu search text changed."""
+        """React to changes in the start-menu search text."""
         self._start_menu_filter_text = str(text or "")
         if self._start_menu_rebuild_active:
             return
@@ -1856,7 +1856,7 @@ class AIChatDock(QDockWidget):
         self._start_menu_search_edit = edit
 
     def _rebuild_start_menu(self) -> None:
-        """Handle rebuild start menu."""
+        """Rebuild the start menu."""
         menu = self.start_menu
         self._start_menu_rebuild_active = True
         menu.clear()
@@ -1945,7 +1945,7 @@ class AIChatDock(QDockWidget):
         self._start_menu_rebuild_active = False
 
     def _chat_description(self, session: dict[str, object]) -> str:
-        """Handle chat description."""
+        """Build a short chat description."""
         messages = session.get("messages", [])
         preview = ""
         if isinstance(messages, list):
@@ -1989,7 +1989,7 @@ class AIChatDock(QDockWidget):
         buttons.rejected.connect(dlg.reject)
 
         def rebuild() -> None:
-            """Handle rebuild."""
+            """Rebuild the chat-search dialog list from the current query and session state."""
             listing.clear()
             query = str(search.text() or "").strip().lower()
             ordered = sorted(self._chat_sessions, key=self._session_sort_key)
@@ -2077,7 +2077,7 @@ class AIChatDock(QDockWidget):
         self._refresh_attachment_chips()
 
     def _send_prompt(self) -> None:
-        """Handle send prompt."""
+        """Capture the current prompt, persist it to the session, and send it to the AI backend."""
         prompt = self.input.toPlainText().strip()
         if not prompt:
             return
@@ -2097,6 +2097,20 @@ class AIChatDock(QDockWidget):
         self._maybe_name_current_chat_from_first_prompt(prompt)
         context_prefix = self._build_session_context_prefix(prompt)
         effective_prompt = ("\n\n".join([p for p in [context_prefix, prompt] if str(p).strip()])).strip()
+        cid = self._new_response_correlation_id()
+        self._active_response_correlation_id = cid
+        _LOGGER.debug("AI chat response cycle start cid=%s source=_send_prompt", cid)
+        started = self.ai_controller.ask_ai_chat(
+            effective_prompt,
+            on_chunk=self._on_stream_chunk,
+            on_done=self._on_stream_done,
+            on_error=self._on_stream_error,
+            on_cancel=self._on_stream_cancel,
+            debug_correlation_id=cid,
+        )
+        if not started:
+            self._active_response_correlation_id = None
+            return
         self.input.clear()
         self._external_on_done = None
         self._add_bubble(prompt, "user", persist=True)
@@ -2110,21 +2124,10 @@ class AIChatDock(QDockWidget):
         self.send_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
         self._set_generation_state("thinking")
-        cid = self._new_response_correlation_id()
-        self._active_response_correlation_id = cid
-        _LOGGER.debug("AI chat response cycle start cid=%s source=_send_prompt", cid)
-        self.ai_controller.ask_ai_chat(
-            effective_prompt,
-            on_chunk=self._on_stream_chunk,
-            on_done=self._on_stream_done,
-            on_error=self._on_stream_error,
-            on_cancel=self._on_stream_cancel,
-            debug_correlation_id=cid,
-        )
         _LOGGER.debug("AI chat _send_prompt dispatched effective_chars=%d", len(effective_prompt))
 
     def send_prompt(self, *, prompt: str, visible_prompt: str | None = None, on_done=None) -> None:
-        """Handle send prompt."""
+        """Send the current prompt to the AI backend."""
         prompt = (prompt or "").strip()
         if not prompt:
             return
@@ -2150,6 +2153,20 @@ class AIChatDock(QDockWidget):
         effective_prompt = ("\n\n".join([p for p in [context_prefix, prompt] if str(p).strip()])).strip()
         if visible_prompt is None:
             visible_prompt = prompt
+        cid = self._new_response_correlation_id()
+        self._active_response_correlation_id = cid
+        _LOGGER.debug("AI chat response cycle start cid=%s source=send_prompt external_on_done=%s", cid, bool(on_done))
+        started = self.ai_controller.ask_ai_chat(
+            effective_prompt,
+            on_chunk=self._on_stream_chunk,
+            on_done=self._on_stream_done,
+            on_error=self._on_stream_error,
+            on_cancel=self._on_stream_cancel,
+            debug_correlation_id=cid,
+        )
+        if not started:
+            self._active_response_correlation_id = None
+            return
         self.input.clear()
         self._external_on_done = on_done
         if visible_prompt.strip():
@@ -2164,23 +2181,12 @@ class AIChatDock(QDockWidget):
         self.send_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
         self._set_generation_state("thinking")
-        cid = self._new_response_correlation_id()
-        self._active_response_correlation_id = cid
-        _LOGGER.debug("AI chat response cycle start cid=%s source=send_prompt external_on_done=%s", cid, bool(on_done))
-        self.ai_controller.ask_ai_chat(
-            effective_prompt,
-            on_chunk=self._on_stream_chunk,
-            on_done=self._on_stream_done,
-            on_error=self._on_stream_error,
-            on_cancel=self._on_stream_cancel,
-            debug_correlation_id=cid,
-        )
         _LOGGER.debug("AI chat send_prompt dispatched effective_chars=%d", len(effective_prompt))
 
     def _maybe_name_current_chat_from_first_prompt(self, prompt: str) -> None:
         # Title is now owned by the AI hidden title-command flow.
         # Keep the method as a no-op to avoid changing multiple send paths.
-        """Handle maybe name current chat from first prompt."""
+        """Try to name current chat from first prompt."""
         return
 
     def _apply_ai_chat_title_command(self, title: str) -> None:
@@ -2197,7 +2203,7 @@ class AIChatDock(QDockWidget):
         self._refresh_chat_session_header()
 
     def _request_ai_chat_title_fallback(self) -> None:
-        """Handle request AI chat title fallback."""
+        """Request a fallback AI-generated chat title."""
         session = self._current_session()
         if session is None:
             return
@@ -2247,12 +2253,12 @@ class AIChatDock(QDockWidget):
         parts: list[str] = []
 
         def _on_chunk(piece: str) -> None:
-            """Handle on chunk."""
+            """Process an incoming streamed chunk."""
             if piece:
                 parts.append(piece)
 
         def _on_done(text: str) -> None:
-            """Handle on done."""
+            """Finalize the stream after completion."""
             payload = text or "".join(parts)
             _clean, _insert, _set_file, set_title, _patch, _action = self._extract_hidden_commands(payload)
             if not set_title:
@@ -2283,7 +2289,7 @@ class AIChatDock(QDockWidget):
         self._refresh_attachment_chips()
 
     def _attach_current_file_to_chat(self) -> None:
-        """Handle attach current file to chat."""
+        """Attach the current file to the chat."""
         window = getattr(self.ai_controller, "window", None)
         tab = window.active_tab() if window is not None and hasattr(window, "active_tab") else None
         if tab is None:
@@ -2305,7 +2311,7 @@ class AIChatDock(QDockWidget):
 
     @staticmethod
     def _read_attachment_file_text(path: Path) -> str:
-        """Handle read attachment file text."""
+        """Read attachment file text."""
         try:
             raw = path.read_bytes()
         except Exception:
@@ -2318,7 +2324,7 @@ class AIChatDock(QDockWidget):
         return raw.decode("utf-8", errors="replace")
 
     def _attach_files_to_chat(self) -> None:
-        """Handle attach files to chat."""
+        """Attach selected files to the chat."""
         window = getattr(self.ai_controller, "window", None)
         start_dir = ""
         if window is not None and hasattr(window, "active_tab"):
@@ -2366,7 +2372,7 @@ class AIChatDock(QDockWidget):
                 window.show_status_message("No readable text files were added.", 3000)
 
     def _attach_selection_to_chat(self) -> None:
-        """Handle attach selection to chat."""
+        """Attach the current selection to the chat."""
         window = getattr(self.ai_controller, "window", None)
         tab = window.active_tab() if window is not None and hasattr(window, "active_tab") else None
         if tab is None:
@@ -2390,7 +2396,7 @@ class AIChatDock(QDockWidget):
         self.ai_controller.window.show_status_message("Attached selection to chat.", 2500)
 
     def _attach_workspace_search_results_to_chat(self) -> None:
-        """Handle attach workspace search results to chat."""
+        """Attach workspace search results to the chat."""
         window = getattr(self.ai_controller, "window", None)
         if window is None:
             return
@@ -2448,7 +2454,7 @@ class AIChatDock(QDockWidget):
         self.ai_controller.window.show_status_message("Added manual chat attachment.", 2500)
 
     def _manage_chat_attachments(self) -> None:
-        """Handle manage chat attachments."""
+        """Open the chat-attachments manager."""
         session = self._ensure_active_session(create_if_missing=False)
         if session is None:
             return
@@ -2594,7 +2600,7 @@ class AIChatDock(QDockWidget):
         dlg.exec()
 
     def _toggle_memory_policy(self, key: str) -> None:
-        """Handle toggle memory policy."""
+        """Toggle memory policy."""
         session = self._ensure_active_session(create_if_missing=True)
         if session is None:
             return
@@ -2669,7 +2675,7 @@ class AIChatDock(QDockWidget):
         return out
 
         def _on_error(_message: str) -> None:
-            """Handle on error."""
+            """Process an error callback."""
             return
 
         self.ai_controller.ask_ai_chat(
@@ -2691,7 +2697,7 @@ class AIChatDock(QDockWidget):
             return False
 
     def _on_stream_chunk(self, text: str) -> None:
-        """Handle on stream chunk."""
+        """Process a streamed response chunk."""
         cid = self._active_response_correlation_id or "none"
         _LOGGER.debug("AI chat on_stream_chunk cid=%s chars=%d", cid, len(text or ""))
         self._set_generation_state("streaming")
@@ -2711,7 +2717,7 @@ class AIChatDock(QDockWidget):
         self._scroll_to_bottom()
 
     def _on_stream_done(self, full_text: str) -> None:
-        """Handle on stream done."""
+        """Finalize the streamed response after completion."""
         cid = self._active_response_correlation_id or "none"
         self.send_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
@@ -2832,7 +2838,7 @@ class AIChatDock(QDockWidget):
         self._scroll_to_bottom()
 
     def _on_stream_error(self, message: str) -> None:
-        """Handle on stream error."""
+        """Process a streamed-response error."""
         cid = self._active_response_correlation_id or "none"
         _LOGGER.debug("AI chat on_stream_error cid=%s message_len=%d", cid, len(message or ""))
         self.send_btn.setEnabled(True)
@@ -2856,7 +2862,7 @@ class AIChatDock(QDockWidget):
         self._scroll_to_bottom()
 
     def _on_stream_cancel(self, _partial: str) -> None:
-        """Handle on stream cancel."""
+        """Process streamed-response cancellation."""
         cid = self._active_response_correlation_id or "none"
         _LOGGER.debug("AI chat on_stream_cancel cid=%s", cid)
         self.send_btn.setEnabled(True)
@@ -2894,7 +2900,7 @@ class AIChatDock(QDockWidget):
             self._active_reply_bubble.set_text("")
 
     def _advance_typing_animation(self) -> None:
-        """Handle advance typing animation."""
+        """Advance the typing animation."""
         if not self._typing_active or self._active_reply_bubble is None:
             self._typing_timer.stop()
             return
@@ -3013,11 +3019,11 @@ class AIChatDock(QDockWidget):
         return btn
 
     def _copy_bubble_text(self, bubble: _Bubble) -> None:
-        """Handle copy bubble text."""
+        """Copy bubble text."""
         QApplication.clipboard().setText(bubble.text())
 
     def _edit_bubble_text(self, bubble: _Bubble) -> None:
-        """Handle edit bubble text."""
+        """Perform the bubble text action."""
         text = bubble.text().strip()
         if not text:
             return
@@ -3036,7 +3042,7 @@ class AIChatDock(QDockWidget):
         self.input.setFocus()
 
     def _retry_bubble_response(self, row: QWidget) -> None:
-        """Handle retry bubble response."""
+        """Retry bubble response."""
         if not self.send_btn.isEnabled():
             return
         prompt = self._previous_user_prompt_for_row(row)
@@ -3045,7 +3051,7 @@ class AIChatDock(QDockWidget):
         self.send_prompt(prompt=prompt, visible_prompt=prompt)
 
     def _find_bubble_row(self, bubble: _Bubble) -> QWidget | None:
-        """Handle find bubble row."""
+        """Return the row index for the given bubble."""
         parent = bubble.parentWidget()
         while parent is not None and parent is not self.messages_host:
             if parent.objectName() == "aiChatRow":
@@ -3054,7 +3060,7 @@ class AIChatDock(QDockWidget):
         return None
 
     def _history_index_for_row(self, row: QWidget | None) -> int | None:
-        """Handle history index for row."""
+        """Return the history index for the given row."""
         if row is None:
             return None
         for i in range(self.messages_layout.count() - 1):
@@ -3075,7 +3081,7 @@ class AIChatDock(QDockWidget):
                 widget.deleteLater()
 
     def _previous_user_prompt_for_row(self, row: QWidget) -> str:
-        """Handle previous user prompt for row."""
+        """Return the previous user prompt for the given row."""
         target_index = -1
         for i in range(self.messages_layout.count()):
             item = self.messages_layout.itemAt(i)
@@ -3096,7 +3102,7 @@ class AIChatDock(QDockWidget):
         return ""
 
     def _try_send_edited_prompt_retry(self) -> bool:
-        """Handle try send edited prompt retry."""
+        """Try to send edited prompt retry."""
         row = self._pending_prompt_edit_row
         if row is None:
             return False
@@ -3194,7 +3200,7 @@ class AIChatDock(QDockWidget):
 
     @staticmethod
     def _looks_like_insert_confirmation(text: str) -> bool:
-        """Handle looks like insert confirmation."""
+        """Return whether the text looks like an insert confirmation."""
         value = re.sub(r"[^a-z]+", " ", text.lower()).strip()
         if not value:
             return False
@@ -3202,14 +3208,14 @@ class AIChatDock(QDockWidget):
 
     @staticmethod
     def _looks_like_set_file_confirmation(text: str) -> bool:
-        """Handle looks like set file confirmation."""
+        """Return whether the text looks like a set-file confirmation."""
         value = re.sub(r"[^a-z]+", " ", text.lower()).strip()
         if not value:
             return False
         return bool(re.search(r"\b(replace|set|update|overwrite)\b", value) and re.search(r"\b(file|tab|document)\b", value))
 
     def _insert_text_to_active_tab(self, text: str) -> bool:
-        """Handle insert text to active tab."""
+        """Insert text to active tab."""
         tab = self.ai_controller.window.active_tab()
         if tab is None:
             QMessageBox.information(self, "Insert", "Open a tab first.")
@@ -3250,12 +3256,12 @@ class AIChatDock(QDockWidget):
 
     @staticmethod
     def _sha256_text(text: str) -> str:
-        """Handle sha256 text."""
+        """Sha-256 text."""
         return hashlib.sha256((text or "").encode("utf-8")).hexdigest()
 
     @staticmethod
     def _decode_hidden_json_payload(payload: str) -> dict[str, object] | None:
-        """Handle decode hidden json payload."""
+        """Decode a hidden JSON payload."""
         stripped = str(payload or "").strip()
         if not stripped:
             return None
@@ -3272,7 +3278,7 @@ class AIChatDock(QDockWidget):
 
     @staticmethod
     def _safe_int(value: object, default: int = 0) -> int:
-        """Handle safe int."""
+        """Safe integer."""
         try:
             return int(value)
         except Exception:
@@ -3330,7 +3336,7 @@ class AIChatDock(QDockWidget):
 
     @staticmethod
     def _split_unified_lines(text: str) -> list[str]:
-        """Handle split unified lines."""
+        """Split unified lines."""
         if not text:
             return []
         lines = text.splitlines(keepends=True)
@@ -3406,7 +3412,7 @@ class AIChatDock(QDockWidget):
         return "".join(out)
 
     def _current_scope_bounds(self, scope: str, metadata: dict[str, object] | None = None) -> tuple[int, int, str] | None:
-        """Handle current scope bounds."""
+        """Return the current scope bounds."""
         tab = self.ai_controller.window.active_tab()
         if tab is None:
             return None
@@ -3440,7 +3446,7 @@ class AIChatDock(QDockWidget):
 
     @staticmethod
     def _python_function_bounds(text: str, cursor_index: int) -> tuple[int, int] | None:
-        """Handle python function bounds."""
+        """Return the bounds of the surrounding Python function."""
         lines = text.splitlines(keepends=True)
         if not lines:
             return None
@@ -3481,7 +3487,7 @@ class AIChatDock(QDockWidget):
         return (start, end)
 
     def _preview_and_apply_text(self, *, title: str, proposed_text: str, success_message: str) -> bool:
-        """Handle preview and apply text."""
+        """Preview generated text and optionally apply it."""
         tab = self.ai_controller.window.active_tab()
         if tab is None:
             _LOGGER.debug("AI chat preview/apply blocked title=%s reason=no_active_tab", title)
@@ -3522,7 +3528,7 @@ class AIChatDock(QDockWidget):
         return True
 
     def _try_apply_pending_patch_offer(self) -> tuple[bool, str]:
-        """Handle try apply pending patch offer."""
+        """Try to apply pending patch offer."""
         offer = self._pending_patch_offer or {}
         if not offer:
             self._log_ai_chat("patch apply requested without pending patch")
@@ -3579,7 +3585,7 @@ class AIChatDock(QDockWidget):
         return ok, ("Applied AI patch." if ok else "Patch apply canceled.")
 
     def _try_execute_pending_local_action(self) -> tuple[bool, str]:
-        """Handle try execute pending local action."""
+        """Try to execute pending local action."""
         action = self._pending_local_action or {}
         if not action:
             return False, "No local action."
@@ -3663,7 +3669,7 @@ class AIChatDock(QDockWidget):
         return True
 
     def _confirm_set_file_apply(self) -> bool:
-        """Handle confirm set file apply."""
+        """Confirm applying a set-file action."""
         window = getattr(self.ai_controller, "window", None)
         parent = window if window is not None else self
         reply = QMessageBox.question(
@@ -3676,7 +3682,7 @@ class AIChatDock(QDockWidget):
         return reply == QMessageBox.Yes
 
     def _try_handle_insert_offer_response(self, prompt: str) -> bool:
-        """Handle try handle insert offer response."""
+        """Try to handle insert offer response."""
         pending = (self._pending_insert_offer or "").strip()
         pending_set = (self._pending_set_file_offer or "").strip()
         pending_patch = self._pending_patch_offer or {}
@@ -3806,7 +3812,7 @@ class AIChatDock(QDockWidget):
         offered_action: dict[str, object] | None = None
 
         def _decode(payload: str) -> str | None:
-            """Handle decode."""
+            """Decode the stored payload."""
             stripped = payload.strip()
             if stripped.lower().startswith("base64:"):
                 b64 = stripped.split(":", 1)[1].strip()
@@ -3817,7 +3823,7 @@ class AIChatDock(QDockWidget):
             return stripped or None
 
         def _decode_chat_title(payload: str) -> str | None:
-            """Handle decode chat title."""
+            """Decode the stored chat title."""
             stripped = str(payload or "").strip()
             decoded = _decode(stripped)
             if decoded is None:
@@ -3836,7 +3842,7 @@ class AIChatDock(QDockWidget):
             return decoded
 
         def _replace_insert(match: re.Match[str]) -> str:
-            """Handle replace insert."""
+            """Replace insert."""
             nonlocal offered_insert
             payload = str(match.group(1) or "")
             decoded = _decode(payload)
@@ -3852,7 +3858,7 @@ class AIChatDock(QDockWidget):
             return ""
 
         def _replace_set_file(match: re.Match[str]) -> str:
-            """Handle replace set file."""
+            """Replace set file."""
             nonlocal offered_set_file
             payload = str(match.group(1) or "")
             decoded = _decode(payload)
@@ -3868,7 +3874,7 @@ class AIChatDock(QDockWidget):
             return ""
 
         def _replace_set_chat_title(match: re.Match[str]) -> str:
-            """Handle replace set chat title."""
+            """Replace set chat title."""
             nonlocal offered_chat_title
             payload = str(match.group(1) or "")
             decoded = _decode_chat_title(payload)
@@ -3884,7 +3890,7 @@ class AIChatDock(QDockWidget):
             return ""
 
         def _replace_patch(match: re.Match[str]) -> str:
-            """Handle replace patch."""
+            """Replace patch."""
             nonlocal offered_patch
             payload = str(match.group(1) or "")
             parsed = cls._parse_patch_offer(payload)
@@ -3905,7 +3911,7 @@ class AIChatDock(QDockWidget):
             return ""
 
         def _replace_proposed_action(match: re.Match[str]) -> str:
-            """Handle replace proposed action."""
+            """Replace proposed action."""
             nonlocal offered_action
             payload = str(match.group(1) or "")
             parsed = cls._parse_proposed_action(payload)
@@ -3945,7 +3951,7 @@ class AIChatDock(QDockWidget):
     def _infer_plaintext_insert_offer(cls, text: str) -> str | None:
         # Fallback: if the assistant returns a long standalone prose block without the hidden
         # command protocol, treat it as an insert offer so the yes/no flow still works.
-        """Handle infer plaintext insert offer."""
+        """Infer a plaintext insert offer from the response."""
         cleaned = (text or "").strip()
         if not cleaned:
             return None
@@ -3980,7 +3986,7 @@ class AIChatDock(QDockWidget):
         return payload or cleaned
 
     def _handle_pypad_link(self, href: str) -> bool:
-        """Handle clicks on in-app `pypad:` links rendered inside chat bubbles."""
+        """Pypad link."""
         window = getattr(self.ai_controller, "window", None)
         if window is None:
             _LOGGER.debug("AI chat pypad link ignored no-window href=%r", href)
@@ -4052,7 +4058,7 @@ class AIChatDock(QDockWidget):
         return True
 
     def _insert_bubble_text_to_tab(self, bubble: _Bubble) -> None:
-        """Handle insert bubble text to tab."""
+        """Insert bubble text to tab."""
         tab = self.ai_controller.window.active_tab()
         if tab is None:
             QMessageBox.information(self, "Insert", "Open a tab first.")
@@ -4065,7 +4071,7 @@ class AIChatDock(QDockWidget):
         tab.text_edit.insert_text(text)
 
     def _replace_selection_with_bubble_text(self, bubble: _Bubble) -> None:
-        """Handle replace selection with bubble text."""
+        """Replace selection with bubble text."""
         window = self.ai_controller.window
         tab = window.active_tab()
         if tab is None:
@@ -4083,7 +4089,7 @@ class AIChatDock(QDockWidget):
         tab.text_edit.replace_selection(text)
 
     def _append_bubble_text_to_tab(self, bubble: _Bubble) -> None:
-        """Handle append bubble text to tab."""
+        """Append bubble text to tab."""
         window = self.ai_controller.window
         tab = window.active_tab()
         if tab is None:
@@ -4104,7 +4110,7 @@ class AIChatDock(QDockWidget):
         tab.text_edit.insert_text(text)
 
     def _new_tab_from_bubble_text(self, bubble: _Bubble) -> None:
-        """Handle new tab from bubble text."""
+        """New tab from bubble text."""
         window = self.ai_controller.window
         text = bubble.text().strip()
         if not text:
@@ -4115,7 +4121,7 @@ class AIChatDock(QDockWidget):
         window.add_new_tab(text=text, make_current=True)
 
     def _replace_whole_file_with_bubble_text(self, bubble: _Bubble) -> None:
-        """Handle replace whole file with bubble text."""
+        """Replace whole file with bubble text."""
         text = bubble.text().strip()
         if not text:
             return
@@ -4184,11 +4190,11 @@ class AIChatDock(QDockWidget):
         self._persist_history(save=False)
 
     def _chat_storage_dir(self) -> Path:
-        """Handle chat storage dir."""
+        """Chat storage dir."""
         return get_ai_chats_dir_path()
 
     def _chat_storage_file_name(self, session: dict[str, object]) -> str:
-        """Handle chat storage file name."""
+        """Chat storage file name."""
         value = str(session.get("storage_file", "") or "").strip()
         if value:
             return value
@@ -4198,7 +4204,7 @@ class AIChatDock(QDockWidget):
         return value
 
     def _write_chat_session_to_disk(self, session: dict[str, object]) -> None:
-        """Handle write chat session to disk."""
+        """Write chat session to disk."""
         folder = self._chat_storage_dir()
         folder.mkdir(parents=True, exist_ok=True)
         file_name = self._chat_storage_file_name(session)
@@ -4230,7 +4236,7 @@ class AIChatDock(QDockWidget):
         return self._sanitize_chat_sessions(sessions)
 
     def _prune_orphaned_chat_files(self, referenced_file_names: set[str]) -> None:
-        """Handle prune orphaned chat files."""
+        """Prune orphaned chat files."""
         folder = self._chat_storage_dir()
         if not folder.exists():
             return
@@ -4280,11 +4286,11 @@ class AIChatDock(QDockWidget):
         self._chat_stick_to_bottom = self._is_chat_near_bottom()
 
     def _scroll_to_bottom(self, *, force: bool = False) -> None:
-        """Handle scroll to bottom."""
+        """Scroll to bottom."""
         if not force and not bool(getattr(self, "_chat_stick_to_bottom", True)):
             return
         def _apply() -> None:
-            """Handle apply."""
+            """Apply."""
             if not hasattr(self, "scroll") or self.scroll is None:
                 return
             bar = self.scroll.verticalScrollBar()

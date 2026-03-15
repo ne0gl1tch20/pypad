@@ -37,7 +37,7 @@ from pypad.ui.theme.theme_tokens import build_color_swatch_style, build_tokens_f
 
 
 def _tokens_for_dialog(dialog):
-    """Handle tokens for dialog."""
+    """Tokens for dialog."""
     settings = getattr(dialog, "_settings", {})
     if not isinstance(settings, dict):
         settings = {}
@@ -51,7 +51,7 @@ def _ensure_storage(dialog) -> None:
 
 
 def _register(dialog, key: str, kind: str, widget: Any, **meta: Any) -> None:
-    """Handle register."""
+    """Register."""
     _ensure_storage(dialog)
     dialog._npp_pref_controls[key] = {"kind": kind, "widget": widget, **meta}
 
@@ -92,7 +92,7 @@ def _add_line(dialog, form: QFormLayout, idx: int, key: str, label: str, *, brow
         row.addWidget(btn)
 
         def _browse() -> None:
-            """Handle browse."""
+            """Browse."""
             picked = QFileDialog.getExistingDirectory(dialog, f"Choose {label}", edit.text().strip())
             if picked:
                 edit.setText(picked)
@@ -153,7 +153,7 @@ def _add_color(dialog, form: QFormLayout, idx: int, key: str, label: str) -> QLa
     row.addWidget(clear)
 
     def _pick() -> None:
-        """Handle pick."""
+        """Pick."""
         base = preview.text() if preview.text() != "(auto)" else "#ffffff"
         color = QColorDialog.getColor(QColor(base), dialog, f"Select {label}")
         if color.isValid():
@@ -184,7 +184,7 @@ def _add_radio_group(dialog, root: QVBoxLayout, idx: int, key: str, title: str, 
 
 
 def _sort_list(widget: QListWidget) -> None:
-    """Handle sort list."""
+    """Sort list."""
     vals = sorted(widget.item(i).text() for i in range(widget.count()))
     widget.clear()
     for v in vals:
@@ -216,7 +216,7 @@ def _add_dual_list_editor(dialog, root: QVBoxLayout, idx: int, key: str, title: 
     _register(dialog, key, "dual_list", (avail, disabled), all_items=all_items)
 
     def _move(src: QListWidget, dst: QListWidget) -> None:
-        """Handle move."""
+        """Move."""
         rows = sorted({src.row(item) for item in src.selectedItems()}, reverse=True)
         for row in rows:
             item = src.takeItem(row)
@@ -248,7 +248,7 @@ def _add_string_list_editor(dialog, root: QVBoxLayout, idx: int, key: str, title
     _register(dialog, key, "string_list", (lst, edit))
 
     def _add() -> None:
-        """Handle add."""
+        """Add."""
         text = edit.text().strip()
         if not text:
             return
@@ -371,7 +371,7 @@ def _add_indent_overrides_table(dialog, root: QVBoxLayout, idx: int, key: str) -
 
 
 def _validate_indent_override_rows(table: QTableWidget) -> None:
-    """Handle validate indent override rows."""
+    """Validate indent override rows."""
     try:
         tokens = _tokens_for_dialog(table.window())
     except Exception:
@@ -419,7 +419,7 @@ def _validate_indent_override_rows(table: QTableWidget) -> None:
 
 
 def validate_notepadpp_like_page_inputs(dialog) -> list[str]:
-    """Handle validate notepadpp like page inputs."""
+    """Validate notepad++ like page inputs."""
     errors: list[str] = []
     controls = getattr(dialog, "_npp_pref_controls", {})
     for key, spec in controls.items():

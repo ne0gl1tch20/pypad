@@ -21,7 +21,7 @@ _COMPAT_CUSTOM_ID_PATTERN = re.compile(
 
 @dataclass(frozen=True)
 class ScintillaCompatAuditReport:
-    """scintilla compat audit report."""
+    """Represent the scintilla compat audit report."""
     compat_symbols: frozenset[str]
     repo_symbols: frozenset[str]
     repo_missing: tuple[str, ...]
@@ -31,18 +31,18 @@ class ScintillaCompatAuditReport:
 
     @property
     def repo_complete(self) -> bool:
-        """Handle repo complete."""
+        """Repo complete."""
         return not self.repo_missing
 
     @property
     def native_complete(self) -> bool:
-        """Handle native complete."""
+        """Native complete."""
         return bool(self.native_symbols) and not self.native_missing
 
 
 @dataclass(frozen=True)
 class NativeQsciBaseline:
-    """native qsci baseline."""
+    """Represent the native qsci baseline."""
     generated_at: str
     symbol_count: int
     symbols: tuple[str, ...]
@@ -50,7 +50,7 @@ class NativeQsciBaseline:
 
 @dataclass(frozen=True)
 class ScintillaCompatContractBaseline:
-    """scintilla compat contract baseline."""
+    """Represent the scintilla compat contract baseline."""
     generated_at: str
     compat_symbol_count: int
     compat_symbols: tuple[str, ...]
@@ -58,12 +58,12 @@ class ScintillaCompatContractBaseline:
 
 
 def _repo_root() -> Path:
-    """Handle repo root."""
+    """Repo root."""
     return Path(__file__).resolve().parents[5]
 
 
 def _iter_python_files(paths: Iterable[Path]) -> Iterable[Path]:
-    """Handle iter python files."""
+    """Iter python files."""
     for root in paths:
         if not root.exists():
             continue
@@ -134,13 +134,13 @@ def build_audit_report(root: Path | None = None) -> ScintillaCompatAuditReport:
 
 
 def native_baseline_path(root: Path | None = None) -> Path:
-    """Handle native baseline path."""
+    """Native baseline path."""
     root = root or _repo_root()
     return root / "docs" / "scintilla_native_qsci_baseline.json"
 
 
 def contract_baseline_path(root: Path | None = None) -> Path:
-    """Handle contract baseline path."""
+    """Contract baseline path."""
     root = root or _repo_root()
     return root / "docs" / "scintilla_compat_contract_baseline.json"
 

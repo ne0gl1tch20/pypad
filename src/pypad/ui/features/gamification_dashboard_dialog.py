@@ -28,7 +28,7 @@ from pypad.ui.theme.dialog_theme import apply_dialog_theme_from_window
 
 
 class GamificationDashboardDialog(QDialog):
-    """gamification dashboard dialog."""
+    """Represent the gamification dashboard dialog."""
     def __init__(self, window, gamification: GamificationSystem) -> None:
         """Build the gamification dashboard dialog and initialize its widgets."""
         super().__init__(window)
@@ -277,7 +277,7 @@ class GamificationDashboardDialog(QDialog):
         return str(item.data(256) or "").strip()
 
     def _toggle_star(self) -> None:
-        """Handle toggle star."""
+        """Toggle star."""
         name = self._selected_tool_name()
         if not name:
             return
@@ -292,7 +292,7 @@ class GamificationDashboardDialog(QDialog):
         self.refresh()
 
     def _delete_selected(self) -> None:
-        """Handle delete selected."""
+        """Delete selected."""
         name = self._selected_tool_name()
         if not name:
             return

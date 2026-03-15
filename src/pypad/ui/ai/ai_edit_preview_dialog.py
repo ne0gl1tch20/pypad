@@ -29,7 +29,7 @@ from pypad.ui.theme.theme_tokens import build_ai_edit_preview_dialog_qss, build_
 
 @dataclass
 class _Hunk:
-    """hunk."""
+    """Represent the _ hunk."""
     start_a: int
     end_a: int
     start_b: int
@@ -39,7 +39,7 @@ class _Hunk:
 
 
 class AIEditPreviewDialog(QDialog):
-    """a i edit preview dialog."""
+    """Represent the a i edit preview dialog."""
     def __init__(self, parent, original_text: str, proposed_text: str, title: str = "AI Edit Preview") -> None:
         """Build the AI edit preview dialog and wire its controls."""
         super().__init__(parent)
@@ -121,7 +121,7 @@ class AIEditPreviewDialog(QDialog):
         return hunks
 
     def _populate_hunks(self) -> None:
-        """Handle populate hunks."""
+        """Populate hunks."""
         self.hunk_list.clear()
         if not self._hunks:
             item = QListWidgetItem("No textual changes detected")
@@ -172,7 +172,7 @@ class AIEditPreviewDialog(QDialog):
         return False
 
     def _merged_text(self) -> str:
-        """Handle merged text."""
+        """Merged text."""
         sm = difflib.SequenceMatcher(a=self._original_lines, b=self._proposed_lines)
         merged: list[str] = []
         hunk_idx = 0
@@ -192,13 +192,13 @@ class AIEditPreviewDialog(QDialog):
         self.result_preview.setPlainText(self._merged_text())
 
     def _accept_with_merge(self) -> None:
-        """Handle accept with merge."""
+        """Accept with merge."""
         self.final_text = self._merged_text()
         self.accept()
 
 
 class AIRewritePromptDialog(QDialog):
-    """a i rewrite prompt dialog."""
+    """Represent the a i rewrite prompt dialog."""
     def __init__(self, parent, selection_preview: str, mode_prompts: dict[str, str]) -> None:
         """Build the rewrite prompt dialog used before sending an AI rewrite request."""
         super().__init__(parent)
@@ -255,7 +255,7 @@ class AIRewritePromptDialog(QDialog):
             self.instruction_edit.setPlainText(text)
 
     def _accept_with_instruction(self) -> None:
-        """Handle accept with instruction."""
+        """Accept with instruction."""
         instruction = self.instruction_edit.toPlainText().strip()
         if self.force_plain_checkbox.isChecked():
             instruction = instruction + "\n\nReturn only the rewritten text with no preface or commentary."
@@ -263,6 +263,6 @@ class AIRewritePromptDialog(QDialog):
         self.accept()
 
     def instruction(self) -> str:
-        """Handle instruction."""
+        """Instruction."""
         return self._result_instruction
 

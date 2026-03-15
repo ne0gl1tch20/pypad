@@ -19,7 +19,7 @@ from pypad.ui.theme.theme_tokens import build_dialog_theme_qss_from_tokens, buil
 
 
 class InteractiveTutorialDialog(QDialog):
-    """interactive tutorial dialog."""
+    """Represent the interactive tutorial dialog."""
     def __init__(self, parent: QWidget | None = None) -> None:
         """Build the interactive tutorial dialog and prepare its step state."""
         super().__init__(parent)
@@ -122,9 +122,9 @@ class InteractiveTutorialDialog(QDialog):
         self.anim.start()
 
     def _render(self, *, animate: bool = True) -> None:
-        """Handle render."""
+        """Render."""
         def apply() -> None:
-            """Handle apply."""
+            """Apply."""
             title, body = self._steps[self._index]
             self.title_label.setText(title)
             self.body_label.setText(body)

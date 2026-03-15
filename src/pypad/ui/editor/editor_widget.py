@@ -86,7 +86,7 @@ class EditorWidget(QObject):
         return True
 
     def _wire_qtextedit_signals(self) -> None:
-        """Handle wire qtextedit signals."""
+        """Wire qtextedit signals."""
         w = self.widget
         w.textChanged.connect(self._emit_text_changed)
         w.cursorPositionChanged.connect(self._emit_cursor_changed)
@@ -103,7 +103,7 @@ class EditorWidget(QObject):
         self._emit_selection_changed()
 
     def _emit_cursor_changed(self) -> None:
-        """Handle emit cursor changed."""
+        """Emit cursor changed."""
         self.cursorPositionChanged.emit()
         self._emit_selection_changed()
 
@@ -114,7 +114,7 @@ class EditorWidget(QObject):
         self.selectionChanged.emit()
 
     def _emit_scintilla_notification(self, payload: dict) -> None:
-        """Handle emit scintilla notification."""
+        """Emit scintilla notification."""
         self.scintillaNotification.emit(dict(payload or {}))
 
     # ---- text access ----
@@ -149,7 +149,7 @@ class EditorWidget(QObject):
         return self.widget.textCursor().hasSelection()
 
     def selected_text(self) -> str:
-        """Handle selected text."""
+        """Return the selected text."""
         if self._is_scintilla:
             return self.widget.selectedText()
         return self.widget.textCursor().selectedText().replace("\u2029", "\n")
@@ -174,7 +174,7 @@ class EditorWidget(QObject):
 
     # ---- cursor ----
     def cursor_position(self) -> tuple[int, int]:
-        """Handle cursor position."""
+        """Cursor position."""
         if self._is_scintilla:
             line, index = self.widget.getCursorPosition()
             return line, index
@@ -198,7 +198,7 @@ class EditorWidget(QObject):
         return block.text() if block.isValid() else ""
 
     def current_line_text(self) -> str:
-        """Handle current line text."""
+        """Return the current line text."""
         line, _ = self.cursor_position()
         return self.get_line_text(line)
 
@@ -238,14 +238,14 @@ class EditorWidget(QObject):
         )
 
     def index_from_line_col(self, line: int, col: int) -> int:
-        """Handle index from line col."""
+        """Index from line col."""
         lines = self.get_text().splitlines(keepends=True)
         if line <= 0:
             return max(0, col)
         return sum(len(lines[i]) for i in range(min(line, len(lines)))) + col
 
     def line_col_from_index(self, index: int) -> tuple[int, int]:
-        """Handle line col from index."""
+        """Line col from index."""
         if index <= 0:
             return 0, 0
         text = self.get_text()
@@ -264,7 +264,7 @@ class EditorWidget(QObject):
         return max(0, len(lines) - 1), max(0, index - total)
 
     def cursor_index(self) -> int:
-        """Handle cursor index."""
+        """Cursor index."""
         line, col = self.cursor_position()
         return self.index_from_line_col(line, col)
 
@@ -284,23 +284,23 @@ class EditorWidget(QObject):
 
     # ---- editing ----
     def undo(self) -> None:
-        """Handle undo."""
+        """Undo."""
         self.widget.undo()
 
     def redo(self) -> None:
-        """Handle redo."""
+        """Redo."""
         self.widget.redo()
 
     def cut(self) -> None:
-        """Handle cut."""
+        """Cut."""
         self.widget.cut()
 
     def copy(self) -> None:
-        """Handle copy."""
+        """Copy."""
         self.widget.copy()
 
     def paste(self) -> None:
-        """Handle paste."""
+        """Paste."""
         self.widget.paste()
 
     def select_all(self) -> None:
@@ -349,7 +349,7 @@ class EditorWidget(QObject):
         self.widget.setFont(font)
 
     def current_font(self) -> QFont:
-        """Handle current font."""
+        """Return the current font."""
         if self._is_scintilla:
             return self.widget.font()
         return self.widget.currentFont()
@@ -504,7 +504,7 @@ class EditorWidget(QObject):
 
     @staticmethod
     def _scintilla_rgb_int(color: str) -> int:
-        """Handle scintilla rgb int."""
+        """Scintilla rgb integer."""
         qc = QColor(str(color))
         if not qc.isValid():
             qc = QColor("#000000")
@@ -600,7 +600,7 @@ class EditorWidget(QObject):
             pass
 
     def zoom_in(self, steps: int) -> None:
-        """Handle zoom in."""
+        """Zoom in."""
         if self._is_scintilla:
             for _ in range(abs(steps)):
                 self.widget.zoomIn(1 if steps > 0 else -1)
@@ -803,7 +803,7 @@ class EditorWidget(QObject):
                 self._send_scintilla("SCI_FOLDLINE", line, action)
 
     def _line_count(self) -> int:
-        """Handle line count."""
+        """Line count."""
         if self._is_scintilla and hasattr(self.widget, "lines"):
             try:
                 return max(1, int(self.widget.lines()))

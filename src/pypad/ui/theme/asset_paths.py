@@ -19,7 +19,7 @@ def resolve_asset_path(*parts: str) -> Path | None:
 
 
 def _candidate_asset_roots() -> list[Path]:
-    """Handle candidate asset roots."""
+    """Candidate asset roots."""
     roots: list[Path] = []
 
     # PyInstaller onefile extracts bundled data into _MEIPASS.

@@ -8,7 +8,7 @@ from PySide6.QtGui import QDrag, QColor, QPainter, QIcon
 from PySide6.QtWidgets import QApplication, QHBoxLayout, QLabel, QTabBar, QToolButton, QWidget
 
 class DetachableTabBar(QTabBar):
-    """detachable tab bar."""
+    """Render a tab bar that supports dragging tabs into new windows."""
     detach_requested = Signal(int, QPoint)
     _tab_mime_type = "application/x-pypad-tab"
     _badge_size = 10
@@ -84,7 +84,7 @@ class DetachableTabBar(QTabBar):
 
     @staticmethod
     def _style_close_button(button: QToolButton) -> None:
-        """Handle style close button."""
+        """Style the close button for the tab UI."""
         button.setAutoRaise(True)
         button.setCursor(Qt.ArrowCursor)
         button.setToolTip("Close tab")
@@ -97,17 +97,17 @@ class DetachableTabBar(QTabBar):
         button.setFixedSize(12, 12)
 
     def _tab_is_pinned(self, index: int) -> bool:
-        """Handle tab is pinned."""
+        """Return whether the tab is pinned."""
         tab = self._tab_obj(index)
         return bool(getattr(tab, "pinned", False))
 
     def _tab_is_favorite(self, index: int) -> bool:
-        """Handle tab is favorite."""
+        """Return whether the tab is marked as a favorite."""
         tab = self._tab_obj(index)
         return bool(getattr(tab, "favorite", False))
 
     def _tab_obj(self, index: int):
-        """Handle tab obj."""
+        """Return the tab object for the given index."""
         tab_widget = self.parentWidget()
         if tab_widget is None or not hasattr(tab_widget, "widget"):
             return None
@@ -137,7 +137,7 @@ class DetachableTabBar(QTabBar):
         label.setToolTip("Pinned tab")
 
     def _pin_badge_icon(self, size: int = 10):
-        """Handle pin badge icon."""
+        """Return the pin badge icon."""
         return self._named_badge_icon("tab-pin", size=size)
 
     def _set_favorite_badge(self, label: QLabel | None, favorite: bool) -> None:
@@ -161,11 +161,11 @@ class DetachableTabBar(QTabBar):
         label.setToolTip("Favorite tab")
 
     def _favorite_badge_icon(self, size: int = 10):
-        """Handle favorite badge icon."""
+        """Return the favorite badge icon."""
         return self._named_badge_icon("tab-heart", size=size)
 
     def _named_badge_icon(self, name: str, size: int = 10) -> QIcon:
-        """Handle named badge icon."""
+        """Return the badge icon for the given name."""
         host_window = self.window()
         icon_fn = getattr(host_window, "_svg_icon_colored", None)
         if callable(icon_fn):
@@ -182,7 +182,7 @@ class DetachableTabBar(QTabBar):
             self._install_close_button(index)
 
     def _emit_close_from_button(self) -> None:
-        """Handle emit close from button."""
+        """Emit close from button."""
         button = self.sender()
         if not isinstance(button, QToolButton):
             return
@@ -192,14 +192,14 @@ class DetachableTabBar(QTabBar):
             self.tabCloseRequested.emit(index)
 
     def mousePressEvent(self, event) -> None:  # type: ignore[override]
-        """Handle mouse press input for this widget."""
+        """Mouse press event."""
         if event.button() == Qt.LeftButton:
             self._drag_start_pos = event.pos()
             self._drag_index = self.tabAt(event.pos())
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:  # type: ignore[override]
-        """Handle mouse movement for this widget."""
+        """Mouse move event."""
         if not self.detach_enabled:
             super().mouseMoveEvent(event)
             return
@@ -241,7 +241,7 @@ class DetachableTabBar(QTabBar):
         super().dragMoveEvent(event)
 
     def dropEvent(self, event) -> None:  # type: ignore[override]
-        """Handle drop event."""
+        """Drop event."""
         if not event.mimeData().hasFormat(self._tab_mime_type):
             super().dropEvent(event)
             return
@@ -270,7 +270,7 @@ class DetachableTabBar(QTabBar):
         event.ignore()
 
     def mouseReleaseEvent(self, event) -> None:  # type: ignore[override]
-        """Handle mouse release input for this widget."""
+        """Mouse release event."""
         if event.button() == Qt.MiddleButton:
             index = self.tabAt(event.pos())
             if index >= 0 and not self._tab_is_pinned(index):

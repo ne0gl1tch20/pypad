@@ -358,7 +358,7 @@ class UpdaterController(QObject):
         self._update_available_box = box
 
         def _on_finished(_result: int, dialog=box, dl_btn=download_btn, update_info=info) -> None:
-            """Handle on finished."""
+            """Process the finished state."""
             clicked = dialog.clickedButton()
             self._update_available_box = None
             if clicked == dl_btn:
@@ -372,7 +372,7 @@ class UpdaterController(QObject):
         box.open()
 
     def _on_check_failed(self, _thread: QThread, message: str, check_id: int) -> None:
-        """Handle on check failed."""
+        """Process a failed update check."""
         if check_id in self._timed_out_check_ids:
             self._timed_out_check_ids.discard(check_id)
             self._log_update(f"Ignoring late failed result for timed-out check (id={check_id}): {message}")
@@ -447,7 +447,7 @@ class UpdaterController(QObject):
         self._log_update(f"[CheckWorker] {message}")
 
     def _on_check_worker_finished(self, info: object) -> None:
-        """Handle on check worker finished."""
+        """Process completion of the check worker."""
         worker = self.sender()
         if not isinstance(worker, _UpdateCheckWorker):
             return
@@ -459,7 +459,7 @@ class UpdaterController(QObject):
         self._on_checked(thread, info, check_id)
 
     def _on_check_worker_failed(self, message: str) -> None:
-        """Handle on check worker failed."""
+        """Process failure of the check worker."""
         worker = self.sender()
         if not isinstance(worker, _UpdateCheckWorker):
             return
@@ -589,7 +589,7 @@ class UpdaterController(QObject):
         self._log_update(f"[DownloadWorker] {message}")
 
     def _on_download_worker_finished(self, path: str) -> None:
-        """Handle on download worker finished."""
+        """Process completion of the download worker."""
         worker = self.sender()
         if not isinstance(worker, _UpdateDownloadWorker):
             return
@@ -600,7 +600,7 @@ class UpdaterController(QObject):
         self._on_download_finished(thread, path)
 
     def _on_download_worker_failed(self, message: str) -> None:
-        """Handle on download worker failed."""
+        """Process failure of the download worker."""
         worker = self.sender()
         if not isinstance(worker, _UpdateDownloadWorker):
             return

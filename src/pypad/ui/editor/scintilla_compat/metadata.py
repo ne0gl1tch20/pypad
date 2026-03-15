@@ -12,7 +12,7 @@ import re
 
 @dataclass(frozen=True)
 class ScintillaCommandMetadata:
-    """scintilla command metadata."""
+    """Represent the scintilla command metadata."""
     symbol: str
     category: str
     status: str
@@ -82,7 +82,7 @@ _NOTES_OVERRIDES: dict[str, str] = {
 
 
 def _infer_category(symbol: str) -> str:
-    """Handle infer category."""
+    """Infer category."""
     if symbol.startswith("SCN_"):
         return "notification"
     if "MARKER" in symbol:
@@ -103,7 +103,7 @@ def _infer_category(symbol: str) -> str:
 
 
 def _infer_args(symbol: str) -> tuple[str, ...]:
-    """Handle infer args."""
+    """Infer args."""
     if symbol in _ARG_OVERRIDES:
         return _ARG_OVERRIDES[symbol]
     if symbol.startswith("SCN_"):

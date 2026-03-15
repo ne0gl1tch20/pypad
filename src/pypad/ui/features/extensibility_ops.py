@@ -24,7 +24,7 @@ ALWAYS_BLOCKED_CALLS = {"eval", "exec", "__import__", "compile"}
 
 @dataclass(frozen=True)
 class DiscoverableAction:
-    """discoverable action."""
+    """Represent the discoverable action."""
     action_id: str
     label: str
     section: str
@@ -105,6 +105,11 @@ def discover_window_actions(window: Any) -> list[DiscoverableAction]:
         except RuntimeError:
             continue
         if not label:
+            continue
+        try:
+            if bool(action.property("developerOnly")) and not bool(getattr(window, "settings", {}).get("developer_mode_enabled", False)):
+                continue
+        except RuntimeError:
             continue
         action_id = action.objectName().strip() if action.objectName().strip() else attr_name_by_action_id.get(aid, "")
         if not action_id:
