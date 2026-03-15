@@ -235,6 +235,36 @@ def migrate_settings(settings: dict) -> dict:
             current["spellcheck_user_dictionary"] = sorted({str(part).strip().lower() for part in raw_dict if str(part).strip()})
         else:
             current["spellcheck_user_dictionary"] = []
+        current["writing_tools_use_language_tool"] = coerce_bool(current.get("writing_tools_use_language_tool", True), True)
+        current["writing_tools_detect_repeated_words"] = coerce_bool(current.get("writing_tools_detect_repeated_words", True), True)
+        current["writing_tools_detect_spacing"] = coerce_bool(current.get("writing_tools_detect_spacing", True), True)
+        current["writing_tools_detect_capitalization"] = coerce_bool(current.get("writing_tools_detect_capitalization", True), True)
+        current["writing_tools_detect_weak_phrases"] = coerce_bool(current.get("writing_tools_detect_weak_phrases", True), True)
+        current["writing_tools_paraphrase_reduce_passive"] = coerce_bool(
+            current.get("writing_tools_paraphrase_reduce_passive", True), True
+        )
+        current["writing_tools_humanizer_break_long_sentences"] = coerce_bool(
+            current.get("writing_tools_humanizer_break_long_sentences", True), True
+        )
+        current["writing_tools_ai_detector_sensitivity"] = _coerce_float_clamped(
+            current.get("writing_tools_ai_detector_sensitivity", 1.0), 1.0, 0.5, 1.5
+        )
+        current["writing_tools_ai_sentence_threshold"] = _coerce_int_clamped(
+            current.get("writing_tools_ai_sentence_threshold", 24), 24, 8, 60
+        )
+        current["writing_tools_ai_unique_ratio_threshold"] = _coerce_float_clamped(
+            current.get("writing_tools_ai_unique_ratio_threshold", 0.42), 0.42, 0.1, 0.9
+        )
+        current["writing_tools_package_download_cache"] = (
+            dict(current.get("writing_tools_package_download_cache", {}))
+            if isinstance(current.get("writing_tools_package_download_cache", {}), dict)
+            else {}
+        )
+        current["writing_tools_runtime_download_cache"] = (
+            dict(current.get("writing_tools_runtime_download_cache", {}))
+            if isinstance(current.get("writing_tools_runtime_download_cache", {}), dict)
+            else {}
+        )
         closed_tab_history = current.get("closed_tab_history", [])
         current["closed_tab_history"] = closed_tab_history if isinstance(closed_tab_history, list) else []
         normalize_ui_visibility_settings(current)
@@ -476,6 +506,36 @@ def migrate_settings(settings: dict) -> dict:
         current["spellcheck_user_dictionary"] = sorted({str(part).strip().lower() for part in raw_dict if str(part).strip()})
     else:
         current["spellcheck_user_dictionary"] = []
+    current["writing_tools_use_language_tool"] = coerce_bool(current.get("writing_tools_use_language_tool", True), True)
+    current["writing_tools_detect_repeated_words"] = coerce_bool(current.get("writing_tools_detect_repeated_words", True), True)
+    current["writing_tools_detect_spacing"] = coerce_bool(current.get("writing_tools_detect_spacing", True), True)
+    current["writing_tools_detect_capitalization"] = coerce_bool(current.get("writing_tools_detect_capitalization", True), True)
+    current["writing_tools_detect_weak_phrases"] = coerce_bool(current.get("writing_tools_detect_weak_phrases", True), True)
+    current["writing_tools_paraphrase_reduce_passive"] = coerce_bool(
+        current.get("writing_tools_paraphrase_reduce_passive", True), True
+    )
+    current["writing_tools_humanizer_break_long_sentences"] = coerce_bool(
+        current.get("writing_tools_humanizer_break_long_sentences", True), True
+    )
+    current["writing_tools_ai_detector_sensitivity"] = _coerce_float_clamped(
+        current.get("writing_tools_ai_detector_sensitivity", 1.0), 1.0, 0.5, 1.5
+    )
+    current["writing_tools_ai_sentence_threshold"] = _coerce_int_clamped(
+        current.get("writing_tools_ai_sentence_threshold", 24), 24, 8, 60
+    )
+    current["writing_tools_ai_unique_ratio_threshold"] = _coerce_float_clamped(
+        current.get("writing_tools_ai_unique_ratio_threshold", 0.42), 0.42, 0.1, 0.9
+    )
+    current["writing_tools_package_download_cache"] = (
+        dict(current.get("writing_tools_package_download_cache", {}))
+        if isinstance(current.get("writing_tools_package_download_cache", {}), dict)
+        else {}
+    )
+    current["writing_tools_runtime_download_cache"] = (
+        dict(current.get("writing_tools_runtime_download_cache", {}))
+        if isinstance(current.get("writing_tools_runtime_download_cache", {}), dict)
+        else {}
+    )
     closed_tab_history = current.get("closed_tab_history", [])
     current["closed_tab_history"] = closed_tab_history if isinstance(closed_tab_history, list) else []
     current["lsp_definition_enabled"] = coerce_bool(current.get("lsp_definition_enabled", True), True)

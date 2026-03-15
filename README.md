@@ -103,16 +103,19 @@ Development happens during free time, so updates may be irregular.
 - Quick Open (`Ctrl+Alt+P`) for files, symbols, and commands
 - Command Palette (`Ctrl+Shift+P`) for quick commands
 - AI assistant dock with apply actions
+- Google Translate integration for in-app translation workflows
 - Markdown preview and tools
+- Local spell checking powered by `symspellpy`
 - Autosave and crash recovery
 - Workspace search and workspace file browsing
 - Token-based UI theming
 
 ## Feature Areas
 
-- Editing: tabs, navigation, Scintilla-style commands, markdown tools, syntax-aware behavior
+- Editing: tabs, navigation, Scintilla-style commands, markdown tools, syntax-aware behavior, local spell checking with `symspellpy`
 - Productivity: autosave, recovery, reminders, quick open, session restore
 - Workspace: file browsing, project search, profiles, workspace-aware assistant actions
+- Language tools: Google Translate integration and document-level spelling review
 - Appearance: token-based themes, editor/chrome colors, density controls, accessibility settings
 - Safety: privacy lock, trust policies, guarded AI behavior, update-policy controls
 

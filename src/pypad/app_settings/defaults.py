@@ -259,6 +259,18 @@ def build_default_settings(*, default_style: str, font_family: str, font_size: i
         "spellcheck_enabled": True,
         "spellcheck_language": "en",
         "spellcheck_user_dictionary": [],
+        "writing_tools_use_language_tool": True,
+        "writing_tools_detect_repeated_words": True,
+        "writing_tools_detect_spacing": True,
+        "writing_tools_detect_capitalization": True,
+        "writing_tools_detect_weak_phrases": True,
+        "writing_tools_paraphrase_reduce_passive": True,
+        "writing_tools_humanizer_break_long_sentences": True,
+        "writing_tools_ai_detector_sensitivity": 1.0,
+        "writing_tools_ai_sentence_threshold": 24,
+        "writing_tools_ai_unique_ratio_threshold": 0.42,
+        "writing_tools_package_download_cache": {},
+        "writing_tools_runtime_download_cache": {},
         "closed_tab_history": [],
     }
     settings.update(NPP_PREF_DEFAULTS)

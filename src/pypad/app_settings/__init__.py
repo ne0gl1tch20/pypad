@@ -13,6 +13,7 @@ from .paths import (
     get_plugins_dir_path,
     get_reminders_file_path,
     get_settings_file_path,
+    get_spellcheck_dictionaries_dir_path,
     get_themes_file_path,
     get_translation_cache_path,
 )
@@ -32,6 +33,7 @@ __all__ = [
     "get_plugins_dir_path",
     "get_reminders_file_path",
     "get_settings_file_path",
+    "get_spellcheck_dictionaries_dir_path",
     "get_themes_file_path",
     "get_translation_cache_path",
 ]

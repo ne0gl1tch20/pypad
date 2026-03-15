@@ -30,7 +30,7 @@ from html import escape as html_escape
 from urllib.parse import quote as url_quote, unquote as url_unquote
 import importlib.util
 
-from PySide6.QtCore import QByteArray, QEvent, QFileInfo, QObject, QPoint, QRect, QSize, Qt, QTimer, Signal, Slot, QProcess
+from PySide6.QtCore import QByteArray, QEvent, QFileInfo, QObject, QPoint, QRect, QSize, Qt, QTimer, Signal, Slot, QProcess, QThread
 from PySide6.QtGui import (
     QAction,
     QColor,
@@ -140,7 +140,12 @@ from pypad.ui.editor.syntax_highlighter import CodeSyntaxHighlighter
 from pypad.ui.system.updater_controller import UpdaterController
 from pypad.ui.system.version_history import VersionEntry, VersionHistoryDialog
 from pypad.ui.workspace.workspace_controller import WorkspaceController
-from pypad.ui.theme.dialog_theme import apply_dialog_theme_from_window, ensure_dialog_theme_filter_installed
+from pypad.ui.theme.dialog_theme import (
+    apply_dialog_theme_from_window,
+    create_themed_message_box,
+    create_themed_progress_dialog,
+    ensure_dialog_theme_filter_installed,
+)
 from pypad.ui.theme.theme_tokens import build_main_window_qss, build_tokens_from_settings, resolve_dark_mode_from_settings
 from pypad.ui.system.session_recovery import local_history_key
 from pypad.ui.editor.advanced_text_tools import build_line_refs, export_line_refs_text
@@ -222,6 +227,30 @@ from pypad.ui.features.tutorial_dialog import InteractiveTutorialDialog
 from pypad.ui.editor.shortcut_mapper import PRESET_SHORTCUTS, ShortcutActionRow, ShortcutMapperDialog, parse_shortcut_value, sequence_to_string
 from pypad.ui.editor.command_palette import CommandPaletteDialog, PaletteItem
 from pypad.ui.editor.quick_open_dialog import QuickOpenDialog, QuickOpenEntry, extract_symbol_rows
+from pypad.ui.editor.offline_writing_tools import (
+    analyze_writing,
+    apply_suggestion,
+    humanize_text,
+    offline_writing_tools_available,
+    paraphrase_text,
+    refresh_language_tool_support,
+    supports_language_tool,
+)
+from pypad.ui.editor.language_tool_installer import (
+    LOCAL_SERVER_ESTIMATE_MB,
+    build_fallback_runtime_download_info,
+    LanguageToolInstallWorker,
+    LanguageToolMetadataWorker,
+    LanguageToolRuntimeMetadataWorker,
+    LanguageToolZipImportWorker,
+    PackageDownloadInfo,
+    RuntimeDownloadInfo,
+    local_language_tool_data_installed,
+    package_info_from_cache,
+    package_info_to_cache,
+    runtime_info_from_cache,
+    runtime_info_to_cache,
+)
 from pypad.ui.editor.spellcheck import spellcheck_available, suggestions_for_word, unknown_words, word_span_at
 from pypad.i18n.translator import language_code_for
 from .misc_settings_recent import MiscSettingsRecentMixin
@@ -11784,6 +11813,25 @@ Pypad User Guide
             return [str(item).strip().lower() for item in raw if str(item).strip()]
         return []
 
+    def _writing_tools_settings(self) -> dict[str, Any]:
+        """Return the settings slice used by offline writing tools."""
+        return {
+            "writing_tools_use_language_tool": bool(self.settings.get("writing_tools_use_language_tool", True)),
+            "writing_tools_detect_repeated_words": bool(self.settings.get("writing_tools_detect_repeated_words", True)),
+            "writing_tools_detect_spacing": bool(self.settings.get("writing_tools_detect_spacing", True)),
+            "writing_tools_detect_capitalization": bool(self.settings.get("writing_tools_detect_capitalization", True)),
+            "writing_tools_detect_weak_phrases": bool(self.settings.get("writing_tools_detect_weak_phrases", True)),
+            "writing_tools_paraphrase_reduce_passive": bool(self.settings.get("writing_tools_paraphrase_reduce_passive", True)),
+            "writing_tools_humanizer_break_long_sentences": bool(
+                self.settings.get("writing_tools_humanizer_break_long_sentences", True)
+            ),
+            "writing_tools_ai_detector_sensitivity": float(self.settings.get("writing_tools_ai_detector_sensitivity", 1.0) or 1.0),
+            "writing_tools_ai_sentence_threshold": int(self.settings.get("writing_tools_ai_sentence_threshold", 24) or 24),
+            "writing_tools_ai_unique_ratio_threshold": float(
+                self.settings.get("writing_tools_ai_unique_ratio_threshold", 0.42) or 0.42
+            ),
+        }
+
     def open_spell_check_dialog(self) -> None:
         """Open the spell check dialog for the active document."""
         tab = self.active_tab()
@@ -11796,7 +11844,10 @@ Pypad User Guide
                 "Spell Check",
                 "Local spellcheck dependency is not installed.\n\n"
                 "Install it with:\n"
-                "pip install pyspellchecker\n\n"
+                "pip install chunspell symspellpy\n\n"
+                "Optional multilingual Hunspell dictionaries go in:\n"
+                f"{self._get_settings_file_path().parent / 'hunspell'}\n"
+                "Bundled repo/build dictionaries are loaded from assets/dictionaries automatically.\n\n"
                 "Or reinstall project requirements to enable Spell Check Document.",
             )
             return
@@ -11894,6 +11945,644 @@ Pypad User Guide
             )
         menu.exec(self.mapToGlobal(self.rect().center()))
 
+    def _writing_tool_worker_threads(self) -> list[QThread]:
+        """Return the shared thread list used by writing-tool background jobs."""
+        threads = getattr(self, "_writing_tool_threads", None)
+        if not isinstance(threads, list):
+            threads = []
+            self._writing_tool_threads = threads
+        return threads
+
+    def _cached_package_download_info(self) -> PackageDownloadInfo | None:
+        """Return cached package download metadata when available."""
+        info = package_info_from_cache(self.settings.get("writing_tools_package_download_cache", {}))
+        if info is None:
+            _LOGGER.info("Offline Writing Studio package size cache miss.")
+        else:
+            _LOGGER.info(
+                "Offline Writing Studio package size cache hit: version=%s filename=%s size_mb=%.2f",
+                info.version,
+                info.filename,
+                info.size_mb,
+            )
+        return info
+
+    def _cached_runtime_download_info(self) -> RuntimeDownloadInfo | None:
+        """Return cached runtime download metadata when available."""
+        info = runtime_info_from_cache(self.settings.get("writing_tools_runtime_download_cache", {}))
+        if info is None:
+            _LOGGER.info("Offline Writing Studio runtime size cache miss.")
+        else:
+            _LOGGER.info(
+                "Offline Writing Studio runtime size cache hit: label=%s size_mb=%.2f url=%s",
+                info.label,
+                info.size_mb,
+                info.download_url,
+            )
+        return info
+
+    def _store_package_download_cache(self, info: PackageDownloadInfo) -> None:
+        """Persist package download metadata for instant repeat prompts."""
+        _LOGGER.info(
+            "Persisting Offline Writing Studio package size cache: version=%s filename=%s size_mb=%.2f",
+            info.version,
+            info.filename,
+            info.size_mb,
+        )
+        self.settings["writing_tools_package_download_cache"] = package_info_to_cache(info)
+        if hasattr(self, "save_settings_to_disk"):
+            self.save_settings_to_disk()
+
+    def _store_runtime_download_cache(self, info: RuntimeDownloadInfo) -> None:
+        """Persist runtime download metadata for instant repeat prompts."""
+        _LOGGER.info(
+            "Persisting Offline Writing Studio runtime size cache: label=%s size_mb=%.2f url=%s",
+            info.label,
+            info.size_mb,
+            info.download_url,
+        )
+        self.settings["writing_tools_runtime_download_cache"] = runtime_info_to_cache(info)
+        if hasattr(self, "save_settings_to_disk"):
+            self.save_settings_to_disk()
+
+    def _cleanup_writing_tool_thread(self, thread: QThread) -> None:
+        """Release bookkeeping for a finished writing-tool worker thread."""
+        threads = self._writing_tool_worker_threads()
+        if thread in threads:
+            threads.remove(thread)
+        thread.deleteLater()
+
+    def _start_language_tool_metadata_check(self) -> None:
+        """Query the package registry for language-tool-python size before prompting the user."""
+        _LOGGER.info("Starting foreground package size check for Offline Writing Studio.")
+        progress = create_themed_progress_dialog(self, title="Offline Writing Studio")
+        progress.setLabelText("Checking language-tool-python package size...")
+        progress.setCancelButton(None)
+        progress.setRange(0, 0)
+        progress.setMinimumDuration(0)
+        progress.setAutoClose(False)
+        progress.setAutoReset(False)
+        progress.setWindowModality(Qt.WindowModality.ApplicationModal)
+        progress.show()
+        self._writing_tool_metadata_dialog = progress
+
+        worker = LanguageToolMetadataWorker()
+        thread = QThread(self)
+        self._writing_tool_worker_threads().append(thread)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.finished.connect(thread.quit)
+        worker.failed.connect(thread.quit)
+        thread.finished.connect(worker.deleteLater)
+        thread.finished.connect(lambda thr=thread: self._cleanup_writing_tool_thread(thr))
+        worker.finished.connect(self._on_language_tool_metadata_ready)
+        worker.failed.connect(self._on_language_tool_metadata_failed)
+        self.show_status_message("Checking language-tool-python package size...", 2000)
+        thread.start()
+
+    def _refresh_language_tool_package_cache_in_background(self) -> None:
+        """Refresh cached package size metadata without blocking the launch prompt."""
+        _LOGGER.info("Starting background package size cache refresh for Offline Writing Studio.")
+        worker = LanguageToolMetadataWorker()
+        thread = QThread(self)
+        self._writing_tool_worker_threads().append(thread)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.finished.connect(thread.quit)
+        worker.failed.connect(thread.quit)
+        thread.finished.connect(worker.deleteLater)
+        thread.finished.connect(lambda thr=thread: self._cleanup_writing_tool_thread(thr))
+        worker.finished.connect(self._on_background_language_tool_package_cache_ready)
+        thread.start()
+
+    def _start_language_tool_runtime_metadata_check(self) -> None:
+        """Query the local LanguageTool runtime download size before prompting the user."""
+        _LOGGER.info("Starting foreground runtime size check for Offline Writing Studio.")
+        progress = create_themed_progress_dialog(self, title="Offline Writing Studio")
+        progress.setLabelText("Checking local LanguageTool runtime download size...")
+        progress.setCancelButton(None)
+        progress.setRange(0, 0)
+        progress.setMinimumDuration(0)
+        progress.setAutoClose(False)
+        progress.setAutoReset(False)
+        progress.setWindowModality(Qt.WindowModality.ApplicationModal)
+        progress.show()
+        self._writing_tool_metadata_dialog = progress
+
+        worker = LanguageToolRuntimeMetadataWorker()
+        thread = QThread(self)
+        self._writing_tool_worker_threads().append(thread)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.finished.connect(thread.quit)
+        worker.failed.connect(thread.quit)
+        thread.finished.connect(worker.deleteLater)
+        thread.finished.connect(lambda thr=thread: self._cleanup_writing_tool_thread(thr))
+        worker.finished.connect(self._on_language_tool_runtime_metadata_ready)
+        worker.failed.connect(self._on_language_tool_metadata_failed)
+        self.show_status_message("Checking local LanguageTool runtime size...", 2000)
+        thread.start()
+
+    def _refresh_language_tool_runtime_cache_in_background(self) -> None:
+        """Refresh cached runtime size metadata without blocking the launch prompt."""
+        _LOGGER.info("Starting background runtime size cache refresh for Offline Writing Studio.")
+        worker = LanguageToolRuntimeMetadataWorker()
+        thread = QThread(self)
+        self._writing_tool_worker_threads().append(thread)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.finished.connect(thread.quit)
+        worker.failed.connect(thread.quit)
+        thread.finished.connect(worker.deleteLater)
+        thread.finished.connect(lambda thr=thread: self._cleanup_writing_tool_thread(thr))
+        worker.finished.connect(self._on_background_language_tool_runtime_cache_ready)
+        thread.start()
+
+    def _close_writing_tool_metadata_dialog(self) -> None:
+        """Close the active metadata lookup progress dialog if present."""
+        dlg = getattr(self, "_writing_tool_metadata_dialog", None)
+        self._writing_tool_metadata_dialog = None
+        if dlg is None:
+            return
+        try:
+            dlg.close()
+            dlg.deleteLater()
+        except RuntimeError:
+            pass
+
+    def _on_language_tool_metadata_ready(self, info: object) -> None:
+        """Prompt the user to install language-tool-python once size metadata is known."""
+        self._close_writing_tool_metadata_dialog()
+        if not isinstance(info, PackageDownloadInfo):
+            self._on_language_tool_metadata_failed("Package metadata response was invalid.")
+            return
+        _LOGGER.info(
+            "Foreground package size check completed: version=%s filename=%s size_mb=%.2f",
+            info.version,
+            info.filename,
+            info.size_mb,
+        )
+        self._store_package_download_cache(info)
+        total_estimate = info.size_mb + float(LOCAL_SERVER_ESTIMATE_MB)
+        box = create_themed_message_box(
+            self,
+            title="Offline Writing Studio",
+            icon=QMessageBox.Icon.Question,
+            text=(
+                "language-tool-python is not installed.\n\n"
+                f"Download it now? ({total_estimate:.1f} MB estimated)"
+            ),
+        )
+        box.setInformativeText(
+            f"Package download: {info.size_mb:.2f} MB ({info.filename})\n"
+            f"Estimated first local LanguageTool data/runtime setup: ~{LOCAL_SERVER_ESTIMATE_MB:.0f} MB\n\n"
+            "This will install in the background and reopen Offline Writing Studio when it finishes."
+        )
+        yes_btn = box.addButton("Yes", QMessageBox.AcceptRole)
+        box.addButton("No", QMessageBox.RejectRole)
+        box.setWindowModality(Qt.WindowModality.ApplicationModal)
+
+        def _after_prompt(_result: int, dialog=box, install_info=info, accept_btn=yes_btn) -> None:
+            clicked = dialog.clickedButton()
+            if clicked == accept_btn:
+                self._start_language_tool_install(install_info)
+            else:
+                self.show_status_message("Offline Writing Studio canceled.", 2500)
+
+        box.finished.connect(_after_prompt)
+        box.open()
+
+    def _on_background_language_tool_package_cache_ready(self, info: object) -> None:
+        """Update cached package metadata after a background refresh."""
+        if isinstance(info, PackageDownloadInfo):
+            _LOGGER.info(
+                "Background package size refresh completed: version=%s filename=%s size_mb=%.2f",
+                info.version,
+                info.filename,
+                info.size_mb,
+            )
+            self._store_package_download_cache(info)
+
+    def _on_language_tool_runtime_metadata_ready(self, info: object) -> None:
+        """Prompt the user to download the local LanguageTool runtime bundle manually."""
+        self._close_writing_tool_metadata_dialog()
+        if not isinstance(info, RuntimeDownloadInfo):
+            self._on_language_tool_metadata_failed("Runtime metadata response was invalid.")
+            return
+        _LOGGER.info(
+            "Foreground runtime size check completed: label=%s size_mb=%.2f url=%s",
+            info.label,
+            info.size_mb,
+            info.download_url,
+        )
+        self._store_runtime_download_cache(info)
+        box = create_themed_message_box(
+            self,
+            title="Offline Writing Studio",
+            icon=QMessageBox.Icon.Question,
+            text=(
+                "Local LanguageTool data is not installed.\n\n"
+                f"Download it now? ({info.size_mb:.1f} MB)"
+            ),
+        )
+        box.setInformativeText(
+            "1. Download the ZIP in Chrome.\n"
+            f"   URL: {info.download_url}\n"
+            "2. Click 'I Downloaded It'.\n"
+            "3. Choose the downloaded LanguageTool-latest-snapshot.zip file.\n"
+            "4. PyPad will extract it into your roaming app-data folder automatically."
+        )
+        _LOGGER.info(
+            "Showing manual runtime import dialog: label=%s size_mb=%.2f url=%s",
+            info.label,
+            info.size_mb,
+            info.download_url,
+        )
+        open_btn = box.addButton("Open Download Page", QMessageBox.ActionRole)
+        downloaded_btn = box.addButton("I Downloaded It", QMessageBox.AcceptRole)
+        box.addButton("Cancel", QMessageBox.RejectRole)
+        box.setWindowModality(Qt.WindowModality.ApplicationModal)
+
+        def _after_prompt(
+            _result: int,
+            dialog=box,
+            runtime_info=info,
+            ready_btn=downloaded_btn,
+            browser_btn=open_btn,
+        ) -> None:
+            clicked = dialog.clickedButton()
+            if clicked == browser_btn:
+                _LOGGER.info("Opening browser for manual LanguageTool runtime ZIP download.")
+                try:
+                    webbrowser.open(runtime_info.download_url)
+                except Exception as exc:
+                    _LOGGER.warning("Could not open browser for LanguageTool runtime download: %s", exc)
+                QTimer.singleShot(0, lambda info_obj=runtime_info: self._on_language_tool_runtime_metadata_ready(info_obj))
+            elif clicked == ready_btn:
+                _LOGGER.info("Manual LanguageTool runtime ZIP selection requested by user.")
+                self._prompt_for_manual_language_tool_zip()
+            else:
+                _LOGGER.info("Manual LanguageTool runtime import canceled by user.")
+                self.show_status_message("Offline Writing Studio canceled.", 2500)
+
+        box.finished.connect(_after_prompt)
+        box.open()
+
+    def _prompt_for_manual_language_tool_zip(self) -> None:
+        """Ask the user to choose a manually downloaded LanguageTool ZIP and import it."""
+        path, _selected_filter = QFileDialog.getOpenFileName(
+            self,
+            "Choose LanguageTool ZIP",
+            "",
+            "ZIP Files (*.zip);;All Files (*.*)",
+        )
+        if not path:
+            _LOGGER.info("Manual LanguageTool ZIP chooser closed without a file.")
+            self.show_status_message("Offline Writing Studio canceled.", 2500)
+            return
+        _LOGGER.info("Manual LanguageTool ZIP selected: %s", path)
+        self._start_manual_language_tool_zip_import(path)
+
+    @staticmethod
+    def _format_bytes_mb(num_bytes: int) -> str:
+        """Format a byte count as megabytes for progress labels."""
+        return f"{(max(0, int(num_bytes or 0)) / (1024 * 1024)):.1f} MB"
+
+    def _start_manual_language_tool_zip_import(self, zip_path: str) -> None:
+        """Import the selected LanguageTool ZIP on a background thread with progress UI."""
+        progress = create_themed_progress_dialog(self, title="Importing LanguageTool ZIP")
+        progress.setLabelText("Preparing LanguageTool ZIP import...\n0.0 MB of 0.0 MB")
+        progress.setCancelButton(None)
+        progress.setRange(0, 100)
+        progress.setValue(0)
+        progress.setMinimumDuration(0)
+        progress.setAutoClose(False)
+        progress.setAutoReset(False)
+        progress.setWindowModality(Qt.WindowModality.ApplicationModal)
+        progress.show()
+        self._writing_tool_install_dialog = progress
+
+        worker = LanguageToolZipImportWorker(zip_path)
+        thread = QThread(self)
+        self._writing_tool_worker_threads().append(thread)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.finished.connect(thread.quit)
+        worker.failed.connect(thread.quit)
+        thread.finished.connect(worker.deleteLater)
+        thread.finished.connect(lambda thr=thread: self._cleanup_writing_tool_thread(thr))
+        worker.progress.connect(self._on_language_tool_zip_import_progress)
+        worker.finished.connect(self._on_language_tool_zip_import_finished)
+        worker.failed.connect(self._on_language_tool_zip_import_failed)
+        self.show_status_message("Importing LanguageTool ZIP...", 2000)
+        _LOGGER.info("Starting manual LanguageTool ZIP import worker thread now.")
+        thread.start()
+
+    def _on_language_tool_zip_import_progress(self, payload: object) -> None:
+        """Update the ZIP import progress dialog from worker-thread progress signals."""
+        dlg = getattr(self, "_writing_tool_install_dialog", None)
+        if dlg is None:
+            _LOGGER.info("LanguageTool ZIP import progress received with no active dialog: %r", payload)
+            return
+        if not isinstance(payload, dict):
+            _LOGGER.info("LanguageTool ZIP import progress received with unexpected payload: %r", payload)
+            return
+        done = int(payload.get("processed_bytes", 0) or 0)
+        total = max(1, int(payload.get("total_bytes", 0) or 0))
+        status = str(payload.get("status", "Importing LanguageTool ZIP...") or "Importing LanguageTool ZIP...")
+        percent = int(round((done / total) * 100))
+        _LOGGER.info(
+            "LanguageTool ZIP import progress signal received (UI thread): status=%s processed=%s total=%s percent=%s",
+            status,
+            done,
+            total,
+            percent,
+        )
+        dlg.setRange(0, 100)
+        dlg.setValue(max(0, min(100, percent)))
+        dlg.setLabelText(
+            f"{status}\n"
+            f"{self._format_bytes_mb(done)} of {self._format_bytes_mb(total)}\n"
+            f"{percent}% complete"
+        )
+
+    def _on_language_tool_zip_import_finished(self, target_dir: str) -> None:
+        """Handle successful completion of the manual LanguageTool ZIP import worker."""
+        _LOGGER.info("Manual LanguageTool ZIP import succeeded: %s", target_dir)
+        self._close_writing_tool_install_dialog()
+        self.show_status_message("LanguageTool ZIP imported successfully.", 4000)
+        QTimer.singleShot(0, self._open_offline_writing_studio_dialog)
+
+    def _on_language_tool_zip_import_failed(self, message: str) -> None:
+        """Report a failed manual LanguageTool ZIP import attempt."""
+        _LOGGER.warning("Manual LanguageTool ZIP import failed: %s", message)
+        self._close_writing_tool_install_dialog()
+        box = create_themed_message_box(
+            self,
+            title="Offline Writing Studio",
+            icon=QMessageBox.Icon.Critical,
+            text="LanguageTool ZIP could not be imported.",
+        )
+        box.setInformativeText("Offline Writing Studio was not opened.")
+        box.setDetailedText(str(message or "Unknown import error."))
+        box.exec()
+
+    def _on_background_language_tool_runtime_cache_ready(self, info: object) -> None:
+        """Update cached runtime metadata after a background refresh."""
+        if isinstance(info, RuntimeDownloadInfo):
+            _LOGGER.info(
+                "Background runtime size refresh completed: label=%s size_mb=%.2f url=%s",
+                info.label,
+                info.size_mb,
+                info.download_url,
+            )
+            self._store_runtime_download_cache(info)
+
+    def _on_language_tool_metadata_failed(self, message: str) -> None:
+        """Report metadata lookup failure for language-tool-python."""
+        _LOGGER.warning("Offline Writing Studio size check failed: %s", message)
+        self._close_writing_tool_metadata_dialog()
+        box = create_themed_message_box(
+            self,
+            title="Offline Writing Studio",
+            icon=QMessageBox.Icon.Warning,
+            text="Could not determine language-tool-python download size.",
+        )
+        box.setInformativeText("Offline Writing Studio canceled before install.")
+        box.setDetailedText(str(message or "Unknown error."))
+        box.exec()
+
+    def _start_language_tool_install(self, info: PackageDownloadInfo) -> None:
+        """Install language-tool-python on a background thread with a progress dialog."""
+        progress = create_themed_progress_dialog(self, title="Installing language-tool-python")
+        progress.setLabelText(
+            "Downloading and installing language-tool-python...\n"
+            f"Package: {info.filename} ({info.size_mb:.2f} MB)\n"
+            f"Estimated first local runtime data: ~{LOCAL_SERVER_ESTIMATE_MB:.0f} MB"
+        )
+        progress.setCancelButton(None)
+        progress.setRange(0, 0)
+        progress.setMinimumDuration(0)
+        progress.setAutoClose(False)
+        progress.setAutoReset(False)
+        progress.setWindowModality(Qt.WindowModality.ApplicationModal)
+        progress.show()
+        self._writing_tool_install_dialog = progress
+
+        worker = LanguageToolInstallWorker()
+        thread = QThread(self)
+        self._writing_tool_worker_threads().append(thread)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.finished.connect(thread.quit)
+        worker.failed.connect(thread.quit)
+        thread.finished.connect(worker.deleteLater)
+        thread.finished.connect(lambda thr=thread: self._cleanup_writing_tool_thread(thr))
+        worker.progress.connect(self._on_language_tool_install_progress)
+        worker.finished.connect(self._on_language_tool_install_finished)
+        worker.failed.connect(self._on_language_tool_install_failed)
+        self.show_status_message("Installing language-tool-python...", 2000)
+        thread.start()
+
+    def _close_writing_tool_install_dialog(self) -> None:
+        """Close the active language-tool install progress dialog if present."""
+        dlg = getattr(self, "_writing_tool_install_dialog", None)
+        self._writing_tool_install_dialog = None
+        if dlg is None:
+            return
+        try:
+            dlg.close()
+            dlg.deleteLater()
+        except RuntimeError:
+            pass
+
+    def _on_language_tool_install_progress(self, message: object) -> None:
+        """Update the install dialog with pip output."""
+        dlg = getattr(self, "_writing_tool_install_dialog", None)
+        if dlg is None:
+            _LOGGER.info("LanguageTool progress signal received with no active progress dialog: %r", message)
+            return
+        trimmed = str(message or "").strip()
+        if trimmed:
+            _LOGGER.info("LanguageTool install text progress signal received (UI thread): %s", trimmed)
+            dlg.setRange(0, 0)
+            dlg.setLabelText(
+                "Downloading and installing language-tool-python...\n\n"
+                f"{trimmed[-220:]}"
+            )
+
+    def _on_language_tool_install_finished(self) -> None:
+        """Refresh runtime support after installation and reopen the writing studio."""
+        self._close_writing_tool_install_dialog()
+        if not refresh_language_tool_support():
+            self._on_language_tool_install_failed(
+                "Installation finished, but the language_tool_python module still could not be imported."
+            )
+            return
+        self.show_status_message("language-tool-python installed.", 4000)
+        QTimer.singleShot(0, self.open_offline_writing_studio)
+
+    def _on_language_tool_install_failed(self, message: str) -> None:
+        """Report a failed language-tool-python installation attempt."""
+        self._close_writing_tool_install_dialog()
+        box = create_themed_message_box(
+            self,
+            title="Offline Writing Studio",
+            icon=QMessageBox.Icon.Critical,
+            text="language-tool-python could not be installed.",
+        )
+        box.setInformativeText("Offline Writing Studio was not opened.")
+        box.setDetailedText(str(message or "Unknown install error."))
+        box.exec()
+
+    def open_offline_writing_studio(self) -> None:
+        """Open an offline writing-tools dialog for analysis and local rewrites."""
+        if not supports_language_tool():
+            _LOGGER.info("Offline Writing Studio launch: language_tool_python missing.")
+            cached = self._cached_package_download_info()
+            if cached is not None:
+                _LOGGER.info("Offline Writing Studio launch using cached package size prompt.")
+                self._on_language_tool_metadata_ready(cached)
+                self._refresh_language_tool_package_cache_in_background()
+            else:
+                _LOGGER.info("Offline Writing Studio launch has no cached package size; running foreground check.")
+                self._start_language_tool_metadata_check()
+            return
+        if not local_language_tool_data_installed():
+            _LOGGER.info("Offline Writing Studio launch: local LanguageTool runtime missing.")
+            cached = self._cached_runtime_download_info()
+            if cached is not None:
+                _LOGGER.info("Offline Writing Studio launch using cached runtime size prompt.")
+                self._on_language_tool_runtime_metadata_ready(cached)
+                self._refresh_language_tool_runtime_cache_in_background()
+            else:
+                _LOGGER.info("Offline Writing Studio launch has no cached runtime size; using fallback prompt and refreshing in background.")
+                self._on_language_tool_runtime_metadata_ready(build_fallback_runtime_download_info())
+                self._refresh_language_tool_runtime_cache_in_background()
+            return
+        _LOGGER.info("Offline Writing Studio launch: dependencies ready, opening studio dialog.")
+        self._open_offline_writing_studio_dialog()
+
+    def _open_offline_writing_studio_dialog(self) -> None:
+        """Open the actual offline writing studio UI after dependency checks pass."""
+        tab = self.active_tab()
+        if tab is None:
+            QMessageBox.information(self, "Offline Writing Studio", "No active document.")
+            return
+        if not offline_writing_tools_available():
+            QMessageBox.information(self, "Offline Writing Studio", "Offline writing tools are unavailable.")
+            return
+        source_text = str(tab.text_edit.selected_text() or "")
+        target_is_selection = bool(source_text)
+        if not source_text:
+            source_text = tab.text_edit.get_text()
+        settings = self._writing_tools_settings()
+        analysis = analyze_writing(
+            source_text,
+            settings=settings,
+            language=str(self.settings.get("spellcheck_language", "en") or "en"),
+        )
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Offline Writing Studio")
+        dlg.resize(920, 680)
+        apply_dialog_theme_from_window(self, dlg)
+        layout = QVBoxLayout(dlg)
+        summary = QLabel(dlg)
+        backend_label = "LanguageTool local grammar enabled" if supports_language_tool() else "Rule-based grammar only"
+        summary.setText(
+            f"Scope: {'Selection' if target_is_selection else 'Document'} | "
+            f"Words: {analysis.stats['words']} | Suggestions: {len(analysis.suggestions)} | "
+            f"AI-likeness: {analysis.ai_score}/100 | {backend_label}"
+        )
+        summary.setWordWrap(True)
+        layout.addWidget(summary)
+        transform_row = QHBoxLayout()
+        mode_combo = QComboBox(dlg)
+        mode_combo.addItems(["Analyze only", "Paraphrase", "Humanize"])
+        strength_spin = QSpinBox(dlg)
+        strength_spin.setRange(1, 3)
+        strength_spin.setValue(1)
+        transform_row.addWidget(QLabel("Transform", dlg))
+        transform_row.addWidget(mode_combo)
+        transform_row.addWidget(QLabel("Strength", dlg))
+        transform_row.addWidget(strength_spin)
+        transform_row.addStretch(1)
+        layout.addLayout(transform_row)
+        panes = QSplitter(Qt.Horizontal, dlg)
+        left = QWidget(panes)
+        left_layout = QVBoxLayout(left)
+        suggestion_list = QListWidget(left)
+        for row in analysis.suggestions:
+            item = QListWidgetItem(f"[{row.category}] {row.message}")
+            item.setData(Qt.ItemDataRole.UserRole, row)
+            suggestion_list.addItem(item)
+        left_layout.addWidget(QLabel("Suggestions", left))
+        left_layout.addWidget(suggestion_list, 1)
+        signals_view = QTextEdit(left)
+        signals_view.setReadOnly(True)
+        signals_view.setPlainText("\n".join(f"- {row}" for row in analysis.ai_signals))
+        left_layout.addWidget(QLabel("AI detector signals", left))
+        left_layout.addWidget(signals_view, 1)
+        right = QWidget(panes)
+        right_layout = QVBoxLayout(right)
+        original_view = QTextEdit(right)
+        original_view.setReadOnly(True)
+        original_view.setPlainText(source_text)
+        preview_view = QTextEdit(right)
+        preview_view.setPlainText(source_text)
+        right_layout.addWidget(QLabel("Original", right))
+        right_layout.addWidget(original_view, 1)
+        right_layout.addWidget(QLabel("Preview", right))
+        right_layout.addWidget(preview_view, 1)
+        panes.addWidget(left)
+        panes.addWidget(right)
+        panes.setStretchFactor(0, 0)
+        panes.setStretchFactor(1, 1)
+        layout.addWidget(panes, 1)
+
+        def _refresh_preview() -> None:
+            mode = mode_combo.currentText()
+            strength = int(strength_spin.value())
+            if mode == "Paraphrase":
+                preview_view.setPlainText(paraphrase_text(source_text, strength=strength, settings=settings))
+            elif mode == "Humanize":
+                preview_view.setPlainText(humanize_text(source_text, strength=strength, settings=settings))
+            else:
+                preview_view.setPlainText(source_text)
+
+        def _apply_selected_suggestion() -> None:
+            item = suggestion_list.currentItem()
+            if item is None:
+                return
+            suggestion = item.data(Qt.ItemDataRole.UserRole)
+            if suggestion is None:
+                return
+            preview_view.setPlainText(apply_suggestion(preview_view.toPlainText(), suggestion))
+
+        mode_combo.currentTextChanged.connect(lambda _text: _refresh_preview())
+        strength_spin.valueChanged.connect(lambda _value: _refresh_preview())
+        suggestion_list.itemDoubleClicked.connect(lambda _item: _apply_selected_suggestion())
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Close, Qt.Horizontal, dlg)
+        apply_suggestion_btn = buttons.addButton("Apply Suggestion", QDialogButtonBox.ActionRole)
+        apply_transform_btn = buttons.addButton("Apply Preview", QDialogButtonBox.AcceptRole)
+        apply_suggestion_btn.clicked.connect(_apply_selected_suggestion)
+
+        def _commit_preview() -> None:
+            updated = preview_view.toPlainText()
+            if target_is_selection:
+                tab.text_edit.replace_selection(updated)
+            else:
+                tab.text_edit.set_text(updated)
+            dlg.accept()
+            self.show_status_message("Offline writing changes applied.", 3000)
+
+        apply_transform_btn.clicked.connect(_commit_preview)
+        buttons.rejected.connect(dlg.reject)
+        layout.addWidget(buttons)
+        _refresh_preview()
+        dlg.exec()
+
     def show_discoverability_guide(self) -> None:
         """Show a quick guide that highlights major features and how to find them."""
         body = (
@@ -11902,6 +12591,7 @@ Pypad User Guide
             "- File > More > Workspace for folders, search, and profiles\n"
             "- View > Advanced > Project Panels for explorer, minimap, and symbol outline\n"
             "- Tools > Spell Check Document for local spelling review\n"
+            "- Tools > Offline Writing Studio for grammar review, paraphrase, and humanize\n"
             "- Settings > UI Presets for Writing, Coding, and Review layouts\n\n"
             "Useful shortcuts\n"
             "- Ctrl+Shift+P: Command Palette\n"

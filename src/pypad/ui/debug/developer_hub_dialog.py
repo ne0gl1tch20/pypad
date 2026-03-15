@@ -10,9 +10,11 @@ from typing import Any
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QComboBox,
     QDialog,
     QDialogButtonBox,
+    QFormLayout,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -35,6 +37,7 @@ class DeveloperHubDialog(QDialog):
     TAB_ORDER = [
         "Overview",
         "AI",
+        "Controls",
         "Logs",
         "Runtime",
         "Settings",
@@ -67,6 +70,7 @@ class DeveloperHubDialog(QDialog):
 
         self._build_overview_tab()
         self._build_ai_tab()
+        self._build_controls_tab()
         self._build_logs_tab()
         self._build_text_tab("Runtime")
         self._build_text_tab("Settings")
@@ -201,6 +205,32 @@ class DeveloperHubDialog(QDialog):
         copy_assembled_btn.clicked.connect(lambda: QApplication.clipboard().setText(self.ai_assembled_edit.toPlainText()))
         copy_meta_btn.clicked.connect(lambda: QApplication.clipboard().setText(self.ai_meta_view.toPlainText()))
 
+    def _build_controls_tab(self) -> None:
+        """Build developer-only controls for logging and debug behavior."""
+        host = QWidget(self)
+        layout = QVBoxLayout(host)
+        summary = QLabel("Developer-only controls for logging verbosity and debug capture.", host)
+        summary.setWordWrap(True)
+        layout.addWidget(summary)
+        form = QFormLayout()
+        self.devhub_logging_level_combo = QComboBox(host)
+        self.devhub_logging_level_combo.addItems(["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"])
+        self.devhub_debug_telemetry_checkbox = QCheckBox("Enable debug telemetry", host)
+        self.devhub_save_debug_logs_checkbox = QCheckBox("Save debug logs to app data and write crash traceback logs", host)
+        form.addRow("Logging level", self.devhub_logging_level_combo)
+        form.addRow("", self.devhub_debug_telemetry_checkbox)
+        form.addRow("", self.devhub_save_debug_logs_checkbox)
+        layout.addLayout(form)
+        self.devhub_apply_btn = QPushButton("Apply Developer Controls", host)
+        self.devhub_apply_btn.clicked.connect(self._apply_controls)
+        actions = QHBoxLayout()
+        actions.addWidget(self.devhub_apply_btn)
+        actions.addStretch(1)
+        layout.addLayout(actions)
+        layout.addStretch(1)
+        self.tabs.addTab(host, "Controls")
+        self._tab_copy_mode["Controls"] = "controls"
+
     def focus_tab(self, name: str) -> None:
         """Focus one tab by name if it exists."""
         for idx in range(self.tabs.count()):
@@ -226,6 +256,15 @@ class DeveloperHubDialog(QDialog):
                 continue
             data = builder() if callable(builder) else {"status": "Not ready yet"}
             editor.setPlainText(json.dumps(data, indent=2, sort_keys=True, ensure_ascii=False))
+        self.devhub_logging_level_combo.setCurrentText(
+            str(getattr(self._window, "settings", {}).get("logging_level", "INFO")).upper()
+        )
+        self.devhub_debug_telemetry_checkbox.setChecked(
+            bool(getattr(self._window, "settings", {}).get("debug_telemetry_enabled", False))
+        )
+        self.devhub_save_debug_logs_checkbox.setChecked(
+            bool(getattr(self._window, "settings", {}).get("save_debug_logs_to_appdata", False))
+        )
         self._refresh_logs()
         self._refresh_ai()
         self._update_summary()
@@ -311,6 +350,27 @@ class DeveloperHubDialog(QDialog):
     def _update_summary(self) -> None:
         """Refresh the summary label for the active tab."""
         self.summary_label.setText(f"Developer mode diagnostics hub. Current tab: {self._current_tab_name()}.")
+
+    def _apply_controls(self) -> None:
+        """Persist logging/debug controls back into the parent window settings."""
+        settings = getattr(self._window, "settings", None)
+        if not isinstance(settings, dict):
+            return
+        settings["logging_level"] = self.devhub_logging_level_combo.currentText().strip().upper() or "INFO"
+        settings["debug_telemetry_enabled"] = self.devhub_debug_telemetry_checkbox.isChecked()
+        settings["save_debug_logs_to_appdata"] = self.devhub_save_debug_logs_checkbox.isChecked()
+        apply_settings = getattr(self._window, "apply_settings", None)
+        if callable(apply_settings):
+            try:
+                apply_settings()
+            except TypeError:
+                apply_settings(False)
+            except Exception:
+                pass
+        save_settings = getattr(self._window, "save_settings_to_disk", None)
+        if callable(save_settings):
+            save_settings()
+        QMessageBox.information(self, "Developer Controls", "Developer logging controls saved.")
 
     def copy_current_tab(self) -> None:
         """Copy the current tab's most relevant content to the clipboard."""

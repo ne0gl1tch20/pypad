@@ -63,6 +63,11 @@ def get_translation_cache_path() -> Path:
     return _app_roaming_dir() / "translation_cache.json"
 
 
+def get_spellcheck_dictionaries_dir_path() -> Path:
+    """Return the directory used to store Hunspell dictionaries for spellcheck."""
+    return _app_roaming_dir() / "hunspell"
+
+
 def get_plugins_dir_path() -> Path:
     """Return the plugins directory path."""
     new_dir = _app_roaming_pypad_dir() / "plugins"

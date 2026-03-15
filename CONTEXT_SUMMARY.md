@@ -56,6 +56,11 @@
 - recent stabilization fixes:
   - routine runs are counted only after the underlying workflow actually starts
   - secret-trail progress now reflects stored real progress instead of placeholder-style values for shortcut, encryption, and night-owl tracking
+- spellcheck backend refresh:
+  - local spellcheck now uses `chunspell` as the multilingual backend
+  - `symspellpy` remains as the fast English accelerator
+  - bundled Hunspell dictionaries now load automatically from `assets/dictionaries` in both dev and PyInstaller builds
+  - language normalization now targets the actual bundled dictionary folder names directly
 
 ## What Was Completed (Current Productivity / Delight Slice)
 
@@ -70,6 +75,7 @@
   - productivity routines
   - routine stats and history
 - `MiscMixin` wires the system into real workflows instead of only passive counters
+- `pypad.ui.editor.spellcheck` now routes English through `symspellpy` when available and routes multilingual spellcheck through Hunspell dictionaries resolved from bundled assets or the appdata override path
 
 ### UI Surfaces
 - Main window:
@@ -89,18 +95,22 @@
 - `docs/plugins.md`
 - `docs/plugin_runtime.md`
 - `docs/plugin_api.md`
+- `src/pypad/ui/editor/spellcheck.py`
 - `src/pypad/ui/features/advanced_features.py`
 - `src/pypad/ui/features/gamification_system.py`
 - `src/pypad/ui/features/gamification_widgets.py`
 - `src/pypad/ui/features/gamification_dashboard_dialog.py`
+- `src/pypad/app_settings/paths.py`
 - `src/pypad/ui/main_window/misc.py`
 - `src/pypad/ui/main_window/ui_setup.py`
 - `src/pypad/ui/main_window/window.py`
 - `src/pypad/ai_app_knowledge.py`
+- `tests/test_spellcheck.py`
 - `templates/demo_pack/01_welcome_quick_tour.md`
 
 ## Validation Snapshot (Recent)
 - `tests/test_gamification_system.py` passes
+- `tests/test_spellcheck.py` passes
 - `tests/test_ui_theme_tokens.py` passes
 - `tests/test_productivity_hardening.py` passes
 - compile checks for the recent gamification/productivity modules pass

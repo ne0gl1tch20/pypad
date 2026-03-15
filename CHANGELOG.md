@@ -10,6 +10,8 @@ The format is based on Keep a Changelog, and this project uses Semantic Versioni
 - Security profiles now support profile-scoped saved security state, so `beginner`, `balanced`, `power_user`, and `custom` can each retain their own trust store, save/privacy preferences, and custom security overrides.
 - External notes now surface a persistent untrusted-note banner with explicit `Trust and Edit`, `Trust for This Session`, and `Keep Read-Only` actions.
 - Security settings now expose fuller custom-profile override controls for plugin, AI, update, save, and trust-persistence behavior.
+- New `Tools > Offline Writing Studio...` workflow for local grammar/style review, heuristic AI-likeness scoring, paraphrasing, and humanizing on either the current selection or the full document.
+- New offline writing-tool settings under `Settings > Preferences > AI & Updates > Language Tools` for grammar backend usage, repeated-word/style detectors, paraphraser/humanizer behavior, and AI-detector sensitivity thresholds.
 - New accessibility coverage across major custom UI surfaces, including accessible names/descriptions for the trust banner, AI chat dock, workspace dialogs, plugin dialogs, tutorial flow, and core dock panels.
 - New accessibility presets for `Large Text` and `Low Stimulation`, alongside the existing high-contrast and dyslexic-font presets.
 - New accessibility smoke coverage for keyboard-first navigation and major dialog metadata.
@@ -30,6 +32,8 @@ The format is based on Keep a Changelog, and this project uses Semantic Versioni
 - Developer diagnostics entry points for debug logs and runtime info now live under the Developer Hub instead of as separate Help-menu dialogs.
 - App/version metadata has been aligned to the `1.8.2` release line across release files, summaries, and update feed metadata.
 - Startup recovery now presents as a dedicated dashboard layout, keeps the main editor hidden while recovery mode is active, and provides one-click restart paths for safe-mode and normal relaunch.
+- Local spellcheck now uses `chunspell` as the multilingual backend, keeps `symspellpy` as an English-only accelerator, and resolves bundled Hunspell dictionaries directly from `assets/dictionaries` in both development runs and PyInstaller builds.
+- Local writing tools now optionally use `language-tool-python` as an on-device grammar backend when installed, while still falling back to built-in offline rule-based checks.
 
 ### Fixed
 - Plugin event emission and plugin write APIs no longer bypass untrusted-note protections when plugin blocking is enabled.
@@ -45,6 +49,8 @@ The format is based on Keep a Changelog, and this project uses Semantic Versioni
 - Keyboard and screen-reader users now get clearer metadata on major custom widgets instead of relying on unnamed controls.
 - `Tools > More > Run Backup Now` now prompts for a destination zip path instead of always writing to the configured backup folder.
 - Closing the startup recovery dashboard during an armed splash-triggered recovery launch now exits the current app session instead of revealing the hidden main window underneath.
+- Spellcheck language normalization now targets the actual bundled dictionary folder names directly, avoiding region-tag mismatches such as `es_ES` vs `es` when loading packaged dictionaries.
+- Spellcheck suggestions now preserve the input word's capitalization pattern, so corrections such as `WAHT` -> `WHAT`, `tset` -> `test`, and `Tset` -> `Test` stay case-appropriate.
 
 ## [1.8.1] - 2026-03-14
 

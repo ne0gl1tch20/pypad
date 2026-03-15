@@ -1103,6 +1103,42 @@ class SettingsDialog(QDialog):
         self.spellcheck_user_dictionary_edit.setPlaceholderText("comma,separated,custom,words")
         lang_tools_layout.addRow("Spellcheck custom words", self.spellcheck_user_dictionary_edit)
         self._register_search(idx, "Spellcheck custom words", self.spellcheck_user_dictionary_edit)
+        self.writing_tools_use_language_tool_checkbox = self._add_check(
+            lang_tools_layout, idx, "Use local LanguageTool grammar engine when installed"
+        )
+        self.writing_tools_detect_repeated_words_checkbox = self._add_check(
+            lang_tools_layout, idx, "Detect repeated words"
+        )
+        self.writing_tools_detect_spacing_checkbox = self._add_check(
+            lang_tools_layout, idx, "Detect spacing issues"
+        )
+        self.writing_tools_detect_capitalization_checkbox = self._add_check(
+            lang_tools_layout, idx, "Detect sentence capitalization issues"
+        )
+        self.writing_tools_detect_weak_phrases_checkbox = self._add_check(
+            lang_tools_layout, idx, "Flag weak or wordy phrases"
+        )
+        self.writing_tools_paraphrase_reduce_passive_checkbox = self._add_check(
+            lang_tools_layout, idx, "Paraphraser reduces passive phrasing"
+        )
+        self.writing_tools_humanizer_break_long_sentences_checkbox = self._add_check(
+            lang_tools_layout, idx, "Humanizer breaks some long sentences"
+        )
+        self.writing_tools_ai_detector_sensitivity_spin = QDoubleSpinBox(ai)
+        self.writing_tools_ai_detector_sensitivity_spin.setDecimals(2)
+        self.writing_tools_ai_detector_sensitivity_spin.setRange(0.5, 1.5)
+        self.writing_tools_ai_detector_sensitivity_spin.setSingleStep(0.05)
+        lang_tools_layout.addRow("AI detector sensitivity", self.writing_tools_ai_detector_sensitivity_spin)
+        self._register_search(idx, "AI detector sensitivity", self.writing_tools_ai_detector_sensitivity_spin)
+        self.writing_tools_ai_sentence_threshold_spin = self._add_spin(
+            lang_tools_layout, idx, "AI detector long-sentence threshold", 8, 60
+        )
+        self.writing_tools_ai_unique_ratio_threshold_spin = QDoubleSpinBox(ai)
+        self.writing_tools_ai_unique_ratio_threshold_spin.setDecimals(2)
+        self.writing_tools_ai_unique_ratio_threshold_spin.setRange(0.1, 0.9)
+        self.writing_tools_ai_unique_ratio_threshold_spin.setSingleStep(0.01)
+        lang_tools_layout.addRow("AI detector vocab-ratio threshold", self.writing_tools_ai_unique_ratio_threshold_spin)
+        self._register_search(idx, "AI detector vocab-ratio threshold", self.writing_tools_ai_unique_ratio_threshold_spin)
         self.lsp_definition_enabled_checkbox = self._add_check(lang_tools_layout, idx, "Enable LSP go-to-definition")
         self.lsp_init_timeout_spin = QDoubleSpinBox(ai)
         self.lsp_init_timeout_spin.setDecimals(1)
@@ -1275,7 +1311,6 @@ class SettingsDialog(QDialog):
             "Feature flags and startup behavior.",
         )
         self.experimental_checkbox = self._add_check(runtime_layout, idx, "Enable experimental features")
-        self.debug_telemetry_checkbox = self._add_check(runtime_layout, idx, "Enable debug telemetry")
         self.plugin_startup_safe_mode_checkbox = self._add_check(
             runtime_layout,
             idx,
@@ -1301,19 +1336,15 @@ class SettingsDialog(QDialog):
         _, diagnostics_layout = self._add_settings_section(
             advanced_page_layout,
             "Diagnostics",
-            "Logging and crash capture controls.",
+            "Open Developer Hub for logging and debug controls.",
         )
-        self.logging_level_combo = self._add_combo(
-            diagnostics_layout,
-            idx,
-            "Logging level",
-            ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        self.developer_hub_settings_hint = QLabel(
+            "Logging level, debug telemetry, and debug log persistence now live in Developer Hub.",
+            advanced,
         )
-        self.save_debug_logs_checkbox = self._add_check(
-            diagnostics_layout,
-            idx,
-            "Save debug logs to app data and write crash traceback logs",
-        )
+        self.developer_hub_settings_hint.setWordWrap(True)
+        diagnostics_layout.addRow(self.developer_hub_settings_hint)
+        self._register_search(idx, "Developer Hub logging debug controls", self.developer_hub_settings_hint)
         meta_box = QGroupBox("Metadata", advanced)
         meta_box.setObjectName("settingsSectionGroup")
         meta_layout = QFormLayout(meta_box)
@@ -1886,6 +1917,22 @@ class SettingsDialog(QDialog):
         self.spellcheck_language_edit.setText(str(s.get("spellcheck_language", "en") or "en"))
         words = s.get("spellcheck_user_dictionary", [])
         self.spellcheck_user_dictionary_edit.setText(", ".join(words if isinstance(words, list) else []))
+        self.writing_tools_use_language_tool_checkbox.setChecked(bool(s.get("writing_tools_use_language_tool", True)))
+        self.writing_tools_detect_repeated_words_checkbox.setChecked(bool(s.get("writing_tools_detect_repeated_words", True)))
+        self.writing_tools_detect_spacing_checkbox.setChecked(bool(s.get("writing_tools_detect_spacing", True)))
+        self.writing_tools_detect_capitalization_checkbox.setChecked(bool(s.get("writing_tools_detect_capitalization", True)))
+        self.writing_tools_detect_weak_phrases_checkbox.setChecked(bool(s.get("writing_tools_detect_weak_phrases", True)))
+        self.writing_tools_paraphrase_reduce_passive_checkbox.setChecked(
+            bool(s.get("writing_tools_paraphrase_reduce_passive", True))
+        )
+        self.writing_tools_humanizer_break_long_sentences_checkbox.setChecked(
+            bool(s.get("writing_tools_humanizer_break_long_sentences", True))
+        )
+        self.writing_tools_ai_detector_sensitivity_spin.setValue(float(s.get("writing_tools_ai_detector_sensitivity", 1.0) or 1.0))
+        self.writing_tools_ai_sentence_threshold_spin.setValue(int(s.get("writing_tools_ai_sentence_threshold", 24)))
+        self.writing_tools_ai_unique_ratio_threshold_spin.setValue(
+            float(s.get("writing_tools_ai_unique_ratio_threshold", 0.42) or 0.42)
+        )
         self.lsp_definition_enabled_checkbox.setChecked(bool(s.get("lsp_definition_enabled", True)))
         self.lsp_init_timeout_spin.setValue(float(s.get("lsp_definition_initialize_timeout_sec", 5.0) or 5.0))
         self.lsp_request_timeout_spin.setValue(float(s.get("lsp_definition_request_timeout_sec", 3.0) or 3.0))
@@ -1923,9 +1970,6 @@ class SettingsDialog(QDialog):
         self.backup_output_dir_edit.setText(str(s.get("backup_output_dir", "")))
 
         self.experimental_checkbox.setChecked(bool(s.get("experimental_features", False)))
-        self.debug_telemetry_checkbox.setChecked(bool(s.get("debug_telemetry_enabled", False)))
-        self.save_debug_logs_checkbox.setChecked(bool(s.get("save_debug_logs_to_appdata", False)))
-        self.logging_level_combo.setCurrentText(str(s.get("logging_level", "INFO")).upper())
         self.plugin_startup_safe_mode_checkbox.setChecked(bool(s.get("plugin_startup_safe_mode", False)))
         self.fast_startup_mode_checkbox.setChecked(bool(s.get("fast_startup_mode", True)))
         self.defer_plugin_load_checkbox.setChecked(bool(s.get("defer_plugin_load_on_startup", True)))
@@ -2050,6 +2094,20 @@ class SettingsDialog(QDialog):
         s["spellcheck_user_dictionary"] = [
             part.strip().lower() for part in self.spellcheck_user_dictionary_edit.text().split(",") if part.strip()
         ]
+        s["writing_tools_use_language_tool"] = self.writing_tools_use_language_tool_checkbox.isChecked()
+        s["writing_tools_detect_repeated_words"] = self.writing_tools_detect_repeated_words_checkbox.isChecked()
+        s["writing_tools_detect_spacing"] = self.writing_tools_detect_spacing_checkbox.isChecked()
+        s["writing_tools_detect_capitalization"] = self.writing_tools_detect_capitalization_checkbox.isChecked()
+        s["writing_tools_detect_weak_phrases"] = self.writing_tools_detect_weak_phrases_checkbox.isChecked()
+        s["writing_tools_paraphrase_reduce_passive"] = self.writing_tools_paraphrase_reduce_passive_checkbox.isChecked()
+        s["writing_tools_humanizer_break_long_sentences"] = (
+            self.writing_tools_humanizer_break_long_sentences_checkbox.isChecked()
+        )
+        s["writing_tools_ai_detector_sensitivity"] = float(self.writing_tools_ai_detector_sensitivity_spin.value())
+        s["writing_tools_ai_sentence_threshold"] = int(self.writing_tools_ai_sentence_threshold_spin.value())
+        s["writing_tools_ai_unique_ratio_threshold"] = float(
+            self.writing_tools_ai_unique_ratio_threshold_spin.value()
+        )
         s["lsp_definition_enabled"] = self.lsp_definition_enabled_checkbox.isChecked()
         s["lsp_definition_initialize_timeout_sec"] = float(self.lsp_init_timeout_spin.value())
         s["lsp_definition_request_timeout_sec"] = float(self.lsp_request_timeout_spin.value())
@@ -2089,9 +2147,6 @@ class SettingsDialog(QDialog):
         s["backup_output_dir"] = self.backup_output_dir_edit.text().strip()
 
         s["experimental_features"] = self.experimental_checkbox.isChecked()
-        s["debug_telemetry_enabled"] = self.debug_telemetry_checkbox.isChecked()
-        s["save_debug_logs_to_appdata"] = self.save_debug_logs_checkbox.isChecked()
-        s["logging_level"] = self.logging_level_combo.currentText().strip().upper() or "INFO"
         s["plugin_startup_safe_mode"] = self.plugin_startup_safe_mode_checkbox.isChecked()
         s["fast_startup_mode"] = self.fast_startup_mode_checkbox.isChecked()
         s["defer_plugin_load_on_startup"] = self.defer_plugin_load_checkbox.isChecked()

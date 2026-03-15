@@ -31,6 +31,7 @@ Current release focus:
 - companion guidance now routes into practical flows such as focus sprint, workspace search, command palette, bug hunt, and planning loop
 - Gamification Dashboard now includes richer tabs for seasonal events, secret trails, and tracked productivity routines
 - local spellcheck, reopen-closed-tab support, discoverability help, and token-based empty-state UI remain part of the current release line
+- local spellcheck now uses a Hunspell-first backend via `chunspell`, keeps `symspellpy` as an English accelerator, and auto-loads bundled dictionaries from `assets/dictionaries` in both dev and PyInstaller builds
 
 ## Major Capabilities
 
@@ -46,6 +47,7 @@ Current release focus:
 - Expanded debug logging around startup, recovery, autosave, and deferred editor refresh paths
 - Update checking/downloading from XML feed (`update.xml`)
 - Unified Preferences (PyPad + Notepad++ compatibility pages)
+- Local spellcheck with bundled multilingual dictionaries and fast English suggestions
 
 ## UI Status
 
