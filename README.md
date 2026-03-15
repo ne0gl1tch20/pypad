@@ -4,9 +4,9 @@ Pypad is a PySide6 desktop text editor built for fast note-taking, multi-tab edi
 
 ## How The App Works
 
-Pypad starts from [`src/run.py`](/c:/Users/user/Downloads/py/RawAPPS/test/notepadclone/src/run.py). The launcher prepares runtime paths, configures logging, installs crash and Qt diagnostic hooks, loads splash assets, and then calls [`pypad.app.main()`](/c:/Users/user/Downloads/py/RawAPPS/test/notepadclone/src/pypad/app.py).
+Pypad starts from `src/run.py`. The launcher prepares runtime paths, configures logging, installs crash and Qt diagnostic hooks, loads splash assets, and then calls `pypad.app.main()`.
 
-The main desktop window is the `Notepad` class in [`src/pypad/ui/main_window/window.py`](/c:/Users/user/Downloads/py/RawAPPS/test/notepadclone/src/pypad/ui/main_window/window.py). It restores settings and session state, initializes workspace and autosave controllers, builds the editor UI, and reveals the window only after startup work is ready.
+The main desktop window is the `Notepad` class in `src/pypad/ui/main_window/window.py`. It restores settings and session state, initializes workspace and autosave controllers, builds the editor UI, and reveals the window only after startup work is ready.
 
 At a high level, the runtime flow is:
 
@@ -46,7 +46,7 @@ The main window combines several responsibilities into one desktop app shell:
 
 ### Editing Engine
 
-Pypad uses Scintilla-style editing behavior for advanced text operations. When native Scintilla is unavailable, it falls back to the compatibility editor in [`src/pypad/ui/editor/scintilla_compat/editor.py`](/c:/Users/user/Downloads/py/RawAPPS/test/notepadclone/src/pypad/ui/editor/scintilla_compat/editor.py).
+Pypad uses Scintilla-style editing behavior for advanced text operations. When native Scintilla is unavailable, it falls back to the compatibility editor in `src/pypad/ui/editor/scintilla_compat/editor.py`.
 
 That layer recreates features such as:
 
@@ -77,7 +77,7 @@ A workspace is an optional root folder used for project-style workflows. Once a 
 - save and reload workspace profiles
 - feed workspace snippets into AI-assisted actions
 
-Workspace behavior is coordinated by [`src/pypad/ui/workspace/workspace_controller.py`](/c:/Users/user/Downloads/py/RawAPPS/test/notepadclone/src/pypad/ui/workspace/workspace_controller.py).
+Workspace behavior is coordinated by `src/pypad/ui/workspace/workspace_controller.py`
 
 ### AI and Assistant Features
 
