@@ -124,6 +124,15 @@ from pypad.ui.theme.asset_paths import resolve_asset_path
 from pypad.ui.system.autosave import AutoSaveRecoveryDialog, AutoSaveStore
 from pypad.ui.system.reminders import ReminderStore, RemindersDialog
 from pypad.ui.security.security_controller import SecurityController
+from pypad.ui.security.note_trust import (
+    SESSION_TRUSTED,
+    TRUSTED,
+    UNTRUSTED,
+    build_persisted_trust_record,
+    classify_note_trust,
+    normalize_trust_path,
+)
+from pypad.ui.security.security_profile import profile_setting, resolve_security_policy, store_active_profile_state
 from pypad.ui.editor.syntax_highlighter import CodeSyntaxHighlighter
 from pypad.ui.system.updater_controller import UpdaterController
 from pypad.ui.system.version_history import VersionEntry, VersionHistoryDialog
@@ -160,12 +169,12 @@ def _terminal_debug_log(message: str, *args) -> None:
 class _TerminalOutputEdit(QTextEdit):
     """Terminal output widget that keeps interaction constrained to the live prompt model."""
     def __init__(self, owner, parent=None) -> None:
-        """Initialize the `misc` state for this instance."""
+        """Create the embedded terminal output view and bind it to its owner."""
         super().__init__(parent)
         self._owner = owner
 
     def focusInEvent(self, event) -> None:
-        """Execute the `focusInEvent` workflow."""
+        """Keep the terminal view focused and move the caret to the end."""
         try:
             QTimer.singleShot(0, self._owner._terminal_move_cursor_to_end)
         except Exception:
@@ -173,7 +182,7 @@ class _TerminalOutputEdit(QTextEdit):
         super().focusInEvent(event)
 
     def mousePressEvent(self, event) -> None:
-        """Execute the `mousePressEvent` workflow."""
+        """Handle mouse press input for this widget."""
         super().mousePressEvent(event)
         try:
             QTimer.singleShot(0, self._owner._terminal_move_cursor_to_end)
@@ -181,7 +190,7 @@ class _TerminalOutputEdit(QTextEdit):
             pass
 
     def mouseDoubleClickEvent(self, event) -> None:
-        """Execute the `mouseDoubleClickEvent` workflow."""
+        """Handle mouse double click input for this widget."""
         super().mouseDoubleClickEvent(event)
         try:
             QTimer.singleShot(0, self._owner._terminal_move_cursor_to_end)
@@ -189,7 +198,7 @@ class _TerminalOutputEdit(QTextEdit):
             pass
 
     def mouseReleaseEvent(self, event) -> None:
-        """Execute the `mouseReleaseEvent` workflow."""
+        """Handle mouse release input for this widget."""
         super().mouseReleaseEvent(event)
         try:
             QTimer.singleShot(0, self._owner._terminal_move_cursor_to_end)
@@ -197,7 +206,7 @@ class _TerminalOutputEdit(QTextEdit):
             pass
 
     def keyPressEvent(self, event) -> None:
-        """Execute the `keyPressEvent` workflow."""
+        """Handle key press input for this widget."""
         try:
             if self._owner._handle_terminal_output_keypress(event):
                 event.accept()
@@ -242,23 +251,213 @@ class MiscMixin(
             """Satisfy static type checkers for attributes provided by sibling mixins."""
             ...
 
+    def _resolved_security_policy(self):
+        """Resolve the effective security policy from current settings."""
+        return resolve_security_policy(getattr(self, "settings", {}) or {})
+
+    def _normalize_trust_path(self, path: str) -> str:
+        """Normalize a path for trust-store lookups."""
+        return normalize_trust_path(path)
+
+    def _load_persisted_file_trust(self, path: str) -> dict | None:
+        """Return a persisted trust record for a path when present."""
+        store = profile_setting(self.settings, "file_trust_store", {})
+        if not isinstance(store, dict):
+            return None
+        return store.get(self._normalize_trust_path(path))
+
+    def _persist_file_trust_for_tab(self, tab: EditorTab) -> None:
+        """Persist trusted tabs into the trust store when profile settings allow it."""
+        if not getattr(tab, "current_file", None):
+            return
+        store = profile_setting(self.settings, "file_trust_store", {})
+        if not isinstance(store, dict):
+            store = {}
+        path = self._normalize_trust_path(str(tab.current_file))
+        resolved = self._resolved_security_policy()
+        if getattr(tab, "trust_state", "") == TRUSTED and resolved.persist_trust_decisions and resolved.allow_persistent_trust:
+            store[path] = build_persisted_trust_record(
+                str(tab.current_file),
+                state=TRUSTED,
+                source=str(getattr(tab, "trust_source", "unknown") or "unknown"),
+                profile_id=resolved.profile_id,
+            )
+        else:
+            store.pop(path, None)
+        self.settings["file_trust_store"] = store
+        store_active_profile_state(self.settings, {"file_trust_store": store})
+
+    def _clear_persisted_file_trust(self, path: str) -> None:
+        """Remove a trust-store record for a path."""
+        store = profile_setting(self.settings, "file_trust_store", {})
+        if not isinstance(store, dict):
+            return
+        store.pop(self._normalize_trust_path(path), None)
+        self.settings["file_trust_store"] = store
+        store_active_profile_state(self.settings, {"file_trust_store": store})
+
+    def _apply_trust_state_to_tab(self, tab: EditorTab) -> None:
+        """Apply trust-driven restrictions to a tab."""
+        is_fs_read_only = False
+        if getattr(tab, "current_file", None) and hasattr(self, "_is_path_read_only"):
+            try:
+                is_fs_read_only = bool(self._is_path_read_only(str(tab.current_file)))
+            except Exception:
+                is_fs_read_only = False
+        trust_enforced = bool(profile_setting(self.settings, "untrusted_note_read_only", True)) and self._is_tab_untrusted(tab)
+        tab.read_only = bool(is_fs_read_only or trust_enforced or getattr(tab, "partial_large_preview", False))
+        tab.text_edit.set_read_only(bool(tab.read_only))
+        restrictions: set[str] = set()
+        if self._is_tab_untrusted(tab):
+            if bool(profile_setting(self.settings, "untrusted_note_block_ai", True)):
+                restrictions.add("ai")
+            if bool(profile_setting(self.settings, "untrusted_note_block_plugins", True)):
+                restrictions.add("plugins")
+            if bool(profile_setting(self.settings, "untrusted_note_block_export", True)):
+                restrictions.add("export")
+            if bool(profile_setting(self.settings, "untrusted_note_require_save_as", True)):
+                restrictions.add("save_as_only")
+        tab.save_restrictions = restrictions
+        if tab is self.active_tab():
+            self._update_note_trust_banner()
+
+    def _is_tab_untrusted(self, tab: EditorTab | None) -> bool:
+        """Return whether the tab is currently untrusted."""
+        return bool(tab and str(getattr(tab, "trust_state", "") or "") == UNTRUSTED)
+
+    def _tab_can_edit(self, tab: EditorTab | None) -> bool:
+        """Return whether the tab is allowed to be edited."""
+        return bool(tab and not getattr(tab, "read_only", False) and not self._is_tab_untrusted(tab))
+
+    def _classify_tab_trust(self, *, path: str | None, open_origin: str) -> tuple[str, str, bool, str | None]:
+        """Resolve trust state from origin, workspace state, and any persisted trust record."""
+        resolved = self._resolved_security_policy()
+        decision = classify_note_trust(
+            path=path,
+            open_origin=open_origin,
+            workspace_root=str(self.settings.get("workspace_root", "") or ""),
+            trust_known_workspace_files=bool(profile_setting(self.settings, "trust_known_workspace_files", True)),
+            persisted_record=self._load_persisted_file_trust(path) if path else None,
+            policy=resolved,
+        )
+        return decision.state, decision.source, decision.persisted, decision.reason
+
+    def prompt_trust_for_tab(self, tab: EditorTab) -> str:
+        """Prompt the user to trust the current note before editing it."""
+        if tab is None or not self._is_tab_untrusted(tab):
+            return "trusted"
+        resolved = self._resolved_security_policy()
+        if not resolved.allow_edit_untrusted_after_prompt:
+            self.show_status_message("Current profile does not allow elevating untrusted notes.", 4000)
+            return UNTRUSTED
+        box = QMessageBox(self)
+        box.setWindowTitle("Untrusted Note")
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setText("This note is untrusted and is currently read-only.")
+        reason = str(getattr(tab, "trust_reason", "") or "").strip()
+        detail = "Choose how to proceed."
+        if reason:
+            detail = f"{reason}\n\nChoose how to proceed."
+        box.setInformativeText(detail)
+        trust_btn = box.addButton("Trust and Edit", QMessageBox.AcceptRole)
+        session_btn = box.addButton("Trust for This Session", QMessageBox.ActionRole)
+        box.addButton("Keep Read-Only", QMessageBox.RejectRole)
+        box.exec()
+        clicked = box.clickedButton()
+        session_only_default = bool(profile_setting(self.settings, "file_trust_persist_session_only_default", True))
+        if clicked == trust_btn and not session_only_default:
+            self.trust_tab_persistently(tab)
+            return TRUSTED
+        if clicked == trust_btn and session_only_default:
+            self.trust_tab_for_session(tab)
+            return SESSION_TRUSTED
+        if clicked == session_btn:
+            self.trust_tab_for_session(tab)
+            return SESSION_TRUSTED
+        return UNTRUSTED
+
+    def trust_tab_persistently(self, tab: EditorTab) -> None:
+        """Mark a tab as trusted and persist it when allowed."""
+        if tab is None:
+            return
+        resolved = self._resolved_security_policy()
+        if not resolved.allow_persistent_trust:
+            self.trust_tab_for_session(tab)
+            return
+        tab.trust_state = TRUSTED
+        tab.trust_persisted = bool(resolved.persist_trust_decisions)
+        self._apply_trust_state_to_tab(tab)
+        self._persist_file_trust_for_tab(tab)
+        if hasattr(self, "save_settings_to_disk"):
+            self.save_settings_to_disk()
+        if hasattr(self, "_refresh_tab_title"):
+            self._refresh_tab_title(tab)
+        self._update_note_trust_banner()
+        self.show_status_message("Note trusted for editing.", 3000)
+        self.update_action_states()
+
+    def trust_tab_for_session(self, tab: EditorTab) -> None:
+        """Allow editing for the current session only."""
+        if tab is None:
+            return
+        tab.trust_state = SESSION_TRUSTED
+        tab.trust_persisted = False
+        self._clear_persisted_file_trust(str(tab.current_file or ""))
+        self._apply_trust_state_to_tab(tab)
+        if hasattr(self, "_refresh_tab_title"):
+            self._refresh_tab_title(tab)
+        self._update_note_trust_banner()
+        self.show_status_message("Note trusted for this session.", 3000)
+        self.update_action_states()
+
+    def revert_tab_to_untrusted(self, tab: EditorTab) -> None:
+        """Revert a tab to untrusted state."""
+        if tab is None:
+            return
+        tab.trust_state = UNTRUSTED
+        tab.trust_persisted = False
+        self._clear_persisted_file_trust(str(tab.current_file or ""))
+        self._apply_trust_state_to_tab(tab)
+        if hasattr(self, "_refresh_tab_title"):
+            self._refresh_tab_title(tab)
+        self._update_note_trust_banner()
+        self.show_status_message("Note reverted to untrusted read-only mode.", 3000)
+        self.update_action_states()
+
+    def _update_note_trust_banner(self) -> None:
+        """Refresh the persistent trust banner for the active tab."""
+        banner = getattr(self, "note_trust_banner", None)
+        label = getattr(self, "note_trust_banner_label", None)
+        if banner is None or label is None:
+            return
+        tab = self.active_tab() if hasattr(self, "active_tab") else None
+        if tab is None or str(getattr(tab, "trust_state", "") or "") != UNTRUSTED:
+            banner.hide()
+            return
+        reason = str(getattr(tab, "trust_reason", "") or "").strip()
+        if reason:
+            label.setText(f"Untrusted note: {reason}")
+        else:
+            label.setText("Untrusted note: this file opened read-only until you explicitly trust it.")
+        banner.show()
+
     class _EasterEggBall(QWidget):
         """Small draggable physics toy used as a lightweight easter egg in the main window."""
         class _BallPreview(QWidget):
             """Preview widget used by the ball color-picker dialog."""
             def __init__(self, color: QColor, parent: QWidget | None = None) -> None:
-                """Initialize the `misc` state for this instance."""
+                """Build the color preview widget used inside the ball color picker."""
                 super().__init__(parent)
                 self._color = QColor(color)
                 self.setFixedSize(86, 86)
 
             def set_color(self, color: QColor) -> None:
-                """Update state handled by `set_color`."""
+                """Update the preview color and repaint the widget."""
                 self._color = QColor(color)
                 self.update()
 
             def paintEvent(self, event) -> None:  # type: ignore[override]
-                """Execute the `paintEvent` workflow."""
+                """Paint the widget using the current theme and state."""
                 painter = QPainter(self)
                 painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
                 painter.fillRect(self.rect(), QColor("#1f2329"))
@@ -271,7 +470,7 @@ class MiscMixin(
                 super().paintEvent(event)
 
         def __init__(self, host: QWidget) -> None:
-            """Initialize the `misc` state for this instance."""
+            """Build the floating ball widget and initialize its animation state."""
             super().__init__(host)
             self._host = host
             self._diameter = 56
@@ -295,7 +494,7 @@ class MiscMixin(
             self._timer.start(16)
 
         def paintEvent(self, event) -> None:  # type: ignore[override]
-            """Execute the `paintEvent` workflow."""
+            """Paint the widget using the current theme and state."""
             painter = QPainter(self)
             painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
             painter.setPen(Qt.PenStyle.NoPen)
@@ -307,7 +506,7 @@ class MiscMixin(
             super().paintEvent(event)
 
         def mousePressEvent(self, event) -> None:  # type: ignore[override]
-            """Execute the `mousePressEvent` workflow."""
+            """Handle mouse press input for this widget."""
             if event.button() == Qt.MouseButton.LeftButton:
                 self._dragging = True
                 self._drag_offset = event.position().toPoint()
@@ -317,7 +516,7 @@ class MiscMixin(
             super().mousePressEvent(event)
 
         def mouseMoveEvent(self, event) -> None:  # type: ignore[override]
-            """Execute the `mouseMoveEvent` workflow."""
+            """Handle mouse movement for this widget."""
             if self._dragging:
                 target = self.mapToParent(event.position().toPoint() - self._drag_offset)
                 bounded = self._bounded_pos(target)
@@ -327,7 +526,7 @@ class MiscMixin(
             super().mouseMoveEvent(event)
 
         def mouseReleaseEvent(self, event) -> None:  # type: ignore[override]
-            """Execute the `mouseReleaseEvent` workflow."""
+            """Handle mouse release input for this widget."""
             if event.button() == Qt.MouseButton.LeftButton and self._dragging:
                 self._dragging = False
                 self.setCursor(Qt.CursorShape.OpenHandCursor)
@@ -345,14 +544,14 @@ class MiscMixin(
             super().mouseReleaseEvent(event)
 
         def moveEvent(self, event) -> None:  # type: ignore[override]
-            """Execute the `moveEvent` workflow."""
+            """Update cached position state when the widget moves."""
             pos = self.pos()
             self._pos_x = float(pos.x())
             self._pos_y = float(pos.y())
             super().moveEvent(event)
 
         def _bounded_pos(self, pos: QPoint) -> QPoint:
-            """Internal helper for `_bounded_pos`."""
+            """Clamp the floating widget position to the allowed bounds."""
             bounds = self._bounds_rect()
             min_x = bounds.left()
             min_y = bounds.top()
@@ -361,14 +560,14 @@ class MiscMixin(
             return QPoint(max(min_x, min(pos.x(), max_x)), max(min_y, min(pos.y(), max_y)))
 
         def _bounds_rect(self) -> QRect:
-            """Internal helper for `_bounds_rect`."""
+            """Return the rectangle that bounds the floating widget movement."""
             host = self.parentWidget()
             if host is None:
                 return QRect(0, 0, 800, 600)
             return host.rect()
 
         def _open_color_picker(self) -> None:
-            """Internal helper for `_open_color_picker`."""
+            """Open color picker."""
             dlg = QDialog(self, Qt.WindowType.Dialog | Qt.WindowType.CustomizeWindowHint | Qt.WindowType.WindowTitleHint | Qt.WindowType.WindowCloseButtonHint)
             dlg.setWindowTitle("Ball Color")
             dlg.setWindowFlag(Qt.WindowType.WindowMaximizeButtonHint, False)
@@ -385,7 +584,7 @@ class MiscMixin(
             chosen = QColor(self._ball_color)
 
             def _choose() -> None:
-                """Internal helper for `_choose`."""
+                """Store the color chosen in the picker dialog."""
                 nonlocal chosen
                 color = QColorDialog.getColor(chosen, dlg, "Choose Ball Color")
                 if color.isValid():
@@ -405,7 +604,7 @@ class MiscMixin(
                 self.update()
 
         def _tick(self) -> None:
-            """Internal helper for `_tick`."""
+            """Advance the animation state for the next frame."""
             if self._dragging:
                 return
             bounds = self._bounds_rect()
@@ -435,20 +634,20 @@ class MiscMixin(
             self._set_float_pos(next_x, next_y)
 
         def _set_float_pos(self, x: float, y: float) -> None:
-            """Internal helper for `_set_float_pos`."""
+            """Store the floating-point position used for smooth animation."""
             self._pos_x = float(x)
             self._pos_y = float(y)
             self.move(int(round(self._pos_x)), int(round(self._pos_y)))
 
         def closeEvent(self, event) -> None:  # type: ignore[override]
-            """Execute the `closeEvent` workflow."""
+            """Shut down widget-specific state before the widget closes."""
             self._timer.stop()
             super().closeEvent(event)
 
     class _EasterEggBallGame(QWidget):
         """Arcade-style easter egg mini-game hosted inside the main window."""
         def __init__(self, host: QWidget, mode: str = "score") -> None:
-            """Initialize the `misc` state for this instance."""
+            """Build the easter egg mini-game widget and initialize its game state."""
             super().__init__(host)
             self._host = host
             self._state = self._host._easter_egg_ball_state()
@@ -507,11 +706,11 @@ class MiscMixin(
             self._timer.start(16)
 
         def _bounds_rect(self) -> QRect:
-            """Internal helper for `_bounds_rect`."""
+            """Return the rectangle that bounds the floating widget movement."""
             return QRect(self._arena_margin, 62, max(180, self.width() - self._arena_margin * 2), max(140, self.height() - 120))
 
         def _bounded_pos(self, x: float, y: float) -> tuple[float, float]:
-            """Internal helper for `_bounded_pos`."""
+            """Clamp the floating widget position to the allowed bounds."""
             bounds = self._bounds_rect()
             min_x = float(bounds.left())
             min_y = float(bounds.top())
@@ -523,11 +722,11 @@ class MiscMixin(
             )
 
         def _set_float_pos(self, x: float, y: float) -> None:
-            """Internal helper for `_set_float_pos`."""
+            """Store the floating-point position used for smooth movement."""
             self._pos_x, self._pos_y = self._bounded_pos(x, y)
 
         def _resolve_obstacle_collision(self, obstacle: dict[str, float]) -> None:
-            """Internal helper for `_resolve_obstacle_collision`."""
+            """Resolve collisions between the player and active obstacles."""
             ball_left = self._pos_x
             ball_top = self._pos_y
             ball_right = ball_left + self._diameter
@@ -557,7 +756,7 @@ class MiscMixin(
                 self._vel_y = abs(self._vel_y) * self._bounce
 
         def _spawn_obstacles(self, count: int) -> None:
-            """Internal helper for `_spawn_obstacles`."""
+            """Spawn obstacles for the current run based on the game state."""
             bounds = self._bounds_rect()
             self._obstacles = []
             for idx in range(max(1, count)):
@@ -575,7 +774,7 @@ class MiscMixin(
                 )
 
         def _reset_run(self, mode: str) -> None:
-            """Internal helper for `_reset_run`."""
+            """Reset the mini-game state for a new run."""
             self._mode = "freeplay" if mode == "freeplay" else "score"
             self._state["last_mode"] = self._mode
             self._pos_x = 96.0
@@ -605,12 +804,12 @@ class MiscMixin(
             self._persist_state_if_needed(time.time(), force=True)
 
         def _show_spark(self, text: str) -> None:
-            """Internal helper for `_show_spark`."""
+            """Show a short transient label for the latest in-game event."""
             self._spark_text = str(text or "").strip()
             self._spark_until = time.time() + 1.6
 
         def _play_sound(self, cue: str) -> None:
-            """Internal helper for `_play_sound`."""
+            """Play the requested mini-game sound effect when audio is enabled."""
             if not self._host.settings.get("sound_enabled", True):
                 return
             now = time.time()
@@ -626,29 +825,29 @@ class MiscMixin(
                 QTimer.singleShot(180, QApplication.beep)
 
         def _persist_state(self) -> None:
-            """Internal helper for `_persist_state`."""
+            """Persist the current mini-game state to settings."""
             self._state["best_score"] = max(int(self._state.get("best_score", 0) or 0), self._best_score)
             self._state["best_combo"] = max(int(self._state.get("best_combo", 0) or 0), self._best_combo)
             self._state["leaderboard"] = self._leaderboard
             self._host.settings["gamification_state"] = self._host.gamification.state()
 
         def _persist_state_if_needed(self, now: float, *, force: bool = False) -> None:
-            """Internal helper for `_persist_state_if_needed`."""
+            """Persist the mini-game state when enough time has elapsed or saving is forced."""
             if not force and now - self._last_persist_ts < 0.35:
                 return
             self._last_persist_ts = now
             self._persist_state()
 
         def _power_active(self, kind: str) -> bool:
-            """Internal helper for `_power_active`."""
+            """Return whether the requested power-up is currently active."""
             return float(self._power_until.get(kind, 0.0)) > time.time()
 
         def _event_active(self, kind: str) -> bool:
-            """Internal helper for `_event_active`."""
+            """Return whether the requested random event is currently active."""
             return bool(self._random_event and self._random_event.get("kind") == kind and float(self._random_event.get("until", 0.0)) > time.time())
 
         def _unlock_value(self, key: str, value: str, should_unlock: bool) -> None:
-            """Internal helper for `_unlock_value`."""
+            """Unlock and return a reward value when the unlock condition is met."""
             if not should_unlock:
                 return
             current = self._state.get(key, [])
@@ -661,7 +860,7 @@ class MiscMixin(
             self._persist_state()
 
         def _tick(self) -> None:
-            """Internal helper for `_tick`."""
+            """Advance the animation state for the next frame."""
             if self._paused:
                 return
             if self._dragging:
@@ -815,7 +1014,7 @@ class MiscMixin(
             self.update()
 
         def paintEvent(self, event) -> None:  # type: ignore[override]
-            """Execute the `paintEvent` workflow."""
+            """Paint the widget using the current theme and state."""
             painter = QPainter(self)
             painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
             rect = self.rect()
@@ -880,7 +1079,7 @@ class MiscMixin(
             super().paintEvent(event)
 
         def mousePressEvent(self, event) -> None:  # type: ignore[override]
-            """Execute the `mousePressEvent` workflow."""
+            """Handle mouse press input for this widget."""
             if event.button() == Qt.MouseButton.LeftButton:
                 center = QPoint(int(self._pos_x + self._diameter / 2), int(self._pos_y + self._diameter / 2))
                 if math.hypot(event.position().x() - center.x(), event.position().y() - center.y()) <= self._diameter:
@@ -892,7 +1091,7 @@ class MiscMixin(
             super().mousePressEvent(event)
 
         def mouseMoveEvent(self, event) -> None:  # type: ignore[override]
-            """Execute the `mouseMoveEvent` workflow."""
+            """Handle mouse movement for this widget."""
             if self._dragging:
                 target = event.position().toPoint() - self._drag_offset
                 if self._event_active("reverse"):
@@ -903,7 +1102,7 @@ class MiscMixin(
             super().mouseMoveEvent(event)
 
         def mouseReleaseEvent(self, event) -> None:  # type: ignore[override]
-            """Execute the `mouseReleaseEvent` workflow."""
+            """Handle mouse release input for this widget."""
             if event.button() == Qt.MouseButton.LeftButton and self._dragging:
                 self._dragging = False
                 self.setCursor(Qt.CursorShape.OpenHandCursor)
@@ -933,14 +1132,14 @@ class MiscMixin(
             super().mouseReleaseEvent(event)
 
         def mouseDoubleClickEvent(self, event) -> None:  # type: ignore[override]
-            """Execute the `mouseDoubleClickEvent` workflow."""
+            """Handle mouse double click input for this widget."""
             self._paused = not self._paused
             self._show_spark("Paused" if self._paused else "Resume")
             self.update()
             super().mouseDoubleClickEvent(event)
 
         def keyPressEvent(self, event) -> None:  # type: ignore[override]
-            """Execute the `keyPressEvent` workflow."""
+            """Handle key press input for this widget."""
             if event.key() == Qt.Key.Key_Space:
                 self._paused = not self._paused
                 self._show_spark("Paused" if self._paused else "Resume")
@@ -962,7 +1161,7 @@ class MiscMixin(
             super().keyPressEvent(event)
 
         def closeEvent(self, event) -> None:  # type: ignore[override]
-            """Execute the `closeEvent` workflow."""
+            """Shut down widget-specific state before the widget closes."""
             self._persist_state_if_needed(time.time(), force=True)
             self._timer.stop()
             super().closeEvent(event)
@@ -971,12 +1170,12 @@ class MiscMixin(
     class _ExplorerIconProvider(QFileIconProvider):
         """Icon provider that maps workspace and explorer items onto themed app icons."""
         def __init__(self, owner: "MiscMixin") -> None:
-            """Initialize the `misc` state for this instance."""
+            """Create the file icon provider used by the themed explorer."""
             super().__init__()
             self._owner = owner
 
         def icon(self, arg):  # type: ignore[override]
-            """Execute the `icon` workflow."""
+            """Return themed file icons for the explorer tree."""
             if isinstance(arg, QFileInfo):
                 info = arg
                 name = self._owner._explorer_icon_name_for_info(info)
@@ -989,18 +1188,18 @@ class MiscMixin(
     class _ExplorerItemDelegate(QStyledItemDelegate):
         """Custom delegate used to paint explorer rows with app-specific styling cues."""
         def __init__(self, view: QTreeView, owner: "MiscMixin") -> None:
-            """Initialize the `misc` state for this instance."""
+            """Create the tree delegate that paints explorer rows and chevrons."""
             super().__init__(view)
             self._view = view
             self._owner = owner
             self._chevron_w = 14
 
         def _chevron_rect(self, option: QStyleOptionViewItem) -> QRect:
-            """Internal helper for `_chevron_rect`."""
+            """Return the rectangle used to paint the tree chevron."""
             return QRect(option.rect.left() + 2, option.rect.top(), self._chevron_w, option.rect.height())
 
         def paint(self, painter: QPainter, option: QStyleOptionViewItem, index) -> None:  # type: ignore[override]
-            """Execute the `paint` workflow."""
+            """Paint the custom tree item, including the expand chevron."""
             if index.column() != 0:
                 super().paint(painter, option, index)
                 return
@@ -1049,7 +1248,7 @@ class MiscMixin(
             painter.restore()
 
         def editorEvent(self, event, model, option, index):  # type: ignore[override]
-            """Execute the `editorEvent` workflow."""
+            """Toggle the tree row expansion when the chevron is clicked."""
             if index.column() == 0 and bool(model.hasChildren(index)):
                 if event.type() == QEvent.Type.MouseButtonRelease:
                     pos = event.pos()
@@ -1063,7 +1262,7 @@ class MiscMixin(
 
     @staticmethod
     def _normalize_tags(raw: list[str] | tuple[str, ...] | str) -> list[str]:
-        """Internal helper for `_normalize_tags`."""
+        """Normalize tab tags into a deduplicated lowercase list."""
         if isinstance(raw, str):
             tokens = [part.strip() for part in raw.split(",")]
         else:
@@ -1095,15 +1294,15 @@ class MiscMixin(
         self._update_gamification_status_labels()
 
     def _gamification_enabled(self) -> bool:
-        """Internal helper for `_gamification_enabled`."""
+        """Return whether gamification features are enabled in settings."""
         return bool(self.settings.get("gamification_enabled", True))
 
     def _session_review_enabled(self) -> bool:
-        """Internal helper for `_session_review_enabled`."""
+        """Return whether session review prompts are enabled."""
         return bool(self.settings.get("session_review_enabled", False))
 
     def _sync_seasonal_events(self) -> None:
-        """Internal helper for `_sync_seasonal_events`."""
+        """Refresh seasonal event data from the current date and settings."""
         if not self._gamification_enabled():
             return
         if not self.gamification.active_events():
@@ -1111,7 +1310,7 @@ class MiscMixin(
         self.gamification.sync_active_event_progress()
 
     def _refresh_seasonal_event_state(self) -> None:
-        """Internal helper for `_refresh_seasonal_event_state`."""
+        """Refresh seasonal event state."""
         if not self._gamification_enabled() or not hasattr(self, "gamification"):
             return
         unlocked = self.gamification.sync_active_event_progress()
@@ -1124,7 +1323,7 @@ class MiscMixin(
         self._refresh_productivity_hub()
 
     def _update_gamification_status_labels(self) -> None:
-        """Internal helper for `_update_gamification_status_labels`."""
+        """Update gamification status labels."""
         if not hasattr(self, "gamification") or not self._gamification_enabled():
             return
         payload = self.gamification.progress_snapshot()
@@ -1134,7 +1333,7 @@ class MiscMixin(
             self.status_panel_gamification_widget.update_payload(payload)
 
     def _show_gamification_progress(self, result: XPResult | None, notes: list[str] | None = None) -> None:
-        """Internal helper for `_show_gamification_progress`."""
+        """Show gamification progress."""
         if not self._gamification_enabled():
             return
         self._update_gamification_status_labels()
@@ -1173,7 +1372,7 @@ class MiscMixin(
         self._refresh_productivity_hub()
 
     def _refresh_productivity_hub(self) -> None:
-        """Internal helper for `_refresh_productivity_hub`."""
+        """Refresh productivity hub."""
         if hasattr(self, "gamification") and hasattr(self, "momentum_banner_widget"):
             self.momentum_banner_widget.update_payload(self.gamification.productivity_snapshot())
         hub = getattr(self, "productivity_hub_widget", None)
@@ -1190,7 +1389,7 @@ class MiscMixin(
         primary_label: str | None = None,
         primary_handler=None,
     ) -> None:
-        """Internal helper for `_show_productivity_info_dialog`."""
+        """Show productivity info dialog."""
         dlg = QDialog(self)
         dlg.setWindowTitle(title)
         dlg.resize(760, 560)
@@ -1226,7 +1425,7 @@ class MiscMixin(
         dlg.exec()
 
     def show_daily_briefing(self) -> None:
-        """Execute the `show_daily_briefing` workflow."""
+        """Show daily briefing."""
         if not self._gamification_enabled() or not hasattr(self, "gamification"):
             return
         self.gamification.push_activity("Daily Briefing", "Opened today's quest and companion guidance.")
@@ -1247,7 +1446,7 @@ class MiscMixin(
         self._onboarding_mark_step("opened_daily_briefing")
 
     def show_seasonal_event_briefing(self) -> None:
-        """Execute the `show_seasonal_event_briefing` workflow."""
+        """Show seasonal event briefing."""
         if not self._gamification_enabled() or not hasattr(self, "gamification"):
             return
         self.gamification.push_activity("Seasonal Event", "Checked the live seasonal event briefing.")
@@ -1262,7 +1461,7 @@ class MiscMixin(
         self._onboarding_mark_step("opened_seasonal_event_briefing")
 
     def show_session_review(self, *, auto: bool = False) -> None:
-        """Execute the `show_session_review` workflow."""
+        """Show session review."""
         if not self._gamification_enabled() or not hasattr(self, "gamification"):
             return
         review = self.gamification.record_session_review(
@@ -1304,7 +1503,7 @@ class MiscMixin(
             self._onboarding_mark_step("opened_session_review")
 
     def run_coach_recommendation(self) -> None:
-        """Execute the `run_coach_recommendation` workflow."""
+        """Show and apply the next recommended productivity action."""
         if not self._gamification_enabled() or not hasattr(self, "gamification"):
             return
         recommendation = self.gamification.recommended_action()
@@ -1313,7 +1512,7 @@ class MiscMixin(
         detail = str(recommendation.get("detail", "") or "Here is the next best action based on your current progress.")
 
         def _execute() -> None:
-            """Internal helper for `_execute`."""
+            """Run the selected productivity action from the dashboard."""
             if action_id == "focus_sprint":
                 self.start_focus_sprint_mode()
             elif action_id == "workspace_search":
@@ -1338,7 +1537,7 @@ class MiscMixin(
         self._onboarding_mark_step("used_coach_recommendation")
 
     def run_productivity_routine(self) -> None:
-        """Execute the `run_productivity_routine` workflow."""
+        """Walk through a selected productivity routine and record the result."""
         if not self._gamification_enabled() or not hasattr(self, "gamification"):
             return
         routines = self.gamification.productivity_routines()
@@ -1371,7 +1570,7 @@ class MiscMixin(
         self._onboarding_mark_step("used_productivity_routine")
 
     def _unlock_easter_egg(self, title: str, detail: str) -> None:
-        """Internal helper for `_unlock_easter_egg`."""
+        """Unlock an easter egg and record the discovery in gamification state."""
         if not self._gamification_enabled():
             return
         if not self.gamification.add_achievement(title):
@@ -1385,7 +1584,7 @@ class MiscMixin(
         self.show_status_message(f"Unlocked: {title}", 3200)
 
     def _evaluate_easter_eggs(self, event_name: str, payload: dict[str, Any] | None = None) -> None:
-        """Internal helper for `_evaluate_easter_eggs`."""
+        """Check recent user actions for easter egg unlock conditions."""
         if not self._gamification_enabled() or not hasattr(self, "gamification"):
             return
         data = payload or {}
@@ -1430,16 +1629,16 @@ class MiscMixin(
 
     @staticmethod
     def _gamification_word_count(text: str) -> int:
-        """Internal helper for `_gamification_word_count`."""
+        """Count words for gamification progress tracking."""
         return len([word for word in re.findall(r"\b\w+\b", text or "") if word.strip()])
 
     @staticmethod
     def _gamification_todo_count(text: str) -> int:
-        """Internal helper for `_gamification_todo_count`."""
+        """Count TODO markers for gamification progress tracking."""
         return len(re.findall(r"TODO", text or "", flags=re.IGNORECASE))
 
     def _sync_gamification_tab_snapshot(self, tab: Any) -> None:
-        """Internal helper for `_sync_gamification_tab_snapshot`."""
+        """Sync gamification tab snapshot."""
         if tab is None or not hasattr(tab, "text_edit"):
             return
         try:
@@ -1451,7 +1650,7 @@ class MiscMixin(
         tab._gamification_prev_todo_count = self._gamification_todo_count(text)
 
     def _gamification_on_text_changed(self) -> None:
-        """Internal helper for `_gamification_on_text_changed`."""
+        """Update gamification progress after the active document changes."""
         if not self._gamification_enabled() or not hasattr(self, "gamification"):
             return
         tab = self.active_tab()
@@ -1486,7 +1685,7 @@ class MiscMixin(
         tab._gamification_prev_todo_count = curr_todo_count
 
     def open_gamification_dashboard(self) -> None:
-        """Open the UI or resource handled by `open_gamification_dashboard`."""
+        """Open the gamification dashboard dialog."""
         if not self._gamification_enabled():
             QMessageBox.information(self, "Gamification", "Gamification is disabled in settings.")
             return
@@ -1496,7 +1695,7 @@ class MiscMixin(
         self._maybe_show_contextual_tip("after_gamification_dashboard")
 
     def start_focus_sprint_mode(self) -> bool:
-        """Execute the `start_focus_sprint_mode` workflow."""
+        """Start a timed focus sprint for the active workspace session."""
         if not self._gamification_enabled():
             return False
         minutes, ok = QInputDialog.getInt(self, "Focus Sprint", "Minutes:", value=15, minValue=1, maxValue=120)
@@ -1509,7 +1708,7 @@ class MiscMixin(
         return True
 
     def _finish_focus_sprint(self) -> None:
-        """Internal helper for `_finish_focus_sprint`."""
+        """Finish the active focus sprint and record the result."""
         mode = self.gamification.state().get("challenge_modes", {}).get("focus_sprint", {})
         if not isinstance(mode, dict) or not bool(mode.get("active", False)):
             return
@@ -1519,7 +1718,7 @@ class MiscMixin(
         self._evaluate_easter_eggs("focus_sprint")
 
     def toggle_no_backspace_challenge(self) -> None:
-        """Toggle the state controlled by `toggle_no_backspace_challenge`."""
+        """Enable or disable the no-backspace typing challenge for the active session."""
         if not self._gamification_enabled():
             return
         state = self.gamification.state().get("challenge_modes", {}).get("no_backspace", {})
@@ -1530,12 +1729,12 @@ class MiscMixin(
 
     @staticmethod
     def _typing_test_type_here_marker() -> str:
-        """Internal helper for `_typing_test_type_here_marker`."""
+        """Return the marker text that separates the typing prompt from user input."""
         return "Type here:"
 
     @staticmethod
     def _typing_test_default_words() -> list[str]:
-        """Internal helper for `_typing_test_default_words`."""
+        """Return the default word list used by the typing test."""
         return (
             "code editor python window signal timer widget action keyboard plugin workspace markdown "
             "cursor document file search replace sprint focus challenge speed accuracy result session "
@@ -1544,12 +1743,12 @@ class MiscMixin(
 
     @staticmethod
     def _typing_test_parse_words(raw: str) -> list[str]:
-        """Internal helper for `_typing_test_parse_words`."""
+        """Parse a raw word list into normalized typing-test tokens."""
         tokens = re.findall(r"[A-Za-z0-9][A-Za-z0-9'_-]*", str(raw or ""))
         return [token for token in tokens if token.strip()]
 
     def _typing_test_settings_payload(self) -> dict[str, Any]:
-        """Internal helper for `_typing_test_settings_payload`."""
+        """Build the typing test configuration from current settings."""
         words = self._typing_test_parse_words(str(self.settings.get("typing_test_custom_words", "") or ""))
         return {
             "duration_sec": max(15, int(self.settings.get("typing_test_duration_sec", 60) or 60)),
@@ -1561,7 +1760,7 @@ class MiscMixin(
 
     @classmethod
     def _typing_test_build_prompt_words(cls, config: dict[str, Any]) -> list[str]:
-        """Internal helper for `_typing_test_build_prompt_words`."""
+        """Build the list of prompt words shown in the typing test."""
         custom_words = config.get("custom_words", [])
         bank = [str(word).strip() for word in custom_words if str(word).strip()] if isinstance(custom_words, list) else []
         if not bank:
@@ -1574,7 +1773,7 @@ class MiscMixin(
 
     @classmethod
     def _typing_test_build_document(cls, prompt_words: list[str], config: dict[str, Any]) -> str:
-        """Internal helper for `_typing_test_build_document`."""
+        """Build the typing test document shown to the user."""
         prompt = " ".join(str(word) for word in prompt_words if str(word).strip())
         mode = "Random" if bool(config.get("randomize_words", True)) else "Sequence"
         case_mode = "On" if bool(config.get("case_sensitive", False)) else "Off"
@@ -1592,7 +1791,7 @@ class MiscMixin(
 
     @classmethod
     def _typing_test_extract_typed_text(cls, text: str) -> str:
-        """Internal helper for `_typing_test_extract_typed_text`."""
+        """Extract only the user-typed portion of the typing test document."""
         marker = cls._typing_test_type_here_marker()
         source = str(text or "")
         if marker not in source:
@@ -1601,13 +1800,13 @@ class MiscMixin(
 
     @staticmethod
     def _typing_test_word_token(word: str, *, case_sensitive: bool) -> str:
-        """Internal helper for `_typing_test_word_token`."""
+        """Normalize a single typing-test word for comparison."""
         text = str(word or "").strip()
         return text if case_sensitive else text.lower()
 
     @classmethod
     def _typing_test_score(cls, prompt_words: list[str], typed_text: str, *, elapsed_sec: float, case_sensitive: bool) -> dict[str, Any]:
-        """Internal helper for `_typing_test_score`."""
+        """Score the typed text against the expected prompt."""
         typed_words = cls._typing_test_parse_words(typed_text)
         expected_words = [str(word).strip() for word in prompt_words if str(word).strip()]
         correct_words = 0
@@ -1640,7 +1839,7 @@ class MiscMixin(
         }
 
     def _typing_test_find_active_tab(self) -> EditorTab | None:
-        """Internal helper for `_typing_test_find_active_tab`."""
+        """Return the active tab that is running the typing test."""
         for index in range(self.tab_widget.count()):
             tab = self.tab_widget.widget(index)
             if isinstance(tab, EditorTab) and bool(getattr(tab, "typing_test_mode_enabled", False)) and not bool(
@@ -1650,7 +1849,7 @@ class MiscMixin(
         return None
 
     def _typing_test_ensure_timer(self) -> None:
-        """Internal helper for `_typing_test_ensure_timer`."""
+        """Create the typing test timer when it has not been initialized."""
         timer = getattr(self, "_typing_test_timer", None)
         if isinstance(timer, QTimer):
             return
@@ -1659,7 +1858,7 @@ class MiscMixin(
         self._typing_test_timer.timeout.connect(self._tick_typing_speed_test)
 
     def _refresh_typing_test_annotations(self, tab: EditorTab) -> None:
-        """Internal helper for `_refresh_typing_test_annotations`."""
+        """Refresh inline annotations that show typing test progress and mistakes."""
         if tab is None or not bool(getattr(tab, "typing_test_mode_enabled", False)):
             return
         widget = getattr(tab.text_edit, "widget", None)
@@ -1692,7 +1891,7 @@ class MiscMixin(
             pass
 
     def _handle_typing_test_text_changed(self, tab: EditorTab) -> None:
-        """Internal helper for `_handle_typing_test_text_changed`."""
+        """Update typing test progress after the document text changes."""
         if tab is None or not bool(getattr(tab, "typing_test_mode_enabled", False)) or bool(getattr(tab, "typing_test_finished", False)):
             return
         typed_text = self._typing_test_extract_typed_text(tab.text_edit.get_text())
@@ -1708,7 +1907,7 @@ class MiscMixin(
             self._finish_typing_speed_test(tab, timed_out=True)
 
     def _tick_typing_speed_test(self) -> None:
-        """Internal helper for `_tick_typing_speed_test`."""
+        """Advance the typing test timer and refresh progress state."""
         tab = self._typing_test_find_active_tab()
         if tab is None:
             timer = getattr(self, "_typing_test_timer", None)
@@ -1722,7 +1921,7 @@ class MiscMixin(
             self._finish_typing_speed_test(tab, timed_out=True)
 
     def _finish_typing_speed_test(self, tab: EditorTab, *, timed_out: bool) -> None:
-        """Internal helper for `_finish_typing_speed_test`."""
+        """Finalize the typing test and show the result summary."""
         if tab is None or not bool(getattr(tab, "typing_test_mode_enabled", False)) or bool(getattr(tab, "typing_test_finished", False)):
             return
         config = dict(getattr(tab, "typing_test_config", {}) or {})
@@ -1758,7 +1957,7 @@ class MiscMixin(
         )
 
     def quit_typing_speed_test(self) -> None:
-        """Execute the `quit_typing_speed_test` workflow."""
+        """Exit typing test mode in the active tab."""
         tab = self.active_tab()
         if tab is None or not bool(getattr(tab, "typing_test_mode_enabled", False)):
             return
@@ -1784,7 +1983,7 @@ class MiscMixin(
         self.show_status_message("Typing speed test exited.", 2500)
 
     def start_typing_speed_test(self) -> None:
-        """Execute the `start_typing_speed_test` workflow."""
+        """Start typing test mode in the active tab."""
         active = self.active_tab()
         if active is not None and bool(getattr(active, "typing_test_mode_enabled", False)):
             self.quit_typing_speed_test()
@@ -1859,7 +2058,7 @@ class MiscMixin(
         self.show_status_message("Typing speed test ready. Start typing in the editor to begin the timer.", 3500)
 
     def start_bug_hunt_mode(self) -> bool:
-        """Execute the `start_bug_hunt_mode` workflow."""
+        """Start the bug hunt mini-game for the current workspace."""
         if not self._gamification_enabled():
             return False
         root = self._workspace_root()
@@ -1879,7 +2078,7 @@ class MiscMixin(
         return True
 
     def craft_template_tool(self) -> None:
-        """Execute the `craft_template_tool` workflow."""
+        """Create a gamified template tool entry from user input."""
         if not self._gamification_enabled():
             return
         name, ok = QInputDialog.getText(self, "Craft Tool", "Tool name:")
@@ -1906,7 +2105,7 @@ class MiscMixin(
         self.show_status_message(f'Crafted tool "{row["name"]}".', 2500)
 
     def export_crafted_tools_pack(self) -> None:
-        """Execute the `export_crafted_tools_pack` workflow."""
+        """Export crafted tools pack."""
         if not self._gamification_enabled():
             return
         state = self.gamification.state()
@@ -1930,7 +2129,7 @@ class MiscMixin(
         self.show_status_message(f"Crafted tool pack exported: {path}", 3000)
 
     def mark_plugin_feature_used(self) -> None:
-        """Execute the `mark_plugin_feature_used` workflow."""
+        """Mark plugin feature used."""
         if not self._gamification_enabled():
             return
         result, notes = self.gamification.mark_plugin_used()
@@ -1938,7 +2137,7 @@ class MiscMixin(
         self._evaluate_easter_eggs("plugin_used")
 
     def enable_note_encryption(self) -> None:
-        """Execute the `enable_note_encryption` workflow."""
+        """Enable note encryption and update open tabs as needed."""
         self.security_controller.enable_note_encryption()
         encrypted_count = 0
         for index in range(self.tab_widget.count()):
@@ -1948,27 +2147,27 @@ class MiscMixin(
         self._evaluate_easter_eggs("encryption_enabled", {"encrypted_count": encrypted_count})
 
     def disable_note_encryption(self) -> None:
-        """Execute the `disable_note_encryption` workflow."""
+        """Disable note encryption for future note operations."""
         self.security_controller.disable_note_encryption()
 
     def change_note_password(self) -> None:
-        """Execute the `change_note_password` workflow."""
+        """Prompt for and save a new note encryption password."""
         self.security_controller.change_note_password()
 
     def insert_media_files(self) -> None:
-        """Execute the `insert_media_files` workflow."""
+        """Insert media files."""
         self.workspace_controller.insert_media_files()
 
     def _insert_media_paths(self, paths: list[str]) -> None:
-        """Internal helper for `_insert_media_paths`."""
+        """Insert a list of media paths into the active document."""
         self.workspace_controller.insert_media_paths(paths)
 
     def open_workspace_folder(self) -> None:
-        """Open the UI or resource handled by `open_workspace_folder`."""
+        """Open the current workspace folder in the system file manager."""
         self.workspace_controller.open_workspace_folder()
 
     def _workspace_profiles(self) -> dict[str, dict[str, object]]:
-        """Internal helper for `_workspace_profiles`."""
+        """Return the saved workspace profile definitions."""
         raw = self.settings.get("workspace_profiles", {})
         if not isinstance(raw, dict):
             return {}
@@ -1987,7 +2186,7 @@ class MiscMixin(
         return cleaned
 
     def save_workspace_profile(self) -> None:
-        """Save data handled by `save_workspace_profile`."""
+        """Save the current workspace state under a named profile."""
         root = self._workspace_root()
         if not root:
             QMessageBox.information(self, "Workspace Profile", "Set a workspace folder first.")
@@ -2015,7 +2214,7 @@ class MiscMixin(
         self.show_status_message(f'Workspace profile saved: "{profile_name}"', 2500)
 
     def load_workspace_profile(self) -> None:
-        """Load data required by `load_workspace_profile`."""
+        """Load a named workspace profile into the current window."""
         profiles = self._workspace_profiles()
         if not profiles:
             QMessageBox.information(self, "Workspace Profile", "No workspace profiles saved yet.")
@@ -2041,7 +2240,7 @@ class MiscMixin(
             self.restore_last_session()
 
     def toggle_workspace_startup_picker(self, checked: bool) -> None:
-        """Toggle the state controlled by `toggle_workspace_startup_picker`."""
+        """Toggle whether the workspace picker appears during startup."""
         self.settings["workspace_startup_picker_enabled"] = bool(checked)
         self.save_settings_to_disk()
         self.show_status_message(
@@ -2050,7 +2249,7 @@ class MiscMixin(
         )
 
     def apply_workspace_profile_on_startup(self) -> bool:
-        """Apply the changes or settings handled by `apply_workspace_profile_on_startup`."""
+        """Apply the configured workspace profile during application startup."""
         if not bool(self.settings.get("workspace_startup_picker_enabled", False)):
             return False
         profiles = self._workspace_profiles()
@@ -2076,27 +2275,27 @@ class MiscMixin(
         return True
 
     def _workspace_root(self) -> str | None:
-        """Internal helper for `_workspace_root`."""
+        """Return the current workspace root path."""
         return self.workspace_controller.workspace_root()
 
     def _workspace_files(self) -> list[str]:
-        """Internal helper for `_workspace_files`."""
+        """Return the current list of indexed workspace files."""
         return self.workspace_controller.workspace_files()
 
     def show_workspace_files(self) -> None:
-        """Execute the `show_workspace_files` workflow."""
+        """Open the workspace files panel."""
         self.workspace_controller.show_workspace_files()
 
     def search_workspace(self) -> None:
-        """Execute the `search_workspace` workflow."""
+        """Open workspace search for the current project root."""
         self.workspace_controller.search_workspace()
 
     def replace_in_files(self) -> None:
-        """Execute the `replace_in_files` workflow."""
+        """Run a project-wide replace operation from the workspace panel."""
         self.workspace_controller.replace_in_files()
 
     def start_macro_recording(self) -> None:
-        """Execute the `start_macro_recording` workflow."""
+        """Begin recording editor actions into the current macro buffer."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -2106,7 +2305,7 @@ class MiscMixin(
         self.update_action_states()
 
     def stop_macro_recording(self) -> None:
-        """Execute the `stop_macro_recording` workflow."""
+        """Stop recording the active macro and keep the captured steps."""
         if not self.macro_recording:
             return
         self.macro_recording = False
@@ -2119,7 +2318,7 @@ class MiscMixin(
         self.update_action_states()
 
     def play_macro(self) -> None:
-        """Execute the `play_macro` workflow."""
+        """Replay the currently recorded macro in the active editor."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -2142,7 +2341,7 @@ class MiscMixin(
             self.update_action_states()
 
     def _apply_macro_events(self, tab: EditorTab, events: list[tuple[str, str]]) -> None:
-        """Internal helper for `_apply_macro_events`."""
+        """Replay the recorded macro events against the given editor tab."""
         for op, value in events:
             if op == "text":
                 tab.text_edit.insert_text(value)
@@ -2152,7 +2351,7 @@ class MiscMixin(
                 tab.text_edit.delete_delete()
 
     def _normalized_saved_macros(self) -> dict[str, dict[str, Any]]:
-        """Internal helper for `_normalized_saved_macros`."""
+        """Return saved macros in normalized dictionary form."""
         raw = self.settings.get("saved_macros", {})
         cleaned: dict[str, dict[str, Any]] = {}
         if not isinstance(raw, dict):
@@ -2178,7 +2377,7 @@ class MiscMixin(
         return cleaned
 
     def _macro_events_from_saved_entry(self, entry: dict[str, Any]) -> list[tuple[str, str]]:
-        """Internal helper for `_macro_events_from_saved_entry`."""
+        """Return normalized macro events from a saved macro entry."""
         raw_events = entry.get("events", [])
         parsed: list[tuple[str, str]] = []
         if not isinstance(raw_events, list):
@@ -2193,14 +2392,14 @@ class MiscMixin(
         return parsed
 
     def _save_saved_macros(self, macros: dict[str, dict[str, Any]]) -> None:
-        """Internal helper for `_save_saved_macros`."""
+        """Persist the saved macro collection back into application settings."""
         self.settings["saved_macros"] = macros
         self.save_settings_to_disk()
         self._sync_saved_macro_actions()
         self.update_action_states()
 
     def _sync_saved_macro_actions(self) -> None:
-        """Internal helper for `_sync_saved_macro_actions`."""
+        """Refresh menu actions for the saved macro list."""
         menu = getattr(self, "macros_menu", None)
         if menu is None:
             return
@@ -2229,7 +2428,7 @@ class MiscMixin(
             self._saved_macro_menu_actions.append(action)
 
     def save_current_recorded_macro(self) -> None:
-        """Save data handled by `save_current_recorded_macro`."""
+        """Save the currently recorded macro under a user-provided name."""
         if self.macro_recording:
             self.stop_macro_recording()
         events = list(getattr(self, "_last_macro_events", []))
@@ -2278,7 +2477,7 @@ class MiscMixin(
         self.show_status_message(f'Saved macro "{name}".', 3000)
 
     def _macro_run_options(self) -> list[tuple[str, str, list[tuple[str, str]]]]:
-        """Internal helper for `_macro_run_options`."""
+        """Return the available macro replay modes and their steps."""
         options: list[tuple[str, str, list[tuple[str, str]]]] = []
         events = list(getattr(self, "_last_macro_events", []))
         if events:
@@ -2300,7 +2499,7 @@ class MiscMixin(
         repeat_count: int,
         until_end: bool,
     ) -> tuple[bool, int]:
-        """Internal helper for `_execute_macro_mode`."""
+        """Run one of the predefined macro replay modes against the active tab."""
         if mode == "trim_save":
             self.trim_trailing_spaces_and_save()
             return True, 1
@@ -2332,7 +2531,7 @@ class MiscMixin(
         return True, runs
 
     def run_macro_multiple_times(self) -> None:
-        """Execute the `run_macro_multiple_times` workflow."""
+        """Replay the current macro repeatedly using the requested repeat count."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -2378,7 +2577,7 @@ class MiscMixin(
         root.addWidget(until_eof_radio)
 
         def _sync_repeat_controls() -> None:
-            """Internal helper for `_sync_repeat_controls`."""
+            """Enable or disable repeat controls based on the selected macro mode."""
             enabled = run_radio.isChecked()
             count_spin.setEnabled(enabled)
             times_label.setEnabled(enabled)
@@ -2423,7 +2622,7 @@ class MiscMixin(
             self.update_action_states()
 
     def trim_trailing_spaces_and_save(self) -> None:
-        """Execute the `trim_trailing_spaces_and_save` workflow."""
+        """Trim trailing whitespace in the active tab and save the file."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -2446,7 +2645,7 @@ class MiscMixin(
             self.show_status_message(f"Trimmed trailing spaces on {changed_count} line(s) and saved.", 3000)
 
     def run_saved_macro(self, macro_name: str) -> None:
-        """Execute the `run_saved_macro` workflow."""
+        """Run a saved macro by name in the active editor."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -2473,7 +2672,7 @@ class MiscMixin(
             self.update_action_states()
 
     def modify_macro_shortcut_or_delete(self) -> None:
-        """Execute the `modify_macro_shortcut_or_delete` workflow."""
+        """Edit a saved macro shortcut or remove the macro entry."""
         saved = self._normalized_saved_macros()
         if not saved:
             QMessageBox.information(self, "Modify Shortcut/Delete Macro", "No saved macros found.")
@@ -2522,24 +2721,24 @@ class MiscMixin(
         self.show_status_message(f'Updated shortcut for "{name}".', 3000)
 
     def ask_ai(self) -> None:
-        """Execute the `ask_ai` workflow."""
+        """Open the AI entry point for the current editor context."""
         self.ai_controller.ask_ai()
 
     def _open_ai_chat_panel(self) -> bool:
-        """Internal helper for `_open_ai_chat_panel`."""
+        """Ensure the AI chat dock is visible and ready for interaction."""
         if hasattr(self, "toggle_ai_chat_panel"):
             self.toggle_ai_chat_panel(True)
         return bool(hasattr(self, "ai_chat_dock") and self.ai_chat_dock is not None)
 
     def _send_ai_chat_prompt(self, *, prompt: str, visible_prompt: str | None = None, on_done=None) -> bool:
-        """Internal helper for `_send_ai_chat_prompt`."""
+        """Send a prompt to the AI chat dock with the provided context."""
         if not self._open_ai_chat_panel():
             return False
         self.ai_chat_dock.send_prompt(prompt=prompt, visible_prompt=visible_prompt, on_done=on_done)
         return True
 
     def _log_ai_feature(self, message: str) -> None:
-        """Internal helper for `_log_ai_feature`."""
+        """Write verbose AI feature diagnostics when that setting is enabled."""
         if not bool(self.settings.get("ai_verbose_logging", False)):
             return
         logger = getattr(self, "log_event", None)
@@ -2547,14 +2746,14 @@ class MiscMixin(
             logger("Info", f"[AI Feature] {message}")
 
     def _with_ai_chat_dock(self):
-        """Internal helper for `_with_ai_chat_dock`."""
+        """Return the AI chat dock after ensuring it is available."""
         if not self._open_ai_chat_panel():
             QMessageBox.information(self, "AI Chat", "AI Chat panel is not available.")
             return None
         return getattr(self, "ai_chat_dock", None)
 
     def _ensure_ai_chat_apply_signal_connected(self) -> None:
-        """Internal helper for `_ensure_ai_chat_apply_signal_connected`."""
+        """Connect the AI chat apply signal once so edits can update the current tab."""
         dock = self._with_ai_chat_dock()
         if dock is None:
             return
@@ -2571,7 +2770,7 @@ class MiscMixin(
             self._log_ai_feature(f"failed to connect ai_chat_dock.apply_completed signal: {exc!r}")
 
     def _on_ai_chat_apply_completed(self, kind: str, success: bool, detail: str) -> None:
-        """Internal helper for `_on_ai_chat_apply_completed`."""
+        """Record the outcome of an AI chat apply action and update UI state."""
         self._log_ai_feature(f"apply_completed signal kind={kind!r} success={success} detail={detail!r}")
         state = getattr(self, "_ai_batch_refactor_state", None)
         if not isinstance(state, dict):
@@ -2621,26 +2820,26 @@ class MiscMixin(
         self._log_ai_feature("batch refactor paused/stopped by user after apply")
 
     def ai_attach_current_file_to_chat(self) -> None:
-        """Execute the `ai_attach_current_file_to_chat` workflow."""
+        """Attach the active file contents to the AI chat dock."""
         dock = self._with_ai_chat_dock()
         if dock is not None and hasattr(dock, "_attach_current_file_to_chat"):
             dock._attach_current_file_to_chat()
 
     def ai_attach_selection_to_chat(self) -> None:
-        """Execute the `ai_attach_selection_to_chat` workflow."""
+        """Attach the current editor selection to the AI chat dock."""
         dock = self._with_ai_chat_dock()
         if dock is not None and hasattr(dock, "_attach_selection_to_chat"):
             dock._attach_selection_to_chat()
 
     def ai_attach_workspace_search_to_chat(self) -> None:
-        """Execute the `ai_attach_workspace_search_to_chat` workflow."""
+        """Attach the latest workspace search results to the AI chat dock."""
         dock = self._with_ai_chat_dock()
         if dock is not None and hasattr(dock, "_attach_workspace_search_results_to_chat"):
             dock._attach_workspace_search_results_to_chat()
 
     @staticmethod
     def _ai_set_file_command_instructions() -> str:
-        """Internal helper for `_ai_set_file_command_instructions`."""
+        """Return instructions that tell the AI how file replacement commands should be formatted."""
         return (
             "Return a short visible summary first, then emit the hidden full-file replace command outside code fences exactly in this format:\n"
             "[PYPAD_CMD_SET_FILE_BEGIN]\n"
@@ -2650,7 +2849,7 @@ class MiscMixin(
         )
 
     def _ai_regression_guard_block(self) -> str:
-        """Internal helper for `_ai_regression_guard_block`."""
+        """Return the optional prompt block that asks the AI to avoid regressions."""
         if not bool(self.settings.get("ai_enable_regression_guard_prompts", True)):
             return ""
         return (
@@ -2673,7 +2872,7 @@ class MiscMixin(
         extra_context: str = "",
         on_done=None,
     ) -> None:
-        """Internal helper for `_send_ai_file_replace_request`."""
+        """Send a file rewrite request to the AI and apply the result to the active tab."""
         tab = self.active_tab()
         if tab is None:
             QMessageBox.information(self, action_label, "Open a tab first.")
@@ -2701,7 +2900,7 @@ class MiscMixin(
         self._send_ai_chat_prompt(prompt=prompt, visible_prompt=user_visible_prompt, on_done=on_done)
 
     def _capture_clipboard_history(self) -> None:
-        """Internal helper for `_capture_clipboard_history`."""
+        """Store the current clipboard text in the in-app clipboard history."""
         clip = QApplication.clipboard()
         if clip is None:
             return
@@ -2717,7 +2916,7 @@ class MiscMixin(
         self._clipboard_history = history[:100]
 
     def show_clipboard_history(self) -> None:
-        """Execute the `show_clipboard_history` workflow."""
+        """Open a dialog for browsing, copying, and reusing recent clipboard entries."""
         history = getattr(self, "_clipboard_history", [])
         if not isinstance(history, list):
             history = []
@@ -2748,14 +2947,14 @@ class MiscMixin(
         lay.addWidget(buttons)
 
         def _selected_text() -> str:
-            """Internal helper for `_selected_text`."""
+            """Return the currently selected clipboard history entry."""
             row = table.currentRow()
             if row < 0 or row >= len(history):
                 return ""
             return str(history[row])
 
         def _paste() -> None:
-            """Internal helper for `_paste`."""
+            """Paste the selected clipboard history entry into the active editor."""
             text = _selected_text()
             if not text:
                 return
@@ -2766,13 +2965,13 @@ class MiscMixin(
             dlg.accept()
 
         def _copy() -> None:
-            """Internal helper for `_copy`."""
+            """Copy the selected clipboard history entry back to the system clipboard."""
             text = _selected_text()
             if text:
                 QApplication.clipboard().setText(text)
 
         def _clear() -> None:
-            """Internal helper for `_clear`."""
+            """Clear all stored clipboard history entries."""
             self._clipboard_history = []
             table.setRowCount(0)
 
@@ -2783,20 +2982,20 @@ class MiscMixin(
         dlg.exec()
 
     def _set_breadcrumb_text(self, text: str) -> None:
-        """Internal helper for `_set_breadcrumb_text`."""
+        """Update the breadcrumb label shown above the editor area."""
         if hasattr(self, "breadcrumb_label") and self.breadcrumb_label is not None:
             self.breadcrumb_label.setText(text)
 
     def open_plugin_manager(self) -> None:
-        """Open the UI or resource handled by `open_plugin_manager`."""
+        """Open the plugin manager dialog."""
         self.advanced_features.open_plugin_manager()
 
     def open_online_plugins(self) -> None:
-        """Open the UI or resource handled by `open_online_plugins`."""
+        """Open the online plugin catalog dialog."""
         self.advanced_features.open_online_plugins()
 
     def open_plugins_folder(self) -> None:
-        """Open the UI or resource handled by `open_plugins_folder`."""
+        """Open the plugins folder in the system file manager."""
         plugins_dir = Path(getattr(self.advanced_features.plugin_host, "plugins_dir", Path(__file__).resolve().parents[4] / "plugins"))
         plugins_dir.mkdir(parents=True, exist_ok=True)
         try:
@@ -2805,7 +3004,7 @@ class MiscMixin(
             QMessageBox.critical(self, "Open Plugins Folder", f"Could not open folder:\n{exc}")
 
     def open_mime_tools(self) -> None:
-        """Open the UI or resource handled by `open_mime_tools`."""
+        """Open the MIME and encoding tools dialog."""
         tab = self.active_tab()
         if tab is None:
             QMessageBox.information(self, "MIME Tools", "Open a tab first.")
@@ -2849,7 +3048,7 @@ class MiscMixin(
         self.show_status_message("MIME tools conversion applied.", 2500)
 
     def open_converter_tools(self) -> None:
-        """Open the UI or resource handled by `open_converter_tools`."""
+        """Open the text conversion tools dialog."""
         tab = self.active_tab()
         if tab is None:
             QMessageBox.information(self, "Converter", "Open a tab first.")
@@ -2896,7 +3095,7 @@ class MiscMixin(
         self.show_status_message("Converter operation applied.", 2500)
 
     def open_npp_export_tools(self) -> None:
-        """Open the UI or resource handled by `open_npp_export_tools`."""
+        """Open the Notepad++ export tools dialog."""
         tab = self.active_tab()
         if tab is None:
             QMessageBox.information(self, "NPP Export", "Open a tab first.")
@@ -2958,107 +3157,115 @@ class MiscMixin(
         self.show_status_message(f"NPP TXT export saved: {path}", 3000)
 
     def toggle_minimap_panel(self, checked: bool) -> None:
-        """Toggle the state controlled by `toggle_minimap_panel`."""
+        """Show or hide the minimap panel."""
         self.advanced_features.toggle_minimap(checked)
 
     def toggle_symbol_outline_panel(self, checked: bool) -> None:
-        """Toggle the state controlled by `toggle_symbol_outline_panel`."""
+        """Show or hide the symbol outline panel."""
         self.advanced_features.toggle_outline(checked)
 
     def goto_definition_basic(self) -> None:
-        """Execute the `goto_definition_basic` workflow."""
+        """Jump to a best-effort symbol definition using the current editor context."""
         self.advanced_features.go_to_definition()
 
     def open_side_by_side_diff(self) -> None:
-        """Open the UI or resource handled by `open_side_by_side_diff`."""
+        """Open the side-by-side diff tool."""
         self.advanced_features.open_diff()
 
     def open_three_way_merge(self) -> None:
-        """Open the UI or resource handled by `open_three_way_merge`."""
+        """Open the three-way merge helper."""
         self.advanced_features.open_merge_helper()
 
     def apply_patch_file_to_active_tab(self) -> None:
-        """Apply the changes or settings handled by `apply_patch_file_to_active_tab`."""
+        """Apply a unified patch file to the contents of the active tab."""
         self.advanced_features.apply_patch_file_to_active()
 
     def load_full_large_file(self) -> None:
-        """Load data required by `load_full_large_file`."""
+        """Load the full contents of a large file that was previously opened in preview mode."""
         self.load_full_large_file_current_tab()
 
     def open_snippet_engine(self) -> None:
-        """Open the UI or resource handled by `open_snippet_engine`."""
+        """Open the snippet engine dialog."""
         self.advanced_features.open_snippets()
 
     def install_template_packs(self) -> None:
-        """Execute the `install_template_packs` workflow."""
+        """Install one or more template packs into the local template library."""
         self.advanced_features.ensure_template_packs()
 
     def show_task_workflow_panel(self) -> None:
-        """Execute the `show_task_workflow_panel` workflow."""
+        """Show the task workflow panel for productivity and automation actions."""
         self.advanced_features.show_tasks()
 
     def show_git_workspace_panel(self) -> None:
-        """Execute the `show_git_workspace_panel` workflow."""
+        """Show the Git workspace panel."""
         self.show_git_panel()
 
     def lsp_hover_current(self) -> None:
-        """Execute the `lsp_hover_current` workflow."""
+        """Show language-server hover details for the symbol at the cursor."""
         self.advanced_features.lsp_hover_current()
 
     def lsp_find_references(self) -> None:
-        """Execute the `lsp_find_references` workflow."""
+        """Find references to the symbol at the current cursor position."""
         self.advanced_features.lsp_find_references()
 
     def lsp_rename_symbol(self) -> None:
-        """Execute the `lsp_rename_symbol` workflow."""
+        """Rename the symbol at the cursor using language-server support."""
         self.advanced_features.lsp_rename_symbol()
 
     def lsp_show_completion(self) -> None:
-        """Execute the `lsp_show_completion` workflow."""
+        """Request and display language-server completions at the cursor."""
         self.advanced_features.lsp_show_completion()
 
     def lsp_format_document(self) -> None:
-        """Execute the `lsp_format_document` workflow."""
+        """Format the active document using the language-server formatter."""
         self.advanced_features.lsp_format_document()
 
     def lsp_refresh_diagnostics(self) -> None:
-        """Execute the `lsp_refresh_diagnostics` workflow."""
+        """Refresh language-server diagnostics for the active document."""
         self.advanced_features.lsp_refresh_diagnostics()
 
     def configure_backup_scheduler(self) -> None:
-        """Execute the `configure_backup_scheduler` workflow."""
+        """Open the backup scheduler settings UI."""
         self.advanced_features.configure_backup()
 
     def run_backup_now(self) -> None:
-        """Execute the `run_backup_now` workflow."""
+        """Run an immediate backup using the current backup settings."""
         self.advanced_features.backup_now()
 
     def export_diagnostics_bundle(self) -> None:
-        """Execute the `export_diagnostics_bundle` workflow."""
+        """Export a diagnostics bundle with logs and environment details for troubleshooting."""
         self.advanced_features.export_diagnostics()
 
     def toggle_keyboard_only_mode(self, checked: bool) -> None:
-        """Toggle the state controlled by `toggle_keyboard_only_mode`."""
+        """Enable or disable keyboard-only accessibility mode."""
         self.advanced_features.toggle_keyboard_only(checked)
 
     def apply_accessibility_high_contrast(self) -> None:
-        """Apply the changes or settings handled by `apply_accessibility_high_contrast`."""
+        """Apply the high-contrast accessibility theme adjustments."""
         self.advanced_features.apply_accessibility_high_contrast()
 
     def apply_accessibility_dyslexic_font(self) -> None:
-        """Apply the changes or settings handled by `apply_accessibility_dyslexic_font`."""
+        """Apply the dyslexic-friendly font setting across the UI."""
         self.advanced_features.apply_accessibility_dyslexic()
 
+    def apply_accessibility_large_text(self) -> None:
+        """Apply a large-text accessibility preset across the UI."""
+        self.advanced_features.apply_accessibility_large_text()
+
+    def apply_accessibility_low_stimulation(self) -> None:
+        """Apply a low-stimulation accessibility preset across the UI."""
+        self.advanced_features.apply_accessibility_low_stimulation()
+
     def open_lan_collaboration(self) -> None:
-        """Open the UI or resource handled by `open_lan_collaboration`."""
+        """Open the LAN collaboration tools."""
         self.advanced_features.open_collaboration()
 
     def open_annotation_layer(self) -> None:
-        """Open the UI or resource handled by `open_annotation_layer`."""
+        """Open the annotation layer tools for the active document."""
         self.advanced_features.open_annotations()
 
     def _sync_quiz_controls(self) -> None:
-        """Internal helper for `_sync_quiz_controls`."""
+        """Refresh quiz-related action states based on the active tab."""
         tab = self.active_tab()
         enabled = bool(tab and getattr(tab, "quiz_mode_enabled", False))
         if hasattr(self, "quiz_quit_button"):
@@ -3071,7 +3278,7 @@ class MiscMixin(
             self._sync_typing_test_controls()
 
     def _sync_typing_test_controls(self) -> None:
-        """Internal helper for `_sync_typing_test_controls`."""
+        """Sync typing test controls."""
         tab = self.active_tab()
         enabled = bool(tab and getattr(tab, "typing_test_mode_enabled", False))
         if hasattr(self, "typing_test_quit_button"):
@@ -3080,7 +3287,7 @@ class MiscMixin(
             self.typing_speed_test_action.setText("Restart Typing Speed Test..." if enabled else "Challenge: Typing Speed Test...")
 
     def show_quiz_format_help(self) -> None:
-        """Execute the `show_quiz_format_help` workflow."""
+        """Show quiz format help."""
         dlg = QDialog(self)
         dlg.setWindowTitle("Quiz Format Help")
         root = QVBoxLayout(dlg)
@@ -3150,7 +3357,7 @@ class MiscMixin(
 
     @staticmethod
     def _quiz_strip_metadata_text(text: str) -> str:
-        """Internal helper for `_quiz_strip_metadata_text`."""
+        """Remove embedded answer metadata from quiz source text before presenting it."""
         out = re.sub(r"\{(?:answer|keywords|user)\s*:[^{}]*\}", "", text, flags=re.IGNORECASE)
         out = re.sub(r"\[(?:answer|keywords|user)\s*=[^\[\]]*\]", "", out, flags=re.IGNORECASE)
         out = re.sub(r"\{user\}|\[user\]", "", out, flags=re.IGNORECASE)
@@ -3160,7 +3367,7 @@ class MiscMixin(
         return out
 
     def _parse_quiz_blocks(self, text: str) -> list[dict[str, Any]]:
-        """Internal helper for `_parse_quiz_blocks`."""
+        """Parse quiz blocks."""
         lines = text.splitlines()
         start_re = re.compile(r"^\s*(?:\d+[\.\)]|Q\d+\s*:|-|\*)\s+")
         option_re = re.compile(r"^\s*([A-Z])[\.\)]\s+(.+)\s*$")
@@ -3253,7 +3460,7 @@ class MiscMixin(
         return items
 
     def _collect_user_answers(self, tab: EditorTab) -> dict[int, str]:
-        """Internal helper for `_collect_user_answers`."""
+        """Collect user answers."""
         text = tab.text_edit.get_text()
         lines = text.splitlines()
         out: dict[int, str] = {}
@@ -3295,7 +3502,7 @@ class MiscMixin(
 
     @staticmethod
     def _normalize_tf(value: str) -> str:
-        """Internal helper for `_normalize_tf`."""
+        """Normalize tf."""
         v = str(value or "").strip().lower()
         if v in {"t", "true"}:
             return "true"
@@ -3304,7 +3511,7 @@ class MiscMixin(
         return v
 
     def _score_quiz_items(self, items: list[dict[str, Any]], user_answers: dict[int, str]) -> dict[str, Any]:
-        """Internal helper for `_score_quiz_items`."""
+        """Score quiz answers and return totals plus per-question feedback."""
         rows: list[dict[str, Any]] = []
         total = 0.0
         earned = 0.0
@@ -3420,7 +3627,7 @@ class MiscMixin(
         }
 
     def _show_quiz_score_dialog(self, result: dict[str, Any]) -> None:
-        """Internal helper for `_show_quiz_score_dialog`."""
+        """Show quiz score dialog."""
         dlg = QDialog(self)
         dlg.setWindowTitle("Quiz Score")
         layout = QVBoxLayout(dlg)
@@ -3472,7 +3679,7 @@ class MiscMixin(
         dlg.exec()
 
     def _apply_quiz_placeholders(self, tab: EditorTab, user_answers: dict[int, str] | None = None) -> None:
-        """Internal helper for `_apply_quiz_placeholders`."""
+        """Apply quiz placeholders."""
         widget = getattr(tab.text_edit, "widget", None)
         if widget is None or not hasattr(widget, "annotationClearAll"):
             return
@@ -3510,14 +3717,14 @@ class MiscMixin(
                 continue
 
     def _refresh_quiz_placeholders_for_tab(self, tab: EditorTab) -> None:
-        """Internal helper for `_refresh_quiz_placeholders_for_tab`."""
+        """Refresh quiz placeholders for tab."""
         if tab is None or not bool(getattr(tab, "quiz_mode_enabled", False)):
             return
         tab.quiz_user_answers = self._collect_user_answers(tab)
         self._apply_quiz_placeholders(tab, tab.quiz_user_answers)
 
     def start_quiz_mode(self) -> None:
-        """Execute the `start_quiz_mode` workflow."""
+        """Start the quiz mode experience for the active document."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -3547,7 +3754,7 @@ class MiscMixin(
         self.show_status_message("Quiz mode restarted." if was_active else "Quiz mode started.", 2500)
 
     def quit_quiz_mode(self) -> None:
-        """Execute the `quit_quiz_mode` workflow."""
+        """Exit quiz mode in the active tab and clear its quiz-specific state."""
         tab = self.active_tab()
         if tab is None or not bool(getattr(tab, "quiz_mode_enabled", False)):
             return
@@ -3570,7 +3777,7 @@ class MiscMixin(
         self.show_status_message("Quiz mode exited.", 2500)
 
     def finish_quiz_mode(self) -> None:
-        """Execute the `finish_quiz_mode` workflow."""
+        """Finalize quiz mode, score the answers, and show the results."""
         tab = self.active_tab()
         if tab is None or not bool(getattr(tab, "quiz_mode_enabled", False)):
             return
@@ -3585,7 +3792,7 @@ class MiscMixin(
         self.quit_quiz_mode()
 
     def ai_commit_message_generator(self) -> None:
-        """Execute the `ai_commit_message_generator` workflow."""
+        """Handle AI commit message generator."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -3597,7 +3804,7 @@ class MiscMixin(
         self._send_ai_chat_prompt(prompt=prompt, visible_prompt="Generate Commit/Changelog Draft")
 
     def ai_batch_refactor_preview(self) -> None:
-        """Execute the `ai_batch_refactor_preview` workflow."""
+        """Handle AI batch refactor preview."""
         root = self._workspace_root()
         if not root:
             QMessageBox.information(self, "Batch Refactor", "Set a workspace folder first.")
@@ -3616,7 +3823,7 @@ class MiscMixin(
         self._run_batch_ai_refactor_planner(instruction.strip(), files)
 
     def _run_batch_ai_refactor_planner(self, instruction: str, candidate_files: list[str]) -> None:
-        """Internal helper for `_run_batch_ai_refactor_planner`."""
+        """Run batch AI refactor planner."""
         max_files = int(self.settings.get("ai_batch_refactor_max_selected_files", 20) or 20)
         self._log_ai_feature(
             f"batch planner start instruction_chars={len(instruction)} candidate_files={len(candidate_files)} max_files={max_files}"
@@ -3636,7 +3843,7 @@ class MiscMixin(
         )
 
         def _on_done(text: str) -> None:
-            """Internal helper for `_on_done`."""
+            """Handle the AI planner response once the batch refactor plan arrives."""
             plan = self._parse_batch_refactor_plan(text, candidate_files, max_files=max_files)
             self._log_ai_feature(
                 "batch planner parsed "
@@ -3677,7 +3884,7 @@ class MiscMixin(
 
     @staticmethod
     def _parse_batch_refactor_plan(raw_text: str, candidate_files: list[str], *, max_files: int) -> dict[str, object]:
-        """Internal helper for `_parse_batch_refactor_plan`."""
+        """Parse batch refactor plan."""
         text = strip_model_fences(raw_text or "").strip()
         if "```" in (raw_text or ""):
             m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw_text or "", re.DOTALL | re.IGNORECASE)
@@ -3732,7 +3939,7 @@ class MiscMixin(
         }
 
     def _choose_batch_refactor_files_dialog(self, *, instruction: str, plan: dict[str, object], max_files: int) -> list[dict[str, object]]:
-        """Internal helper for `_choose_batch_refactor_files_dialog`."""
+        """Choose batch refactor files dialog."""
         rows = plan.get("files", [])
         if not isinstance(rows, list) or not rows:
             return []
@@ -3764,7 +3971,7 @@ class MiscMixin(
             item.setToolTip(reason or path)
 
         def _refresh_details() -> None:
-            """Internal helper for `_refresh_details`."""
+            """Refresh details."""
             item = list_widget.currentItem()
             if item is None:
                 details.clear()
@@ -3820,7 +4027,7 @@ class MiscMixin(
         return selected[:max_files]
 
     def _run_batch_refactor_queue(self, selected_rows: list[dict[str, object]], instruction: str, index: int) -> None:
-        """Internal helper for `_run_batch_refactor_queue`."""
+        """Run batch refactor queue."""
         if index >= len(selected_rows):
             state = getattr(self, "_ai_batch_refactor_state", None)
             if isinstance(state, dict):
@@ -3860,7 +4067,7 @@ class MiscMixin(
         file_name = Path(path).name
 
         def _after_ai_response(_text: str) -> None:
-            """Internal helper for `_after_ai_response`."""
+            """Advance the queued batch refactor workflow after one AI response finishes."""
             st = getattr(self, "_ai_batch_refactor_state", None)
             if isinstance(st, dict):
                 st["awaiting_apply"] = True
@@ -3890,7 +4097,7 @@ class MiscMixin(
         )
 
     def ai_ask_file_with_citations(self) -> None:
-        """Execute the `ai_ask_file_with_citations` workflow."""
+        """Handle AI ask file with citations."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -3911,7 +4118,7 @@ class MiscMixin(
             self.ai_chat_dock.send_prompt(prompt=prompt, visible_prompt=question.strip())
 
     def ai_inline_edit_with_preview(self) -> None:
-        """Execute the `ai_inline_edit_with_preview` workflow."""
+        """Handle AI inline edit with preview."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -3960,7 +4167,7 @@ class MiscMixin(
         )
 
     def ai_ask_workspace_with_citations(self) -> None:
-        """Execute the `ai_ask_workspace_with_citations` workflow."""
+        """Handle AI ask workspace with citations."""
         root = self._workspace_root()
         if not root:
             QMessageBox.information(self, "Workspace Q&A", "Set a workspace folder first.")
@@ -3989,12 +4196,12 @@ class MiscMixin(
             self.ai_chat_dock.send_prompt(prompt=prompt, visible_prompt=f"Ask Workspace (Citations): {question.strip()}")
 
     def show_collaboration_presence(self) -> None:
-        """Execute the `show_collaboration_presence` workflow."""
+        """Show collaboration presence."""
         snapshot = self.advanced_features.collaboration_snapshot()
         QMessageBox.information(self, "Collaboration Presence", build_collab_presence_text(snapshot))
 
     def resolve_collaboration_conflict(self) -> None:
-        """Execute the `resolve_collaboration_conflict` workflow."""
+        """Resolve collaboration conflict."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -4018,7 +4225,7 @@ class MiscMixin(
             return
 
         def _apply_and_optionally_push(merged_text: str, push: bool = False) -> None:
-            """Internal helper for `_apply_and_optionally_push`."""
+            """Apply and optionally push."""
             tab.text_edit.set_text(merged_text)
             tab.text_edit.set_modified(True)
             if push:
@@ -4058,7 +4265,7 @@ class MiscMixin(
             )
 
     def ai_review_current_file_with_citations(self) -> None:
-        """Execute the `ai_review_current_file_with_citations` workflow."""
+        """Handle AI review current file with citations."""
         tab = self.active_tab()
         if tab is None:
             QMessageBox.information(self, "AI Code Review", "Open a tab first.")
@@ -4074,7 +4281,7 @@ class MiscMixin(
         self._send_ai_chat_prompt(prompt=prompt, visible_prompt="Review Current File (Citations)")
 
     def ai_review_workspace_snippets_with_citations(self) -> None:
-        """Execute the `ai_review_workspace_snippets_with_citations` workflow."""
+        """Handle AI review workspace snippets with citations."""
         root = self._workspace_root()
         if not root:
             QMessageBox.information(self, "Workspace Code Review", "Set a workspace folder first.")
@@ -4116,7 +4323,7 @@ class MiscMixin(
             self._evaluate_easter_eggs("workspace_review")
 
     def ai_rewrite_selection(self, mode: str) -> None:
-        """Execute the `ai_rewrite_selection` workflow."""
+        """Handle AI rewrite selection."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -4153,7 +4360,7 @@ class MiscMixin(
         )
 
     def ask_ai_about_current_context(self) -> None:
-        """Execute the `ask_ai_about_current_context` workflow."""
+        """Send the current file context to the AI as a question-ready prompt."""
         tab = self.active_tab()
         if tab is None:
             QMessageBox.information(self, "Ask About File", "Open a tab first.")
@@ -4163,7 +4370,7 @@ class MiscMixin(
         self._send_ai_chat_prompt(prompt=prompt, visible_prompt="")
 
     def toggle_simple_mode(self, checked: bool, *, persist: bool = True) -> None:
-        """Toggle the state controlled by `toggle_simple_mode`."""
+        """Enable or disable the simplified UI mode."""
         self.settings["simple_mode"] = bool(checked)
         if checked:
             self.menuBar().setVisible(True)
@@ -4197,7 +4404,7 @@ class MiscMixin(
             self.save_settings_to_disk()
 
     def apply_reading_preset(self) -> None:
-        """Apply the changes or settings handled by `apply_reading_preset`."""
+        """Apply reading preset."""
         self.settings["font_size"] = 15
         self.settings["word_wrap"] = True
         self.word_wrap_enabled = True
@@ -4206,7 +4413,7 @@ class MiscMixin(
         self.show_status_message("Applied Reading preset.", 2500)
 
     def apply_writing_preset(self) -> None:
-        """Apply the changes or settings handled by `apply_writing_preset`."""
+        """Apply writing preset."""
         self.settings["font_size"] = 15
         self.settings["word_wrap"] = True
         self.word_wrap_enabled = True
@@ -4225,7 +4432,7 @@ class MiscMixin(
         self.show_status_message("Applied Writing preset.", 2500)
 
     def apply_coding_preset(self) -> None:
-        """Apply the changes or settings handled by `apply_coding_preset`."""
+        """Apply coding preset."""
         self.settings["font_size"] = 12
         self.settings["tab_width"] = 4
         self.word_wrap_enabled = False
@@ -4239,13 +4446,13 @@ class MiscMixin(
         self.show_status_message("Applied Coding preset.", 2500)
 
     def apply_focus_preset(self) -> None:
-        """Apply the changes or settings handled by `apply_focus_preset`."""
+        """Apply focus preset."""
         self.focus_mode_action.setChecked(True)
         self.toggle_focus_mode(True)
         self.show_status_message("Applied Focus preset.", 2500)
 
     def apply_review_preset(self) -> None:
-        """Apply the changes or settings handled by `apply_review_preset`."""
+        """Apply review preset."""
         self.settings["show_main_toolbar"] = True
         self.settings["status_show_breadcrumb"] = True
         self.settings["status_show_selection_stats"] = True
@@ -4261,7 +4468,7 @@ class MiscMixin(
         self.show_status_message("Applied Review preset.", 2500)
 
     def toggle_ai_chat_panel(self, checked: bool | None = None) -> None:
-        """Toggle the state controlled by `toggle_ai_chat_panel`."""
+        """Show or hide the AI chat dock."""
         if not hasattr(self, "ai_chat_dock"):
             return
         desired = not self.ai_chat_dock.isVisible() if checked is None else bool(checked)
@@ -4275,7 +4482,7 @@ class MiscMixin(
             self.ai_chat_panel_action.blockSignals(False)
 
     def explain_selection_with_ai(self) -> None:
-        """Execute the `explain_selection_with_ai` workflow."""
+        """Ask the AI to explain the current editor selection."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -4290,7 +4497,7 @@ class MiscMixin(
             self.ai_chat_dock.send_prompt(prompt=prompt, visible_prompt=prompt)
 
     def _selected_math_text_for_homework(self) -> str:
-        """Internal helper for `_selected_math_text_for_homework`."""
+        """Return the math text that homework AI actions should operate on."""
         tab = self.active_tab()
         if tab is None:
             return ""
@@ -4298,7 +4505,7 @@ class MiscMixin(
         return selected
 
     def homework_solve_with_ai(self) -> None:
-        """Execute the `homework_solve_with_ai` workflow."""
+        """Ask the AI to solve the selected homework problem."""
         selected = self._selected_math_text_for_homework()
         if not selected:
             QMessageBox.information(self, "Homework: Solve with AI", "Select a math expression or problem first.")
@@ -4323,7 +4530,7 @@ class MiscMixin(
         self._send_ai_chat_prompt(prompt=prompt, visible_prompt="Homework: Solve with AI")
 
     def homework_solve_with_solutions_with_ai(self) -> None:
-        """Execute the `homework_solve_with_solutions_with_ai` workflow."""
+        """Ask the AI to solve the selected homework problem and show the full working."""
         selected = self._selected_math_text_for_homework()
         if not selected:
             QMessageBox.information(self, "Homework: Solve with Solutions with AI", "Select a math expression or problem first.")
@@ -4350,7 +4557,7 @@ class MiscMixin(
         self._send_ai_chat_prompt(prompt=prompt, visible_prompt="Homework: Solve with Solutions with AI")
 
     def homework_answer_with_ai(self) -> None:
-        """Execute the `homework_answer_with_ai` workflow."""
+        """Ask the AI for just the final answer to the selected homework problem."""
         selected = self._selected_math_text_for_homework()
         if not selected:
             QMessageBox.information(self, "Homework: Answer with AI", "Select a math expression or problem first.")
@@ -4373,7 +4580,7 @@ class MiscMixin(
         self._send_ai_chat_prompt(prompt=prompt, visible_prompt="Homework: Answer with AI")
 
     def generate_text_to_tab_with_ai(self) -> None:
-        """Execute the `generate_text_to_tab_with_ai` workflow."""
+        """Ask the AI to generate text and insert the result into the active tab."""
         tab = self.active_tab()
         if tab is None:
             QMessageBox.information(self, "Generate Text", "Open a tab first.")
@@ -4395,11 +4602,11 @@ class MiscMixin(
         )
 
     def check_for_updates(self, manual: bool = True) -> None:
-        """Execute the `check_for_updates` workflow."""
+        """Check for updates."""
         self.updater_controller.check_for_updates(manual=manual)
 
     def _sort_tabs_by_pinned(self) -> None:
-        """Internal helper for `_sort_tabs_by_pinned`."""
+        """Reorder tabs so pinned tabs stay grouped ahead of regular tabs."""
         tabs: list[EditorTab] = []
         for index in range(self.tab_widget.count()):
             widget = self.tab_widget.widget(index)
@@ -4420,7 +4627,7 @@ class MiscMixin(
             self.tab_widget.setCurrentWidget(current)
 
     def _ensure_tab_autosave_meta(self, tab: EditorTab) -> None:
-        """Internal helper for `_ensure_tab_autosave_meta`."""
+        """Ensure tab autosave meta."""
         if bool(getattr(tab, "typing_test_mode_enabled", False)):
             return
         if tab.autosave_id:
@@ -4430,11 +4637,11 @@ class MiscMixin(
 
     @staticmethod
     def _exclude_tab_from_recovery(tab: EditorTab) -> bool:
-        """Internal helper for `_exclude_tab_from_recovery`."""
+        """Return whether a tab should be skipped when saving crash recovery state."""
         return bool(getattr(tab, "typing_test_mode_enabled", False))
 
     def _local_history_cache(self) -> dict[str, list[dict[str, str]]]:
-        """Internal helper for `_local_history_cache`."""
+        """Return the cached local-history data when that feature is enabled."""
         if not self.settings.get("local_history_persist_enabled", True):
             return {}
         cache = getattr(self, "_local_history_index_cache", None)
@@ -4449,7 +4656,7 @@ class MiscMixin(
         return cache
 
     def _restore_tab_local_history(self, tab: EditorTab) -> None:
-        """Internal helper for `_restore_tab_local_history`."""
+        """Restore tab local history."""
         if not self.settings.get("local_history_persist_enabled", True):
             return
         try:
@@ -4473,7 +4680,7 @@ class MiscMixin(
             return
 
     def _persist_tab_local_history(self, tab: EditorTab) -> None:
-        """Internal helper for `_persist_tab_local_history`."""
+        """Persist tab local history."""
         if not self.settings.get("local_history_persist_enabled", True):
             return
         entries = getattr(tab.version_history, "entries", [])
@@ -4499,7 +4706,7 @@ class MiscMixin(
             store.save_local_history(cache)
 
     def _capture_crash_snapshot(self) -> None:
-        """Internal helper for `_capture_crash_snapshot`."""
+        """Capture crash snapshot."""
         store = getattr(self, "recovery_state_store", None)
         if not self.settings.get("crash_snapshot_enabled", True):
             if store is not None:
@@ -4539,7 +4746,7 @@ class MiscMixin(
         self.log_event("Debug", f"Crash snapshot saved with {len(tabs_payload)} tab(s).")
 
     def _restore_from_snapshot_payload(self, payload: dict[str, object]) -> int:
-        """Internal helper for `_restore_from_snapshot_payload`."""
+        """Restore from snapshot payload."""
         raw_tabs = payload.get("tabs", [])
         if not isinstance(raw_tabs, list):
             return 0
@@ -4576,7 +4783,7 @@ class MiscMixin(
         return restored
 
     def _run_autosave_cycle(self) -> None:
-        """Internal helper for `_run_autosave_cycle`."""
+        """Run autosave cycle."""
         if not self.settings.get("autosave_enabled", True):
             if hasattr(self, "autosave_status_label"):
                 self.autosave_status_label.setText("Save off")
@@ -4641,7 +4848,7 @@ class MiscMixin(
             self.update_status_bar()
 
     def _clear_tab_autosave(self, tab: EditorTab) -> None:
-        """Internal helper for `_clear_tab_autosave`."""
+        """Clear tab autosave."""
         if not tab.autosave_id:
             return
         if tab.autosave_path:
@@ -4657,9 +4864,9 @@ class MiscMixin(
         tab.autosave_path = None
 
     def _offer_crash_recovery(self) -> None:
-        """Internal helper for `_offer_crash_recovery`."""
+        """Offer to restore tabs and state from the latest crash recovery snapshot."""
         def _consume_placeholder_tab() -> None:
-            """Internal helper for `_consume_placeholder_tab`."""
+            """Remove the placeholder startup tab before restoring recovered tabs."""
             tab = self.active_tab()
             if tab is None:
                 return
@@ -4808,7 +5015,7 @@ class MiscMixin(
             store.clear_crash_snapshot()
 
     def load_settings_from_disk(self) -> None:
-        """Load data required by `load_settings_from_disk`."""
+        """Load application settings from disk and merge them into the current state."""
         path = self.settings_file
         _LOGGER.debug("Loading settings from %s", path)
         if not path.exists():
@@ -4857,7 +5064,7 @@ class MiscMixin(
         _LOGGER.info("Settings loaded and migrated from %s", path)
 
     def save_settings_to_disk(self, *, synchronous: bool = False) -> None:
-        """Save data handled by `save_settings_to_disk`."""
+        """Persist the current settings to disk, optionally doing the write synchronously."""
         if bool(getattr(self, "_saving_settings_to_disk", False)):
             return
         self._saving_settings_to_disk = True
@@ -4906,7 +5113,7 @@ class MiscMixin(
             self._saving_settings_to_disk = False
 
     def _prepare_settings_write_payload(self, payload: dict[str, Any], *, caller: str) -> dict[str, Any]:
-        """Internal helper for `_prepare_settings_write_payload`."""
+        """Prepare the serialized settings payload and related metadata for disk writes."""
         lock_password = str(payload.get("lock_password", "") or "")
         lock_pin = str(payload.get("lock_pin", "") or "")
         password_bytes = self._build_password_payload_bytes(lock_password, lock_pin)
@@ -4939,7 +5146,7 @@ class MiscMixin(
         }
 
     def _load_password_data_from_disk(self) -> dict:
-        """Internal helper for `_load_password_data_from_disk`."""
+        """Load password data from disk."""
         path = self._get_password_file_path()
         if not path.exists():
             return {}
@@ -4952,7 +5159,7 @@ class MiscMixin(
         return {}
 
     def _save_password_data_to_disk(self, lock_password: str, lock_pin: str) -> None:
-        """Internal helper for `_save_password_data_to_disk`."""
+        """Save password data to disk."""
         path = self._get_password_file_path()
         payload_bytes = self._build_password_payload_bytes(lock_password, lock_pin)
         existing_payload = path.read_bytes() if path.exists() else None
@@ -4960,7 +5167,7 @@ class MiscMixin(
             self._atomic_write_bytes(path, payload_bytes)
 
     def _build_password_payload_bytes(self, lock_password: str, lock_pin: str) -> bytes:
-        """Internal helper for `_build_password_payload_bytes`."""
+        """Build password payload bytes."""
         payload = {
             "lock_password_enc": self._protect_settings_secret(lock_password) if lock_password else "",
             "lock_pin_enc": self._protect_settings_secret(lock_pin) if lock_pin else "",
@@ -4968,7 +5175,7 @@ class MiscMixin(
         return json.dumps(payload, indent=2).encode("utf-8")
 
     def _enqueue_settings_save(self, payload: dict[str, Any]) -> None:
-        """Internal helper for `_enqueue_settings_save`."""
+        """Queue a settings payload for the background save worker."""
         lock = getattr(self, "_settings_save_lock", None)
         if lock is None:
             lock = threading.Lock()
@@ -4987,7 +5194,7 @@ class MiscMixin(
         event.set()
 
     def _settings_save_worker_loop(self) -> None:
-        """Internal helper for `_settings_save_worker_loop`."""
+        """Run the background loop that writes queued settings payloads to disk."""
         lock = getattr(self, "_settings_save_lock", None)
         event = getattr(self, "_settings_save_event", None)
         if lock is None or event is None:
@@ -5013,7 +5220,7 @@ class MiscMixin(
                 _LOGGER.exception("Settings worker failed while writing payload")
 
     def _write_settings_payload(self, payload: dict[str, Any]) -> None:
-        """Internal helper for `_write_settings_payload`."""
+        """Write a prepared settings payload and any related sidecar files to disk."""
         settings_path = payload["settings_path"]
         settings_bytes = payload["settings_bytes"]
         themes_path = payload["themes_path"]
@@ -5044,14 +5251,14 @@ class MiscMixin(
 
     @staticmethod
     def _atomic_write_bytes(path: Path, data: bytes) -> None:
-        """Internal helper for `_atomic_write_bytes`."""
+        """Atomically replace a file by writing bytes to a temp file and renaming it."""
         temp_path = path.with_suffix(path.suffix + ".tmp")
         temp_path.write_bytes(data)
         os.replace(temp_path, path)
 
     @staticmethod
     def _normalize_hex_color(value: str) -> str | None:
-        """Internal helper for `_normalize_hex_color`."""
+        """Normalize hex color."""
         text = (value or "").strip()
         if not text:
             return None
@@ -5065,7 +5272,7 @@ class MiscMixin(
         return text
 
     def _apply_status_layout_visibility(self) -> None:
-        """Internal helper for `_apply_status_layout_visibility`."""
+        """Apply status layout visibility."""
         if hasattr(self, "position_label"):
             self.position_label.setVisible(bool(self.settings.get("status_show_position", True)))
         if hasattr(self, "zoom_label"):
@@ -5132,11 +5339,11 @@ class MiscMixin(
         _perf_marks: list[tuple[str, int]] = []
 
         def _mark(stage: str) -> None:
-            """Internal helper for `_mark`."""
+            """Record a timing mark for the current settings-apply pass."""
             _perf_marks.append((stage, int((time.perf_counter() - _perf_start) * 1000)))
 
         def _log_breakdown() -> None:
-            """Internal helper for `_log_breakdown`."""
+            """Log the collected timing breakdown for the settings-apply pass."""
             _LOGGER.info(
                 "apply_settings breakdown(ms)%s: %s",
                 " [startup-deferred]" if startup_deferred else "",
@@ -5252,7 +5459,7 @@ class MiscMixin(
             self._last_applied_main_qss = qss
         if qss_changed or icons_changed:
             def _apply_visual_refresh_batch() -> None:
-                """Internal helper for `_apply_visual_refresh_batch`."""
+                """Apply visual refresh batch."""
                 batch_start = time.perf_counter()
                 self._apply_main_toolbar_icons()
                 self._apply_markdown_icons()
@@ -5286,7 +5493,7 @@ class MiscMixin(
                 )
 
             def _apply_deferred_explorer_and_tab_title_refresh() -> None:
-                """Internal helper for `_apply_deferred_explorer_and_tab_title_refresh`."""
+                """Apply deferred explorer and tab title refresh."""
                 batch_start = time.perf_counter()
                 if hasattr(self, "_refresh_explorer_dock"):
                     self._refresh_explorer_dock()
@@ -5415,7 +5622,7 @@ class MiscMixin(
         _mark("timers_menus_advanced")
 
         def _apply_tab_runtime_settings(tab: EditorTab) -> None:
-            """Internal helper for `_apply_tab_runtime_settings`."""
+            """Apply tab runtime settings."""
             if hasattr(tab.text_edit, "set_theme_colors"):
                 tab.text_edit.set_theme_colors(
                     background=tokens.editor_bg,
@@ -5459,7 +5666,7 @@ class MiscMixin(
                 tabs = [tab for tab in tabs if tab is not active_tab]
 
             def _apply_remaining_tabs_chunk(remaining: list[EditorTab]) -> None:
-                """Internal helper for `_apply_remaining_tabs_chunk`."""
+                """Apply remaining tabs chunk."""
                 chunk_start = time.perf_counter()
                 next_remaining = remaining[4:]
                 for tab in remaining[:4]:
@@ -5512,7 +5719,7 @@ class MiscMixin(
         _log_breakdown()
 
     def apply_language(self, *, force: bool = False) -> None:
-        """Apply the changes or settings handled by `apply_language`."""
+        """Apply language."""
         lang_label = str(self.settings.get("language", "English") or "English")
         lang_code = language_code_for(lang_label)
         if not force and str(getattr(self, "_ui_language_code", "") or "") == lang_code:
@@ -5522,7 +5729,7 @@ class MiscMixin(
         self._translate_widgets(lang_code)
 
     def clear_translation_cache(self) -> None:
-        """Execute the `clear_translation_cache` workflow."""
+        """Clear translation cache."""
         translator = getattr(self, "translator", None)
         if translator is None:
             return
@@ -5530,12 +5737,12 @@ class MiscMixin(
         self.log_event("Info", "Translation cache cleared")
 
     def show_status_message(self, text: str, timeout_ms: int = 0) -> None:
-        """Execute the `show_status_message` workflow."""
+        """Show a translated status-bar message for the requested duration."""
         lang_code = getattr(self, "_ui_language_code", "en")
         self.status.showMessage(self._translate_text(text, lang_code), timeout_ms)
 
     def _record_jump_history(self, *, reason: str = "cursor") -> None:
-        """Internal helper for `_record_jump_history`."""
+        """Record jump history."""
         if getattr(self, "_suspend_jump_recording", False):
             return
         tab = self.active_tab()
@@ -5568,20 +5775,20 @@ class MiscMixin(
         self._jump_history_index = len(history) - 1
 
     def _on_cursor_position_changed_for_jump_history(self) -> None:
-        """Internal helper for `_on_cursor_position_changed_for_jump_history`."""
+        """Record cursor movement in jump history when the caret position changes."""
         self._record_jump_history(reason="cursor")
 
     def can_jump_history_back(self) -> bool:
-        """Execute the `can_jump_history_back` workflow."""
+        """Return whether jump history back."""
         return int(getattr(self, "_jump_history_index", -1)) > 0
 
     def can_jump_history_forward(self) -> bool:
-        """Execute the `can_jump_history_forward` workflow."""
+        """Return whether jump history forward."""
         history = getattr(self, "_jump_history", [])
         return 0 <= int(getattr(self, "_jump_history_index", -1)) < len(history) - 1
 
     def _jump_history_move(self, direction: int) -> None:
-        """Internal helper for `_jump_history_move`."""
+        """Move backward or forward through the stored jump history."""
         history = getattr(self, "_jump_history", [])
         if not history:
             return
@@ -5601,7 +5808,7 @@ class MiscMixin(
         if target_tab is None:
             target_file = str(entry.get("file", "")).strip()
             if target_file and Path(target_file).exists():
-                self._open_file_path(target_file)
+                self._open_file_path(target_file, open_origin="local_open")
                 target_tab = self.active_tab()
         if target_tab is None:
             return
@@ -5616,15 +5823,15 @@ class MiscMixin(
         self.update_action_states()
 
     def jump_history_back(self) -> None:
-        """Execute the `jump_history_back` workflow."""
+        """Jump to history back."""
         self._jump_history_move(-1)
 
     def jump_history_forward(self) -> None:
-        """Execute the `jump_history_forward` workflow."""
+        """Jump to history forward."""
         self._jump_history_move(1)
 
     def show_jump_history(self) -> None:
-        """Execute the `show_jump_history` workflow."""
+        """Show a dialog that lists recorded jump-history locations."""
         history = list(getattr(self, "_jump_history", []))
         if not history:
             QMessageBox.information(self, "Jump History", "No jump history yet.")
@@ -5650,7 +5857,7 @@ class MiscMixin(
         buttons.rejected.connect(dlg.reject)
 
         def _jump_selected() -> None:
-            """Internal helper for `_jump_selected`."""
+            """Jump to the location selected in the jump-history dialog."""
             current = list_widget.currentItem()
             if current is None:
                 return
@@ -5667,7 +5874,7 @@ class MiscMixin(
         dlg.exec()
 
     def _translate_text(self, text: str, lang_code: str) -> str:
-        """Internal helper for `_translate_text`."""
+        """Translate a text string into the requested UI language when possible."""
         if not text:
             return text
         if not lang_code or lang_code == "en":
@@ -5678,7 +5885,7 @@ class MiscMixin(
         return translator.translate(text, lang_code)
 
     def _translate_action_text(self, text: str, lang_code: str) -> str:
-        """Internal helper for `_translate_action_text`."""
+        """Translate an action label while preserving accelerators and formatting."""
         if not text:
             return text
         if not lang_code or lang_code == "en":
@@ -5691,7 +5898,7 @@ class MiscMixin(
         return translated
 
     def _translate_actions(self, lang_code: str) -> None:
-        """Internal helper for `_translate_actions`."""
+        """Translate all eligible QAction labels in the main window."""
         for action in self.findChildren(QAction):
             if action.property("i18n_skip"):
                 continue
@@ -5710,7 +5917,7 @@ class MiscMixin(
                 action.setStatusTip(self._translate_text(str(original_status), lang_code))
 
     def _translate_widgets(self, lang_code: str) -> None:
-        """Internal helper for `_translate_widgets`."""
+        """Translate eligible widget text throughout the main window."""
         for widget in self.findChildren(QWidget):
             if widget.property("i18n_skip"):
                 continue
@@ -5749,7 +5956,7 @@ class MiscMixin(
                     button.setText(self._translate_text(str(original), lang_code))
 
     def open_settings(self, initial_section: str | None = None) -> None:
-        """Open the UI or resource handled by `open_settings`."""
+        """Open the settings dialog, optionally focusing a specific section."""
         open_started_at = time.perf_counter()
         dlg = getattr(self, "_settings_dialog_cached", None)
         dlg_prepare_started_at = time.perf_counter()
@@ -5805,7 +6012,7 @@ class MiscMixin(
                 return
 
             def _apply_after_dialog_close() -> None:
-                """Internal helper for `_apply_after_dialog_close`."""
+                """Apply after dialog close."""
                 apply_started_at = time.perf_counter()
                 app = QApplication.instance()
                 prev_quit_on_last: bool | None = None
@@ -5884,7 +6091,7 @@ class MiscMixin(
         _LOGGER.info("Settings open flow total: %sms", total_open_ms)
 
     def _prewarm_settings_dialog_cache(self) -> None:
-        """Internal helper for `_prewarm_settings_dialog_cache`."""
+        """Start building the cached settings dialog in the background."""
         if bool(getattr(self, "_settings_dialog_prewarm_started", False)):
             return
         self._settings_dialog_prewarm_started = True
@@ -5917,14 +6124,14 @@ class MiscMixin(
 
     @staticmethod
     def _settings_change_requires_restart(current: dict[str, Any], updated: dict[str, Any]) -> bool:
-        """Internal helper for `_settings_change_requires_restart`."""
+        """Return whether the proposed settings changes require an app restart."""
         _ = current
         _ = updated
         return False
 
     @staticmethod
     def _build_restart_command() -> list[str]:
-        """Internal helper for `_build_restart_command`."""
+        """Build restart command."""
         args = [str(a) for a in sys.argv[1:]]
         if getattr(sys, "frozen", False):
             return [str(Path(sys.executable).resolve()), *args]
@@ -5941,17 +6148,17 @@ class MiscMixin(
         return [str(Path(sys.executable).resolve()), *args]
 
     def _restart_app_after_theme_change(self) -> None:
-        """Internal helper for `_restart_app_after_theme_change`."""
+        """Restart or prompt for restart after a theme change that cannot be applied live."""
         _LOGGER.info("Auto-restart after theme change is disabled; explicit reload required")
         if hasattr(self, "show_status_message"):
             self.show_status_message("Theme changes applied. Use Reload App if needed.", 3500)
 
     def reload_app(self) -> None:
-        """Execute the `reload_app` workflow."""
+        """Restart the application process immediately."""
         self._restart_app_with_message("The app will now reload.")
 
     def _restart_app_with_message(self, message: str) -> None:
-        """Internal helper for `_restart_app_with_message`."""
+        """Show a status message and relaunch the application process."""
         command = self._build_restart_command()
         popen_kwargs: dict[str, Any] = {"cwd": str(Path.cwd())}
         if os.name == "nt":
@@ -5976,25 +6183,25 @@ class MiscMixin(
         self._request_app_quit("reload_app_requested")
 
     def _mark_close_trace(self, reason: str) -> None:
-        """Internal helper for `_mark_close_trace`."""
+        """Mark close trace."""
         self._pending_close_reason = str(reason or "unknown")
         self._pending_close_stack = "".join(traceback.format_stack(limit=12))
         _LOGGER.info("[CloseTrace] requested reason=%s", self._pending_close_reason)
 
     def _request_app_quit(self, reason: str) -> None:
-        """Internal helper for `_request_app_quit`."""
+        """Request application shutdown while recording the reason for later diagnostics."""
         self._mark_close_trace(reason)
         app = QApplication.instance()
         if app is not None:
             app.quit()
 
     def _request_window_close(self, reason: str) -> None:
-        """Internal helper for `_request_window_close`."""
+        """Close the current window after recording the close reason."""
         self._mark_close_trace(reason)
         self.close()
 
     def get_shortcut_action_rows(self) -> list[ShortcutActionRow]:
-        """Return the value produced by `get_shortcut_action_rows`."""
+        """Return shortcut action rows."""
         rows: list[ShortcutActionRow] = []
         for entry in discover_window_actions(self):
             try:
@@ -6008,7 +6215,7 @@ class MiscMixin(
         return rows
 
     def _capture_default_shortcuts(self) -> None:
-        """Internal helper for `_capture_default_shortcuts`."""
+        """Capture default shortcuts."""
         rows = self.get_shortcut_action_rows()
         defaults: dict[str, list[str]] = {}
         for row in rows:
@@ -6024,7 +6231,7 @@ class MiscMixin(
         self._default_shortcuts_by_action_id = defaults
 
     def _resolve_effective_shortcuts(self) -> dict[str, list[str]]:
-        """Internal helper for `_resolve_effective_shortcuts`."""
+        """Resolve effective shortcuts."""
         profile = str(self.settings.get("shortcut_profile", "vscode"))
         custom_map = self.settings.get("shortcut_map", {})
         base = dict(getattr(self, "_default_shortcuts_by_action_id", {}))
@@ -6039,7 +6246,7 @@ class MiscMixin(
         return base
 
     def apply_shortcut_settings(self) -> None:
-        """Apply the changes or settings handled by `apply_shortcut_settings`."""
+        """Apply shortcut settings."""
         mapping = self._resolve_effective_shortcuts()
         rows = self.get_shortcut_action_rows()
         for row in rows:
@@ -6055,7 +6262,7 @@ class MiscMixin(
             self.configure_action_tooltips()
 
     def open_shortcut_mapper(self) -> None:
-        """Open the UI or resource handled by `open_shortcut_mapper`."""
+        """Open the shortcut mapper dialog."""
         if not hasattr(self, "_default_shortcuts_by_action_id"):
             self._capture_default_shortcuts()
         rows = self.get_shortcut_action_rows()
@@ -6063,7 +6270,7 @@ class MiscMixin(
         dlg.exec()
 
     def edit_settings_json_in_app(self) -> None:
-        """Execute the `edit_settings_json_in_app` workflow."""
+        """Open the settings JSON file in the editor for manual inspection or editing."""
         self.save_settings_to_disk()
         path = str(self.settings_file)
         if not self._open_file_path(path):
@@ -6074,14 +6281,14 @@ class MiscMixin(
             self.add_new_tab(text=text, file_path=path, make_current=True)
 
     def reset_settings_to_default_and_close(self) -> None:
-        """Execute the `reset_settings_to_default_and_close` workflow."""
+        """Reset settings to default and close."""
         self.settings = self._build_default_settings()
         self.save_settings_to_disk(synchronous=True)
         self.log_event("Info", "Settings reset to defaults. Closing app.")
         self._request_app_quit("settings_factory_reset")
 
     def keyPressEvent(self, event) -> None:  # type: ignore[override]
-        """Execute the `keyPressEvent` workflow."""
+        """Handle key press input for this widget."""
         if (
             event.key() == Qt.Key_Escape
             and hasattr(self, "focus_mode_action")
@@ -6104,7 +6311,7 @@ class MiscMixin(
         self.setWindowTitle(f"{modified_marker}{name} - Pypad")
 
     def _on_modification_changed(self, _changed: bool) -> None:
-        """Internal helper for `_on_modification_changed`."""
+        """Update tab state when an editor reports that its modified flag changed."""
         sender_editor = self.sender()
         for index in range(self.tab_widget.count()):
             tab = self.tab_widget.widget(index)
@@ -6114,7 +6321,7 @@ class MiscMixin(
         self.update_window_title()
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
-        """Execute the `closeEvent` workflow."""
+        """Shut down widget-specific state before the widget closes."""
         close_reason = str(getattr(self, "_pending_close_reason", "") or "unknown")
         close_stack = str(getattr(self, "_pending_close_stack", "") or "")
         close_trace_debug = bool(self.settings.get("debug_telemetry_enabled", False)) or str(
@@ -6175,7 +6382,7 @@ class MiscMixin(
         event.accept()
 
     def _collect_session_state(self) -> dict[str, object]:
-        """Internal helper for `_collect_session_state`."""
+        """Collect session state."""
         files: list[str] = []
         seen: set[str] = set()
         unsaved_tabs: list[dict[str, object]] = []
@@ -6212,7 +6419,7 @@ class MiscMixin(
         }
 
     def _save_session_to_path(self, path: str) -> bool:
-        """Internal helper for `_save_session_to_path`."""
+        """Save session to path."""
         payload = self._collect_session_state()
         try:
             Path(path).write_text(json.dumps(payload, indent=2), encoding="utf-8")
@@ -6227,7 +6434,7 @@ class MiscMixin(
         return True
 
     def save_session(self) -> None:
-        """Save data handled by `save_session`."""
+        """Save the current session to the last-used session file path."""
         path = str(self.settings.get("last_session_file_path", "") or "").strip()
         if not path:
             self.save_session_as()
@@ -6235,7 +6442,7 @@ class MiscMixin(
         self._save_session_to_path(path)
 
     def save_session_as(self) -> None:
-        """Save data handled by `save_session_as`."""
+        """Prompt for a path and save the current session there."""
         default_path = str(self.settings.get("last_session_file_path", "") or "").strip()
         if not default_path:
             default_path = str(Path.home() / "pypad.session.json")
@@ -6250,7 +6457,7 @@ class MiscMixin(
         self._save_session_to_path(path)
 
     def _open_session_payload(self, payload: dict[str, object]) -> bool:
-        """Internal helper for `_open_session_payload`."""
+        """Open session payload."""
         raw_files = payload.get("files", [])
         files = [str(path) for path in raw_files if isinstance(path, str) and path]
         raw_unsaved_tabs = payload.get("unsaved_tabs", [])
@@ -6290,7 +6497,7 @@ class MiscMixin(
         for path in unique_files:
             if not Path(path).exists():
                 continue
-            if self._open_file_path(path):
+            if self._open_file_path(path, open_origin="recovery"):
                 tab = self.active_tab()
                 if tab is not None and hasattr(self, "_ensure_tab_autosave_meta"):
                     self._ensure_tab_autosave_meta(tab)
@@ -6343,7 +6550,7 @@ class MiscMixin(
         return True
 
     def load_session(self) -> None:
-        """Load data required by `load_session`."""
+        """Prompt for and load a previously saved session file."""
         start_dir = str(self.settings.get("last_session_file_path", "") or "").strip()
         path, _ = QFileDialog.getOpenFileName(
             self,
@@ -6369,7 +6576,7 @@ class MiscMixin(
         self.show_status_message(f"Session loaded: {path}", 3000)
 
     def restore_last_session(self, *, startup_deferred: bool = False) -> None:
-        """Execute the `restore_last_session` workflow."""
+        """Restore last session."""
         started = time.perf_counter()
         if not self.settings.get("restore_last_session", True):
             return
@@ -6397,7 +6604,7 @@ class MiscMixin(
         opened_unsaved: list[EditorTab] = []
 
         def _select_restored_target() -> None:
-            """Internal helper for `_select_restored_target`."""
+            """Select the tab that should receive focus after session restore finishes."""
             if active_file:
                 for index in range(self.tab_widget.count()):
                     tab = self.tab_widget.widget(index)
@@ -6420,12 +6627,12 @@ class MiscMixin(
             )
 
         def _open_file_batch(remaining_files: list[str], on_done) -> None:
-            """Internal helper for `_open_file_batch`."""
+            """Open file batch."""
             batch_start = time.perf_counter()
             next_remaining = remaining_files[2:]
             for path in remaining_files[:2]:
                 if Path(path).exists():
-                    if self._open_file_path(path):
+                    if self._open_file_path(path, open_origin="recovery"):
                         tab = self.active_tab()
                         if tab is not None and hasattr(self, "_ensure_tab_autosave_meta"):
                             self._ensure_tab_autosave_meta(tab)
@@ -6441,7 +6648,7 @@ class MiscMixin(
                 on_done()
 
         def _open_unsaved_batch(remaining_tabs: list[dict], on_done) -> None:
-            """Internal helper for `_open_unsaved_batch`."""
+            """Open unsaved batch."""
             batch_start = time.perf_counter()
             next_remaining = remaining_tabs[4:]
             for row in remaining_tabs[:4]:
@@ -6465,7 +6672,7 @@ class MiscMixin(
 
         if startup_deferred and (files or unsaved_tabs):
             def _after_files() -> None:
-                """Internal helper for `_after_files`."""
+                """Continue restoring unsaved tabs after file-backed tabs have opened."""
                 if unsaved_tabs:
                     _open_unsaved_batch(list(unsaved_tabs), _select_restored_target)
                 else:
@@ -6479,7 +6686,7 @@ class MiscMixin(
 
         for path in files:
             if Path(path).exists():
-                if self._open_file_path(path):
+                if self._open_file_path(path, open_origin="recovery"):
                     tab = self.active_tab()
                     if tab is not None and hasattr(self, "_ensure_tab_autosave_meta"):
                         self._ensure_tab_autosave_meta(tab)
@@ -6494,7 +6701,7 @@ class MiscMixin(
         _select_restored_target()
 
     def _serialize_tab_for_reopen(self, tab: EditorTab) -> dict[str, object]:
-        """Internal helper for `_serialize_tab_for_reopen`."""
+        """Serialize enough tab state to reopen it later from history."""
         return {
             "path": str(tab.current_file or ""),
             "text": tab.text_edit.get_text(),
@@ -6512,7 +6719,7 @@ class MiscMixin(
         }
 
     def _push_closed_tab_snapshot(self, tab: EditorTab) -> None:
-        """Internal helper for `_push_closed_tab_snapshot`."""
+        """Push a just-closed tab snapshot onto the recently closed history."""
         history = list(getattr(self, "closed_tabs_history", []))
         history.insert(0, self._serialize_tab_for_reopen(tab))
         self.closed_tabs_history = history[:20]
@@ -6520,7 +6727,7 @@ class MiscMixin(
         self.save_settings_to_disk()
 
     def _restore_closed_tab_snapshot(self, payload: dict[str, object]) -> bool:
-        """Internal helper for `_restore_closed_tab_snapshot`."""
+        """Restore closed tab snapshot."""
         path = str(payload.get("path", "") or "").strip()
         text = str(payload.get("text", "") or "")
         active = self.active_tab()
@@ -6556,7 +6763,7 @@ class MiscMixin(
         return True
 
     def reopen_closed_tab(self) -> None:
-        """Execute the `reopen_closed_tab` workflow."""
+        """Reopen the most recently closed tab from history."""
         history = list(getattr(self, "closed_tabs_history", []))
         if not history:
             QMessageBox.information(self, "Reopen Closed Tab", "There are no recently closed tabs.")
@@ -6570,7 +6777,7 @@ class MiscMixin(
         self.show_status_message("Reopened closed tab.", 2500)
 
     def show_recently_closed_tabs(self) -> None:
-        """Execute the `show_recently_closed_tabs` workflow."""
+        """Show a dialog for reopening tabs from the recently closed history."""
         history = list(getattr(self, "closed_tabs_history", []))
         if not history:
             QMessageBox.information(self, "Recently Closed Tabs", "There are no recently closed tabs.")
@@ -6591,7 +6798,7 @@ class MiscMixin(
         reopen_btn = buttons.addButton("Reopen Selected", QDialogButtonBox.AcceptRole)
         clear_btn = buttons.addButton("Clear History", QDialogButtonBox.DestructiveRole)
         def _reopen_selected() -> None:
-            """Internal helper for `_reopen_selected`."""
+            """Reopen the tab selected in the recently closed tabs dialog."""
             row = listing.currentRow()
             if row < 0 or row >= len(history):
                 QMessageBox.information(self, "Recently Closed Tabs", "Select a tab to reopen.")
@@ -6605,7 +6812,7 @@ class MiscMixin(
             dlg.accept()
 
         def _clear_history() -> None:
-            """Internal helper for `_clear_history`."""
+            """Clear history."""
             self.closed_tabs_history = []
             self.settings["closed_tab_history"] = []
             self.save_settings_to_disk()
@@ -6621,7 +6828,7 @@ class MiscMixin(
         dlg.exec()
 
     def _watch_file(self, path: str) -> None:
-        """Internal helper for `_watch_file`."""
+        """Register a file path with the filesystem watcher."""
         watcher = getattr(self, "file_watcher", None)
         if watcher is None:
             return
@@ -6629,7 +6836,7 @@ class MiscMixin(
             watcher.addPath(path)
 
     def _refresh_file_watcher(self) -> None:
-        """Internal helper for `_refresh_file_watcher`."""
+        """Refresh file watcher."""
         watcher = getattr(self, "file_watcher", None)
         if watcher is None:
             return
@@ -6646,7 +6853,7 @@ class MiscMixin(
                 watcher.addPath(path)
 
     def _on_file_changed(self, path: str) -> None:
-        """Internal helper for `_on_file_changed`."""
+        """React when the filesystem watcher reports that an open file changed on disk."""
         if not path:
             return
         normalized_path = os.path.normcase(os.path.abspath(path))
@@ -6689,7 +6896,7 @@ class MiscMixin(
         self.reload_tab_from_disk(tab)
 
     def _show_external_change_diff(self, tab: EditorTab, path: str) -> None:
-        """Internal helper for `_show_external_change_diff`."""
+        """Show a diff between the in-memory tab content and the file changed on disk."""
         try:
             disk_text = Path(path).read_text(encoding="utf-8", errors="replace")
         except Exception as exc:  # noqa: BLE001
@@ -6725,7 +6932,7 @@ class MiscMixin(
         dlg.exec()
 
     def _bookmark_marker_id(self, tab: EditorTab) -> int | None:
-        """Internal helper for `_bookmark_marker_id`."""
+        """Return the Scintilla marker id used for bookmarks in this tab."""
         if not tab.text_edit.is_scintilla:
             return None
         marker_id = tab.bookmark_marker_id
@@ -6740,7 +6947,7 @@ class MiscMixin(
         return None
 
     def _sync_scintilla_bookmark_markers(self, tab: EditorTab) -> None:
-        """Internal helper for `_sync_scintilla_bookmark_markers`."""
+        """Sync scintilla bookmark markers."""
         marker_id = self._bookmark_marker_id(tab)
         if marker_id is None or not tab.text_edit.is_scintilla:
             return
@@ -6755,7 +6962,7 @@ class MiscMixin(
                 pass
 
     def _tab_style_lines(self, tab: EditorTab) -> dict[int, int]:
-        """Internal helper for `_tab_style_lines`."""
+        """Return the mapping of styled line markers stored on a tab."""
         raw = getattr(tab, "styled_lines", None)
         if isinstance(raw, dict):
             return raw
@@ -6764,7 +6971,7 @@ class MiscMixin(
         return styled
 
     def _style_color(self, style_id: int) -> QColor:
-        """Internal helper for `_style_color`."""
+        """Return the QColor used for a given search or marker style id."""
         colors = {
             1: QColor("#9fd3a8"),
             2: QColor("#f6f4a0"),
@@ -6776,7 +6983,7 @@ class MiscMixin(
         return colors.get(style_id, QColor("#9fd3a8"))
 
     def _apply_line_styles(self, tab: EditorTab) -> None:
-        """Internal helper for `_apply_line_styles`."""
+        """Apply line styles."""
         if tab.text_edit.is_native_scintilla:
             return
         styled = self._tab_style_lines(tab)
@@ -6808,7 +7015,7 @@ class MiscMixin(
         tab.text_edit.widget.setExtraSelections(selections)
 
     def _record_change_history_line(self) -> None:
-        """Internal helper for `_record_change_history_line`."""
+        """Record change history line."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -6824,7 +7031,7 @@ class MiscMixin(
             del lines[: len(lines) - 4000]
 
     def toggle_bookmark(self) -> None:
-        """Toggle the state controlled by `toggle_bookmark`."""
+        """Add or remove a bookmark on the current editor line."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -6840,7 +7047,7 @@ class MiscMixin(
                 tab.text_edit.widget.markerAdd(line, marker_id)
 
     def _goto_bookmark(self, forward: bool) -> None:
-        """Internal helper for `_goto_bookmark`."""
+        """Jump to the next or previous bookmark from the current cursor position."""
         tab = self.active_tab()
         if tab is None or not tab.bookmarks:
             return
@@ -6860,15 +7067,15 @@ class MiscMixin(
             tab.text_edit.set_cursor_position(sorted_marks[-1], 0)
 
     def goto_next_bookmark(self) -> None:
-        """Execute the `goto_next_bookmark` workflow."""
+        """Jump to the next bookmark in the active document."""
         self._goto_bookmark(forward=True)
 
     def goto_prev_bookmark(self) -> None:
-        """Execute the `goto_prev_bookmark` workflow."""
+        """Jump to the previous bookmark in the active document."""
         self._goto_bookmark(forward=False)
 
     def clear_bookmarks(self) -> None:
-        """Execute the `clear_bookmarks` workflow."""
+        """Clear bookmarks."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -6879,7 +7086,7 @@ class MiscMixin(
         tab.bookmarks.clear()
 
     def show_marks_bookmarks_panel(self) -> None:
-        """Execute the `show_marks_bookmarks_panel` workflow."""
+        """Show a dialog that lists bookmarks and line markers in the active document."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -6927,7 +7134,7 @@ class MiscMixin(
         refs_cache = []
 
         def _refresh() -> None:
-            """Internal helper for `_refresh`."""
+            """Refresh the bookmark and marker rows shown in the panel."""
             nonlocal refs_cache
             refs_cache = build_line_refs(
                 source,
@@ -6946,7 +7153,7 @@ class MiscMixin(
                 table.setItem(row_idx, 3, QTableWidgetItem(row.text))
 
         def _selected_ref_indices() -> list[int]:
-            """Internal helper for `_selected_ref_indices`."""
+            """Return the selected row indices from the marks and bookmarks table."""
             out: list[int] = []
             for item in table.selectedItems():
                 row = item.row()
@@ -6955,7 +7162,7 @@ class MiscMixin(
             return sorted(out)
 
         def _jump() -> None:
-            """Internal helper for `_jump`."""
+            """Jump to the selected bookmark or marker rows."""
             idxs = _selected_ref_indices()
             if not idxs:
                 return
@@ -6965,7 +7172,7 @@ class MiscMixin(
             self.show_status_message(f"Jumped to line {row.line_no}.", 2000)
 
         def _remove_selected() -> None:
-            """Internal helper for `_remove_selected`."""
+            """Remove the selected bookmarks or markers from the active tab."""
             idxs = _selected_ref_indices()
             if not idxs:
                 return
@@ -6982,7 +7189,7 @@ class MiscMixin(
             self.show_status_message("Selected entries removed.", 2200)
 
         def _clear_shown() -> None:
-            """Internal helper for `_clear_shown`."""
+            """Clear all bookmarks and markers currently shown in the panel."""
             for row in refs_cache:
                 line_idx = row.line_no - 1
                 if row.kind == "bookmark":
@@ -6995,7 +7202,7 @@ class MiscMixin(
             self.show_status_message("Displayed marks/bookmarks cleared.", 2200)
 
         def _export() -> None:
-            """Internal helper for `_export`."""
+            """Export the currently listed bookmarks and markers to a text file."""
             if not refs_cache:
                 QMessageBox.information(self, "Marks/Bookmarks Panel", "Nothing to export.")
                 return
@@ -7026,11 +7233,11 @@ class MiscMixin(
 
     # ---- Search menu extensions (Notepad++-style baseline) ----
     def search_find_in_files(self) -> None:
-        """Execute the `search_find_in_files` workflow."""
+        """Open the find-in-files workflow for the current workspace."""
         self.search_workspace()
 
     def _set_search_results(self, query: str, items: list[dict[str, object]]) -> None:
-        """Internal helper for `_set_search_results`."""
+        """Store the latest search query and search result items for the dock and dialogs."""
         self._search_results_query = query
         self._search_results_items = list(items)
         self._search_results_index = -1 if not items else 0
@@ -7038,7 +7245,7 @@ class MiscMixin(
         self.update_action_states()
 
     def _init_layout_docks(self) -> None:
-        """Internal helper for `_init_layout_docks`."""
+        """Create the dock widgets used by the layout and workspace panels."""
         if getattr(self, "_layout_docks_ready", False):
             return
         self._layout_docks_ready = True
@@ -7059,7 +7266,7 @@ class MiscMixin(
         self._install_layout_auto_save()
 
     def _build_workspace_dock(self) -> None:
-        """Internal helper for `_build_workspace_dock`."""
+        """Build the workspace dock and its file tree view."""
         if hasattr(self, "workspace_dock"):
             return
         dock = QDockWidget("Workspace", self)
@@ -7103,7 +7310,7 @@ class MiscMixin(
             self.log_event("Info", "[Startup] Dock created: Workspace")
 
     def _build_explorer_dock(self) -> None:
-        """Internal helper for `_build_explorer_dock`."""
+        """Build the explorer dock and its themed filesystem tree."""
         if hasattr(self, "explorer_dock"):
             return
         dock = QDockWidget("Explorer", self)
@@ -7206,7 +7413,7 @@ class MiscMixin(
             self.log_event("Info", "[Startup] Dock created: Explorer")
 
     def _refresh_workspace_dock(self) -> None:
-        """Internal helper for `_refresh_workspace_dock`."""
+        """Reload the workspace dock contents from the current workspace root."""
         root = str(self.settings.get("workspace_root", "") or "").strip()
         if hasattr(self, "workspace_dock") and hasattr(self, "workspace_path_label") and hasattr(self, "workspace_tree"):
             if not root or not Path(root).exists():
@@ -7221,7 +7428,7 @@ class MiscMixin(
         self._refresh_explorer_dock()
 
     def _refresh_explorer_dock(self) -> None:
-        """Internal helper for `_refresh_explorer_dock`."""
+        """Reload the explorer dock to reflect current filesystem contents."""
         if not hasattr(self, "explorer_dock"):
             return
         self._apply_explorer_theme()
@@ -7242,7 +7449,7 @@ class MiscMixin(
             self.explorer_tree.hideColumn(col)
 
     def _apply_explorer_theme(self) -> None:
-        """Internal helper for `_apply_explorer_theme`."""
+        """Apply the current theme styling to the explorer dock widgets."""
         if not hasattr(self, "explorer_tree"):
             return
         tokens = build_tokens_from_settings(self.settings)
@@ -7295,7 +7502,7 @@ class MiscMixin(
         )
 
     def _explorer_icon_name_for_info(self, info: QFileInfo) -> str:
-        """Internal helper for `_explorer_icon_name_for_info`."""
+        """Return the themed icon name that best matches a filesystem item."""
         if info.isDir():
             return "document-list"
         suffix = str(info.suffix() or "").lower()
@@ -7341,7 +7548,7 @@ class MiscMixin(
         return mapping.get(suffix, "file-generic")
 
     def _on_workspace_tree_open(self, index) -> None:
-        """Internal helper for `_on_workspace_tree_open`."""
+        """Open the file selected from the workspace tree."""
         if not hasattr(self, "workspace_model"):
             return
         path = self.workspace_model.filePath(index)
@@ -7349,7 +7556,7 @@ class MiscMixin(
             self._open_file_path(path)
 
     def _on_explorer_tree_open(self, index) -> None:
-        """Internal helper for `_on_explorer_tree_open`."""
+        """Open the file or directory selected from the explorer tree."""
         if not hasattr(self, "explorer_model"):
             return
         path = self.explorer_model.filePath(index)
@@ -7357,7 +7564,7 @@ class MiscMixin(
             self._open_file_path(path)
 
     def _workspace_git_status_suffix(self, root: str) -> str:
-        """Internal helper for `_workspace_git_status_suffix`."""
+        """Return a short Git status suffix for the workspace root, when available."""
         try:
             cp = subprocess.run(
                 ["git", "-C", root, "status", "--porcelain"],
@@ -7387,7 +7594,7 @@ class MiscMixin(
             return ""
 
     def _workspace_tree_path_from_index(self, index) -> str:
-        """Internal helper for `_workspace_tree_path_from_index`."""
+        """Resolve a workspace tree index into its filesystem path."""
         if not hasattr(self, "workspace_model"):
             return ""
         try:
@@ -7396,7 +7603,7 @@ class MiscMixin(
             return ""
 
     def _explorer_tree_path_from_index(self, index) -> str:
-        """Internal helper for `_explorer_tree_path_from_index`."""
+        """Resolve an explorer tree index into its filesystem path."""
         if not hasattr(self, "explorer_model"):
             return ""
         try:
@@ -7405,7 +7612,7 @@ class MiscMixin(
             return ""
 
     def _selected_explorer_path(self) -> str:
-        """Internal helper for `_selected_explorer_path`."""
+        """Return the path currently selected in the explorer tree."""
         if not hasattr(self, "explorer_tree"):
             return ""
         index = self.explorer_tree.currentIndex()
@@ -7416,7 +7623,7 @@ class MiscMixin(
         return root
 
     def _explorer_target_dir(self) -> Path | None:
-        """Internal helper for `_explorer_target_dir`."""
+        """Return the directory that explorer actions should target."""
         path = self._selected_explorer_path().strip()
         if not path:
             return None
@@ -7424,7 +7631,7 @@ class MiscMixin(
         return selected if selected.is_dir() else selected.parent
 
     def _on_workspace_tree_context_menu(self, pos: QPoint) -> None:
-        """Internal helper for `_on_workspace_tree_context_menu`."""
+        """Show the context menu for the workspace tree at the requested position."""
         if not hasattr(self, "workspace_tree"):
             return
         index = self.workspace_tree.indexAt(pos)
@@ -7525,7 +7732,7 @@ class MiscMixin(
             self._refresh_workspace_dock()
 
     def _on_explorer_tree_context_menu(self, pos: QPoint) -> None:
-        """Internal helper for `_on_explorer_tree_context_menu`."""
+        """Show the context menu for the explorer tree at the requested position."""
         if not hasattr(self, "explorer_tree"):
             return
         index = self.explorer_tree.indexAt(pos)
@@ -7592,7 +7799,7 @@ class MiscMixin(
             self._refresh_explorer_dock()
 
     def _install_explorer_shortcuts(self) -> None:
-        """Internal helper for `_install_explorer_shortcuts`."""
+        """Install keyboard shortcuts that operate on the explorer tree."""
         if not hasattr(self, "explorer_tree"):
             return
         self._explorer_shortcuts = []
@@ -7615,7 +7822,7 @@ class MiscMixin(
             self._explorer_shortcuts.append(shortcut)
 
     def explorer_new_file(self) -> None:
-        """Execute the `explorer_new_file` workflow."""
+        """Create a new file in the currently targeted explorer directory."""
         target_dir = self._explorer_target_dir()
         if target_dir is None:
             return
@@ -7633,7 +7840,7 @@ class MiscMixin(
         self._open_file_path(str(path))
 
     def explorer_new_folder(self) -> None:
-        """Execute the `explorer_new_folder` workflow."""
+        """Create a new folder in the currently targeted explorer directory."""
         target_dir = self._explorer_target_dir()
         if target_dir is None:
             return
@@ -7649,7 +7856,7 @@ class MiscMixin(
         self._refresh_workspace_dock()
 
     def explorer_edit_selected(self) -> None:
-        """Execute the `explorer_edit_selected` workflow."""
+        """Open the file currently selected in the explorer."""
         path = self._selected_explorer_path().strip()
         if not path:
             return
@@ -7657,7 +7864,7 @@ class MiscMixin(
             self._open_file_path(path)
 
     def explorer_reveal_selected(self) -> None:
-        """Execute the `explorer_reveal_selected` workflow."""
+        """Reveal the selected explorer item in the system file manager."""
         path = self._selected_explorer_path().strip()
         if not path:
             return
@@ -7671,7 +7878,7 @@ class MiscMixin(
             QMessageBox.warning(self, "Explorer", f"Could not open location:\n{exc}")
 
     def explorer_open_shell_menu(self) -> None:
-        """Execute the `explorer_open_shell_menu` workflow."""
+        """Open a shell or terminal rooted at the selected explorer directory."""
         if not hasattr(self, "explorer_tree"):
             return
         index = self.explorer_tree.currentIndex()
@@ -7685,7 +7892,7 @@ class MiscMixin(
             QMessageBox.warning(self, "Explorer", f"Could not open context menu:\n{exc}")
 
     def explorer_rename_selected(self) -> None:
-        """Execute the `explorer_rename_selected` workflow."""
+        """Rename the file or folder currently selected in the explorer."""
         path = self._selected_explorer_path().strip()
         if not path:
             return
@@ -7704,7 +7911,7 @@ class MiscMixin(
         self._refresh_workspace_dock()
 
     def explorer_delete_selected(self) -> None:
-        """Execute the `explorer_delete_selected` workflow."""
+        """Delete the file or folder currently selected in the explorer."""
         path = self._selected_explorer_path().strip()
         if not path:
             return
@@ -7726,7 +7933,7 @@ class MiscMixin(
         self._refresh_workspace_dock()
 
     def explorer_copy_selected(self) -> None:
-        """Execute the `explorer_copy_selected` workflow."""
+        """Copy the selected explorer item path into the explorer clipboard state."""
         path = self._selected_explorer_path().strip()
         if not path:
             return
@@ -7734,7 +7941,7 @@ class MiscMixin(
         self.show_status_message("Explorer copied selection.", 1800)
 
     def explorer_cut_selected(self) -> None:
-        """Execute the `explorer_cut_selected` workflow."""
+        """Mark the selected explorer item for a move operation."""
         path = self._selected_explorer_path().strip()
         if not path:
             return
@@ -7742,7 +7949,7 @@ class MiscMixin(
         self.show_status_message("Explorer cut selection.", 1800)
 
     def explorer_paste(self) -> None:
-        """Execute the `explorer_paste` workflow."""
+        """Paste the copied or cut explorer item into the target directory."""
         clip = getattr(self, "_explorer_clipboard", {})
         if not isinstance(clip, dict):
             return
@@ -7775,7 +7982,7 @@ class MiscMixin(
         self._refresh_workspace_dock()
 
     def _build_search_results_dock(self) -> None:
-        """Internal helper for `_build_search_results_dock`."""
+        """Build the dock that lists workspace search results and previews."""
         if hasattr(self, "search_results_dock"):
             return
         dock = QDockWidget("Search Results", self)
@@ -7839,14 +8046,14 @@ class MiscMixin(
         self.search_results_replace_btn.clicked.connect(self.replace_in_search_results)
         self.search_results_list.currentItemChanged.connect(lambda _cur, _prev: self._update_search_result_preview())
         class _SearchResultsResizeFilter(QObject):
-            """Class that implements the `_SearchResultsResizeFilter` runtime behavior."""
+            """Resize filter that keeps the search results dock layout compact when needed."""
             def __init__(self, owner):
-                """Initialize the `misc` state for this instance."""
+                """Watch search result view resizes and keep the layout compact when needed."""
                 super().__init__(owner)
                 self._owner = owner
 
             def eventFilter(self, _watched, event):  # type: ignore[override]
-                """Execute the `eventFilter` workflow."""
+                """Intercept Qt events that need custom handling before default processing."""
                 if event is not None and event.type() == QEvent.Type.Resize:
                     try:
                         self._owner._update_search_results_compact_mode()
@@ -7869,7 +8076,7 @@ class MiscMixin(
             self.log_event("Info", "[Startup] Dock created: Search Results")
 
     def _refresh_search_results_dock(self) -> None:
-        """Internal helper for `_refresh_search_results_dock`."""
+        """Repopulate the search results dock from the current result set."""
         if not hasattr(self, "search_results_dock"):
             return
         self._apply_search_results_theme()
@@ -7907,7 +8114,7 @@ class MiscMixin(
         self._update_search_result_preview()
 
     def _apply_search_results_theme(self) -> None:
-        """Internal helper for `_apply_search_results_theme`."""
+        """Apply the current theme styling to the search results dock."""
         if not hasattr(self, "search_results_list"):
             return
         tokens = build_tokens_from_settings(self.settings)
@@ -7986,7 +8193,7 @@ class MiscMixin(
         )
 
     def _update_search_results_compact_mode(self) -> None:
-        """Internal helper for `_update_search_results_compact_mode`."""
+        """Switch the search results dock between compact and expanded layouts."""
         btn = getattr(self, "search_results_replace_btn", None)
         edit = getattr(self, "search_results_filter_edit", None)
         case_cb = getattr(self, "search_results_filter_case_checkbox", None)
@@ -8023,7 +8230,7 @@ class MiscMixin(
             style.polish(btn)
 
     def _filtered_search_result_indices(self, items: list[dict[str, object]]) -> list[int]:
-        """Internal helper for `_filtered_search_result_indices`."""
+        """Return the indices of search results that match the current dock filter text."""
         text = ""
         if hasattr(self, "search_results_filter_edit"):
             text = self.search_results_filter_edit.text().strip()
@@ -8046,7 +8253,7 @@ class MiscMixin(
         return out
 
     def _selected_search_result_indices(self) -> list[int]:
-        """Internal helper for `_selected_search_result_indices`."""
+        """Return the indices of the currently selected search results."""
         if not hasattr(self, "search_results_list"):
             return []
         rows: list[int] = []
@@ -8057,7 +8264,7 @@ class MiscMixin(
         return rows
 
     def _update_search_result_preview(self) -> None:
-        """Internal helper for `_update_search_result_preview`."""
+        """Refresh the preview pane for the currently selected search result."""
         preview = getattr(self, "search_results_preview", None)
         if preview is None or not hasattr(self, "search_results_list"):
             return
@@ -8090,7 +8297,7 @@ class MiscMixin(
         preview.setPlainText("\n".join(preview_lines))
 
     def _open_search_result_from_dock(self, item: QListWidgetItem) -> None:
-        """Internal helper for `_open_search_result_from_dock`."""
+        """Open the document and location represented by a search result list item."""
         idx = item.data(Qt.UserRole)
         items = list(getattr(self, "_search_results_items", []))
         if not isinstance(idx, int) or idx < 0 or idx >= len(items):
@@ -8099,7 +8306,7 @@ class MiscMixin(
         self._open_search_result(items[idx])
 
     def replace_in_search_results(self) -> None:
-        """Execute the `replace_in_search_results` workflow."""
+        """Replace text across the files currently listed in the search results dock."""
         items = list(getattr(self, "_search_results_items", []))
         if not items:
             QMessageBox.information(self, "Replace in Results", "No search results available.")
@@ -8207,7 +8414,7 @@ class MiscMixin(
             QMessageBox.warning(self, "Replace in Results", f"Completed with {failures} file error(s).")
 
     def _default_workspace_tasks(self) -> list[dict[str, str]]:
-        """Internal helper for `_default_workspace_tasks`."""
+        """Return the default workspace tasks."""
         return [
             {"name": "Tests", "command": "python -m pytest", "cwd": "${workspace}"},
             {"name": "Lint", "command": "python -m ruff check .", "cwd": "${workspace}"},
@@ -8215,7 +8422,7 @@ class MiscMixin(
         ]
 
     def _workspace_tasks(self) -> list[dict[str, str]]:
-        """Internal helper for `_workspace_tasks`."""
+        """Return the configured workspace task definitions."""
         raw = self.settings.get("workspace_tasks", [])
         rows: list[dict[str, str]] = []
         if isinstance(raw, list):
@@ -8239,7 +8446,7 @@ class MiscMixin(
         return rows
 
     def _resolve_task_cwd(self, raw: str) -> str:
-        """Internal helper for `_resolve_task_cwd`."""
+        """Resolve a workspace task working directory placeholder into a real path."""
         workspace_root = str(self.settings.get("workspace_root", "") or "").strip()
         fallback = workspace_root or str(Path.cwd())
         text = str(raw or "").strip() or "${workspace}"
@@ -8248,11 +8455,11 @@ class MiscMixin(
         return text.replace("${workspace}", fallback)
 
     def _terminal_cwd_marker(self) -> str:
-        """Internal helper for `_terminal_cwd_marker`."""
+        """Return the marker used to embed cwd updates in terminal output."""
         return "__PYPAD_CWD__"
 
     def _style_panel_action_button(self, button: QPushButton, icon_name: str, tooltip: str) -> None:
-        """Internal helper for `_style_panel_action_button`."""
+        """Apply shared icon, tooltip, and style settings to a panel action button."""
         button.setToolTip(tooltip)
         button.setCursor(Qt.CursorShape.PointingHandCursor)
         button.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
@@ -8263,7 +8470,7 @@ class MiscMixin(
             button.setIcon(icon)
 
     def _apply_panel_surface_theme(self, container: QWidget, *, extra_qss: str = "") -> None:
-        """Internal helper for `_apply_panel_surface_theme`."""
+        """Apply the shared themed surface styling to a dock or panel container."""
         tokens = build_tokens_from_settings(self.settings)
         container.setStyleSheet(
             f"""
@@ -8308,11 +8515,13 @@ class MiscMixin(
         )
 
     def _build_terminal_tasks_dock(self) -> None:
-        """Internal helper for `_build_terminal_tasks_dock`."""
+        """Build the dock that hosts terminal commands and workspace tasks."""
         if hasattr(self, "terminal_tasks_dock"):
             return
         dock = QDockWidget("Terminal & Tasks", self)
         dock.setObjectName("terminalTasksDock")
+        dock.setAccessibleName("Terminal and tasks dock")
+        dock.setAccessibleDescription("Embedded terminal panel for running commands and viewing task output.")
         dock.setAllowedAreas(Qt.AllDockWidgetAreas)
         dock.setFeatures(QDockWidget.DockWidgetMovable | QDockWidget.DockWidgetFloatable | QDockWidget.DockWidgetClosable)
         if hasattr(self, "_install_custom_dock_title_bar"):
@@ -8326,11 +8535,13 @@ class MiscMixin(
             self.terminal_title_tab_btn.setChecked(True)
             self.terminal_title_tab_btn.setAutoRaise(True)
             self.terminal_title_tab_btn.setToolTip("Terminal")
+            self.terminal_title_tab_btn.setAccessibleName("Terminal panel tab")
             self.terminal_kill_btn = QToolButton(terminal_title_bar)
             self.terminal_kill_btn.setObjectName("terminalKillButton")
             self.terminal_kill_btn.setText("Kill")
             self.terminal_kill_btn.setAutoRaise(True)
             self.terminal_kill_btn.setToolTip("Kill terminal session")
+            self.terminal_kill_btn.setAccessibleName("Restart terminal session")
             terminal_title_bar.add_right_widget(self.terminal_title_tab_btn)
             terminal_title_bar.add_right_widget(self.terminal_kill_btn)
         container = QWidget(dock)
@@ -8340,37 +8551,40 @@ class MiscMixin(
         layout.setSpacing(0)
         self.terminal_output = _TerminalOutputEdit(self, container)
         self.terminal_output.setObjectName("terminalOutput")
+        self.terminal_output.setAccessibleName("Embedded terminal output")
+        self.terminal_output.setAccessibleDescription("Interactive terminal output and command entry area.")
         self.terminal_output.setReadOnly(False)
         self.terminal_output.setAcceptRichText(False)
         self.terminal_output.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
         self.terminal_output.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.terminal_output.setMinimumHeight(0)
         layout.addWidget(self.terminal_output, 1)
+        tokens = build_tokens_from_settings(self.settings)
         self._apply_panel_surface_theme(
             container,
-            extra_qss="""
-            QTextEdit#terminalOutput {
-                background: #0f1116;
-                color: #e6edf3;
+            extra_qss=f"""
+            QTextEdit#terminalOutput {{
+                background: {tokens.input_bg};
+                color: {tokens.text};
                 border: none;
                 border-radius: 0px;
                 padding: 8px 10px;
-                selection-background-color: #264f78;
-                selection-color: #e6edf3;
+                selection-background-color: {tokens.selection_bg};
+                selection-color: {tokens.selection_fg};
                 font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
-            }
-            QWidget#pypadDockTitleBar QToolButton#terminalTitleTabButton {
+            }}
+            QWidget#pypadDockTitleBar QToolButton#terminalTitleTabButton {{
                 background: transparent;
-                color: #e6edf3;
+                color: {tokens.text};
                 border: none;
-                border-bottom: 2px solid #4ea1ff;
+                border-bottom: 2px solid {tokens.accent};
                 border-radius: 0px;
                 padding: 1px 6px 3px 6px;
                 font-weight: 600;
-            }
-            QWidget#pypadDockTitleBar QToolButton#terminalKillButton {
+            }}
+            QWidget#pypadDockTitleBar QToolButton#terminalKillButton {{
                 min-width: 38px;
-            }
+            }}
             """
         )
         dock.setWidget(container)
@@ -8389,21 +8603,23 @@ class MiscMixin(
         self._terminal_output_partial = ""
         self._terminal_prompt_cursor = 0
         self._terminal_prompt_active = False
+        if hasattr(self, "terminal_kill_btn"):
+            self.setTabOrder(self.terminal_output, self.terminal_kill_btn)
         self.start_terminal_session()
 
     def _refresh_terminal_tasks_panel(self) -> None:
-        """Internal helper for `_refresh_terminal_tasks_panel`."""
+        """Reload the visible task list and current task details in the terminal dock."""
         cwd = self._resolve_task_cwd("${workspace}")
         if not str(getattr(self, "_terminal_current_cwd", "") or "").strip():
             self._terminal_current_cwd = cwd
 
     def _load_selected_workspace_task(self) -> None:
-        """Internal helper for `_load_selected_workspace_task`."""
+        """Load the selected workspace task into the terminal command fields."""
         cwd = self._resolve_task_cwd("${workspace}")
         self._terminal_current_cwd = cwd
 
     def _append_terminal_output(self, final: bool = False) -> None:
-        """Internal helper for `_append_terminal_output`."""
+        """Read any pending process output and append it to the terminal view."""
         proc = getattr(self, "terminal_process", None)
         output = self.terminal_output if hasattr(self, "terminal_output") else None
         if proc is None or output is None:
@@ -8469,11 +8685,11 @@ class MiscMixin(
             self._update_terminal_prompt(disconnected=True)
 
     def _on_terminal_process_finished(self, *_args) -> None:
-        """Internal helper for `_on_terminal_process_finished`."""
+        """Finalize terminal UI state after the embedded process exits."""
         self._append_terminal_output(final=True)
 
     def _update_terminal_prompt(self, *, disconnected: bool = False) -> None:
-        """Internal helper for `_update_terminal_prompt`."""
+        """Refresh the prompt text shown at the bottom of the embedded terminal."""
         edit = getattr(self, "terminal_output", None)
         if edit is None:
             return
@@ -8500,18 +8716,18 @@ class MiscMixin(
         self._terminal_ensure_prompt()
 
     def _sync_terminal_input_prompt(self, *, previous_prefix: str = "") -> None:
-        """Internal helper for `_sync_terminal_input_prompt`."""
+        """Keep the editable terminal input line aligned with the current prompt prefix."""
         return
 
     def _enforce_terminal_prompt_prefix(self, _text: str) -> None:
         # Input normalization is now handled by key/mouse event guards instead of
         # rewriting the line on every text edit, which was causing duplicated prompt
         # and command text during backspace and replacement flows.
-        """Internal helper for `_enforce_terminal_prompt_prefix`."""
+        """Prevent edits from removing the fixed prompt prefix in terminal input."""
         return
 
     def _terminal_extract_command_suffix(self, text: str, *, previous_prefix: str, current_prefix: str) -> str:
-        """Internal helper for `_terminal_extract_command_suffix`."""
+        """Extract the user-entered command text from a prompt-prefixed input line."""
         value = str(text or "")
         if previous_prefix and value.startswith(previous_prefix):
             return value[len(previous_prefix) :]
@@ -8523,11 +8739,11 @@ class MiscMixin(
         return re.sub(prompt_pattern, "", value, count=1)
 
     def _clamp_terminal_prompt_selection(self) -> None:
-        """Internal helper for `_clamp_terminal_prompt_selection`."""
+        """Clamp terminal text selection so the fixed prompt prefix stays protected."""
         return
 
     def eventFilter(self, source, event):  # type: ignore[override]
-        """Execute the `eventFilter` workflow."""
+        """Intercept Qt events that need custom handling before default processing."""
         terminal_output = getattr(self, "terminal_output", None)
         terminal_viewport = terminal_output.viewport() if terminal_output is not None else None
         if source in {terminal_output, terminal_viewport} and event is not None:
@@ -8540,11 +8756,11 @@ class MiscMixin(
         return super().eventFilter(source, event)
 
     def _select_terminal_default_text_if_present(self) -> None:
-        """Internal helper for `_select_terminal_default_text_if_present`."""
+        """Select the default editable command text when the prompt includes a preset value."""
         return
 
     def _normalize_terminal_input_line(self) -> None:
-        """Internal helper for `_normalize_terminal_input_line`."""
+        """Normalize the current terminal input line so it matches prompt rules."""
         edit = getattr(self, "terminal_output", None)
         if edit is None:
             return
@@ -8566,7 +8782,7 @@ class MiscMixin(
         edit.blockSignals(False)
 
     def start_terminal_session(self) -> None:
-        """Execute the `start_terminal_session` workflow."""
+        """Start the embedded terminal process if it is not already running."""
         proc = getattr(self, "terminal_process", None)
         if proc is None:
             return
@@ -8609,7 +8825,7 @@ class MiscMixin(
             pass
 
     def show_terminal_tasks_panel(self) -> None:
-        """Execute the `show_terminal_tasks_panel` workflow."""
+        """Show the terminal tasks dock and focus the embedded terminal output view."""
         self._build_terminal_tasks_dock()
         self._refresh_terminal_tasks_panel()
         self.start_terminal_session()
@@ -8618,7 +8834,7 @@ class MiscMixin(
         self.terminal_output.setFocus()
 
     def run_terminal_command_from_panel(self) -> None:
-        """Execute the `run_terminal_command_from_panel` workflow."""
+        """Send the panel command text to the embedded terminal session."""
         command = self._terminal_current_command_text().strip()
         if not command:
             _terminal_debug_log("run command skipped empty")
@@ -8655,7 +8871,7 @@ class MiscMixin(
         self.show_status_message(f"Sent command to terminal in {cwd}", 2000)
 
     def _terminal_insert_output_text(self, text: str) -> None:
-        """Internal helper for `_terminal_insert_output_text`."""
+        """Insert process output into the terminal view without breaking the live prompt."""
         edit = getattr(self, "terminal_output", None)
         if edit is None or not text:
             return
@@ -8668,7 +8884,7 @@ class MiscMixin(
         self._terminal_prompt_cursor = min(self._terminal_prompt_cursor, cursor.position())
 
     def _terminal_ensure_prompt(self) -> None:
-        """Internal helper for `_terminal_ensure_prompt`."""
+        """Ensure the terminal view ends with a writable prompt line."""
         edit = getattr(self, "terminal_output", None)
         if edit is None:
             return
@@ -8695,7 +8911,7 @@ class MiscMixin(
         _terminal_debug_log("prompt inserted cursor=%d prompt=%r", self._terminal_prompt_cursor, prompt)
 
     def _terminal_move_cursor_to_end(self) -> None:
-        """Internal helper for `_terminal_move_cursor_to_end`."""
+        """Move the terminal caret to the end of the prompt line."""
         edit = getattr(self, "terminal_output", None)
         if edit is None:
             return
@@ -8705,7 +8921,7 @@ class MiscMixin(
         edit.ensureCursorVisible()
 
     def _terminal_current_command_text(self) -> str:
-        """Internal helper for `_terminal_current_command_text`."""
+        """Return the command currently typed after the terminal prompt."""
         edit = getattr(self, "terminal_output", None)
         if edit is None:
             return ""
@@ -8716,7 +8932,7 @@ class MiscMixin(
         return text[prompt_pos:]
 
     def _terminal_finalize_current_input_line(self) -> None:
-        """Internal helper for `_terminal_finalize_current_input_line`."""
+        """Lock the current prompt line and prepare the terminal for process output."""
         edit = getattr(self, "terminal_output", None)
         if edit is None:
             return
@@ -8731,7 +8947,7 @@ class MiscMixin(
         self._terminal_prompt_cursor = cursor.position()
 
     def _handle_terminal_output_keypress(self, event) -> bool:
-        """Internal helper for `_handle_terminal_output_keypress`."""
+        """Handle terminal key presses while preserving the prompt editing rules."""
         edit = getattr(self, "terminal_output", None)
         if edit is None:
             return False
@@ -8771,7 +8987,7 @@ class MiscMixin(
         return False
 
     def stop_terminal_command(self) -> None:
-        """Execute the `stop_terminal_command` workflow."""
+        """Stop the running terminal process."""
         proc = getattr(self, "terminal_process", None)
         if proc is None or proc.state() == QProcess.ProcessState.NotRunning:
             return
@@ -8779,16 +8995,16 @@ class MiscMixin(
         self.show_status_message("Terminal task stopped.", 2000)
 
     def restart_terminal_session(self) -> None:
-        """Execute the `restart_terminal_session` workflow."""
+        """Restart the embedded terminal process and rebuild its prompt state."""
         self.stop_terminal_command()
         self.start_terminal_session()
 
     def _windows_powershell_terminal_supported(self) -> bool:
-        """Internal helper for `_windows_powershell_terminal_supported`."""
+        """Return whether the Windows PowerShell terminal integration is available."""
         return bool(importlib.util.find_spec("pywinpty") or importlib.util.find_spec("winpty"))
 
     def _run_terminal_command_via_cmd_runner(self, command: str, cwd: str) -> None:
-        """Internal helper for `_run_terminal_command_via_cmd_runner`."""
+        """Run a terminal command through the fallback command-runner helper."""
         proc = getattr(self, "terminal_process", None)
         if proc is None:
             return
@@ -8833,7 +9049,7 @@ class MiscMixin(
             QMessageBox.warning(self, "Terminal", f"Could not run command:\n{exc}")
 
     def _git_root(self) -> str:
-        """Internal helper for `_git_root`."""
+        """Return the Git repository root for the current workspace, if one exists."""
         workspace_root = str(self.settings.get("workspace_root", "") or "").strip()
         if not workspace_root:
             return ""
@@ -8852,7 +9068,7 @@ class MiscMixin(
         return ""
 
     def _run_git_capture(self, args: list[str], *, timeout: float = 5.0) -> tuple[int, str, str]:
-        """Internal helper for `_run_git_capture`."""
+        """Run a Git command and capture its exit code, stdout, and stderr."""
         root = self._git_root()
         if not root:
             return 1, "", "No Git workspace selected."
@@ -8869,11 +9085,13 @@ class MiscMixin(
             return 1, "", str(exc)
 
     def _build_git_dock(self) -> None:
-        """Internal helper for `_build_git_dock`."""
+        """Build the Git dock that shows status, actions, and quick repository tools."""
         if hasattr(self, "git_dock"):
             return
         dock = QDockWidget("Git", self)
         dock.setObjectName("gitDock")
+        dock.setAccessibleName("Git dock")
+        dock.setAccessibleDescription("Shows repository status, commit controls, branches, and Git actions.")
         dock.setAllowedAreas(Qt.AllDockWidgetAreas)
         dock.setFeatures(QDockWidget.DockWidgetMovable | QDockWidget.DockWidgetFloatable | QDockWidget.DockWidgetClosable)
         if hasattr(self, "_install_custom_dock_title_bar"):
@@ -8886,11 +9104,13 @@ class MiscMixin(
         self.git_summary_label.setObjectName("panelSummaryLabel")
         self.git_summary_label.setWordWrap(True)
         self.git_summary_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        self.git_summary_label.setAccessibleName("Git summary")
         commit_row = QHBoxLayout()
         self.git_commit_message_edit = QLineEdit(container)
         self.git_commit_message_edit.setObjectName("gitCommitMessageEdit")
         self.git_commit_message_edit.setPlaceholderText("Commit message")
         self.git_commit_message_edit.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.git_commit_message_edit.setAccessibleName("Git commit message")
         self.git_generate_ai_btn = QPushButton("Generate with AI", container)
         self._style_panel_action_button(self.git_generate_ai_btn, "ai-sparkles", "Generate commit message with AI")
         commit_row.addWidget(self.git_commit_message_edit, 1)
@@ -8899,9 +9119,12 @@ class MiscMixin(
         self._style_panel_action_button(self.git_commit_or_sync_btn, "document-save", "Commit or sync repository")
         self.git_branch_combo = QComboBox(container)
         self.git_branch_combo.setSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Fixed)
+        self.git_branch_combo.setAccessibleName("Git branch selector")
         self.git_status_list = QListWidget(container)
         self.git_status_list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.git_status_list.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.git_status_list.setAccessibleName("Git status list")
+        self.git_status_list.setAccessibleDescription("Lists changed repository files and their Git status.")
         actions_row = QHBoxLayout()
         self.git_refresh_btn = QPushButton("Refresh", container)
         self.git_diff_btn = QPushButton("Diff", container)
@@ -8938,14 +9161,14 @@ class MiscMixin(
         layout.addLayout(actions_row)
         self._apply_panel_surface_theme(container)
         class _GitDockResizeFilter(QObject):
-            """Class that implements the `_GitDockResizeFilter` runtime behavior."""
+            """Resize filter that keeps the Git dock layout compact when needed."""
             def __init__(self, owner):
-                """Initialize the `misc` state for this instance."""
+                """Watch Git dock resizes and keep the layout compact when needed."""
                 super().__init__(owner)
                 self._owner = owner
 
             def eventFilter(self, _watched, event):  # type: ignore[override]
-                """Execute the `eventFilter` workflow."""
+                """Intercept Qt events that need custom handling before default processing."""
                 if event is not None and event.type() == QEvent.Type.Resize:
                     try:
                         self._owner._update_git_dock_compact_mode()
@@ -8973,10 +9196,20 @@ class MiscMixin(
         self.git_commit_or_sync_btn.clicked.connect(self.git_primary_action)
         self.git_commit_message_edit.returnPressed.connect(self.git_primary_action)
         self.git_branch_combo.currentTextChanged.connect(self.git_switch_branch)
+        self.setTabOrder(self.git_commit_message_edit, self.git_generate_ai_btn)
+        self.setTabOrder(self.git_generate_ai_btn, self.git_commit_or_sync_btn)
+        self.setTabOrder(self.git_commit_or_sync_btn, self.git_branch_combo)
+        self.setTabOrder(self.git_branch_combo, self.git_status_list)
+        self.setTabOrder(self.git_status_list, self.git_refresh_btn)
+        self.setTabOrder(self.git_refresh_btn, self.git_diff_btn)
+        self.setTabOrder(self.git_diff_btn, self.git_stage_btn)
+        self.setTabOrder(self.git_stage_btn, self.git_unstage_btn)
+        self.setTabOrder(self.git_unstage_btn, self.git_blame_btn)
+        self.setTabOrder(self.git_blame_btn, self.git_history_btn)
         self._refresh_git_dock()
 
     def _selected_git_paths(self) -> list[str]:
-        """Internal helper for `_selected_git_paths`."""
+        """Return the repository paths currently selected in the Git status list."""
         if not hasattr(self, "git_status_list"):
             return []
         rows: list[str] = []
@@ -8987,14 +9220,14 @@ class MiscMixin(
         return rows
 
     def show_git_panel(self) -> None:
-        """Execute the `show_git_panel` workflow."""
+        """Show the Git dock and refresh its repository state."""
         self._build_git_dock()
         self._refresh_git_dock()
         self.git_dock.show()
         self.git_dock.raise_()
 
     def _update_git_dock_compact_mode(self) -> None:
-        """Internal helper for `_update_git_dock_compact_mode`."""
+        """Switch the Git dock between compact and expanded button layouts."""
         dock = getattr(self, "git_dock", None)
         if dock is None:
             return
@@ -9020,7 +9253,7 @@ class MiscMixin(
         tight_compact = width < 360
 
         def _apply_button_state(btn: QPushButton, compact: bool) -> None:
-            """Internal helper for `_apply_button_state`."""
+            """Apply the correct icon-only or text-and-icon style to a Git dock button."""
             btn.setIconSize(QSize(icon_px, icon_px))
             if not hasattr(btn, "_full_text"):
                 setattr(btn, "_full_text", btn.text())
@@ -9052,7 +9285,7 @@ class MiscMixin(
             _apply_button_state(self.git_commit_or_sync_btn, tight_compact)
 
     def _refresh_git_dock(self) -> None:
-        """Internal helper for `_refresh_git_dock`."""
+        """Refresh repository status, branch info, and file lists in the Git dock."""
         if not hasattr(self, "git_dock"):
             return
         root = self._git_root()
@@ -9126,14 +9359,14 @@ class MiscMixin(
         self._update_git_dock_compact_mode()
 
     def git_primary_action(self) -> None:
-        """Execute the `git_primary_action` workflow."""
+        """Run the primary Git action based on current repository state."""
         if bool(getattr(self, "_git_has_uncommitted_changes", False)):
             self.git_commit_dialog()
             return
         self.git_sync_changes()
 
     def git_sync_changes(self) -> None:
-        """Execute the `git_sync_changes` workflow."""
+        """Pull, push, or sync Git changes depending on ahead/behind state."""
         ahead = int(getattr(self, "_git_ahead_count", 0) or 0)
         behind = int(getattr(self, "_git_behind_count", 0) or 0)
         if ahead <= 0 and behind <= 0:
@@ -9159,7 +9392,7 @@ class MiscMixin(
         self._show_text_output_dialog("Git Sync", "\n".join(part for part in outputs if part.strip()) or "Sync completed.")
 
     def _show_text_output_dialog(self, title: str, text: str) -> None:
-        """Internal helper for `_show_text_output_dialog`."""
+        """Show a read-only dialog containing arbitrary text output."""
         dlg = QDialog(self)
         dlg.setWindowTitle(title)
         dlg.resize(920, 620)
@@ -9176,14 +9409,14 @@ class MiscMixin(
         dlg.exec()
 
     def git_show_diff_for_selection(self) -> None:
-        """Execute the `git_show_diff_for_selection` workflow."""
+        """Show a diff for the selected Git paths."""
         paths = self._selected_git_paths()
         args = ["diff", "--"] + paths if paths else ["diff"]
         rc, out, err = self._run_git_capture(args, timeout=8.0)
         self._show_text_output_dialog("Git Diff", out if out.strip() else (err or "No diff output."))
 
     def git_show_blame_for_selection(self) -> None:
-        """Execute the `git_show_blame_for_selection` workflow."""
+        """Show blame output for the selected Git path."""
         paths = self._selected_git_paths()
         if not paths:
             QMessageBox.information(self, "Git Blame", "Select a tracked file first.")
@@ -9192,14 +9425,14 @@ class MiscMixin(
         self._show_text_output_dialog("Git Blame", out if rc == 0 else err)
 
     def git_show_history_for_selection(self) -> None:
-        """Execute the `git_show_history_for_selection` workflow."""
+        """Show recent commit history for the selected Git paths."""
         paths = self._selected_git_paths()
         args = ["log", "--oneline", "--decorate", "--graph", "--"] + paths if paths else ["log", "--oneline", "--decorate", "--graph", "-20"]
         rc, out, err = self._run_git_capture(args, timeout=8.0)
         self._show_text_output_dialog("Git History", out if rc == 0 else err)
 
     def git_stage_selection(self) -> None:
-        """Execute the `git_stage_selection` workflow."""
+        """Stage the selected Git paths."""
         paths = self._selected_git_paths()
         if not paths:
             return
@@ -9211,7 +9444,7 @@ class MiscMixin(
         self._refresh_workspace_dock()
 
     def git_unstage_selection(self) -> None:
-        """Execute the `git_unstage_selection` workflow."""
+        """Unstage the selected Git paths."""
         paths = self._selected_git_paths()
         if not paths:
             return
@@ -9223,7 +9456,7 @@ class MiscMixin(
         self._refresh_workspace_dock()
 
     def git_switch_branch(self, branch_name: str) -> None:
-        """Execute the `git_switch_branch` workflow."""
+        """Switch the repository to the requested branch."""
         branch = str(branch_name or "").strip()
         if not branch or branch.startswith("HEAD detached"):
             return
@@ -9241,7 +9474,7 @@ class MiscMixin(
         self.show_status_message(f"Switched branch: {branch}", 2500)
 
     def git_commit_dialog(self) -> None:
-        """Execute the `git_commit_dialog` workflow."""
+        """Collect a commit message and create a Git commit."""
         seed = self.git_commit_message_edit.text().strip() if hasattr(self, "git_commit_message_edit") else ""
         message = seed
         ok = True
@@ -9260,7 +9493,7 @@ class MiscMixin(
         self._show_text_output_dialog("Git Commit", out or "Commit completed.")
 
     def _build_status_panel_dock(self) -> None:
-        """Internal helper for `_build_status_panel_dock`."""
+        """Build the dock that summarizes layout and panel visibility state."""
         if hasattr(self, "status_panel_dock"):
             return
         dock = QDockWidget("Status Panel", self)
@@ -9305,7 +9538,7 @@ class MiscMixin(
             self.log_event("Info", "[Startup] Dock created: Status Panel")
 
     def _build_productivity_hub_dialog(self) -> None:
-        """Internal helper for `_build_productivity_hub_dialog`."""
+        """Build the productivity hub dialog and its supporting widgets."""
         if hasattr(self, "productivity_hub_dialog"):
             return
         widget = ProductivityHubWidget(self)
@@ -9332,7 +9565,7 @@ class MiscMixin(
             self.log_event("Info", "[Startup] Dialog created: Productivity Hub")
 
     def _save_productivity_hub_dialog_geometry(self, dialog) -> None:
-        """Internal helper for `_save_productivity_hub_dialog_geometry`."""
+        """Save the productivity hub dialog geometry into settings."""
         if dialog is None:
             return
         try:
@@ -9344,7 +9577,7 @@ class MiscMixin(
             self.save_settings_to_disk()
 
     def _restore_productivity_hub_dialog_geometry(self, dialog) -> None:
-        """Internal helper for `_restore_productivity_hub_dialog_geometry`."""
+        """Restore the productivity hub dialog geometry from settings."""
         if dialog is None:
             return
         raw = str(self.settings.get("productivity_hub_dialog_geometry", "") or "")
@@ -9367,7 +9600,7 @@ class MiscMixin(
             pass
 
     def _sync_layout_panel_actions(self) -> None:
-        """Internal helper for `_sync_layout_panel_actions`."""
+        """Sync panel-toggle actions so they reflect current dock visibility."""
         if hasattr(self, "workspace_panel_action") and hasattr(self, "workspace_dock"):
             self.workspace_panel_action.blockSignals(True)
             self.workspace_panel_action.setChecked(self.workspace_dock.isVisible())
@@ -9415,7 +9648,7 @@ class MiscMixin(
         self._update_closed_windows_hint()
 
     def _update_closed_windows_hint(self) -> None:
-        """Internal helper for `_update_closed_windows_hint`."""
+        """Update closed windows hint."""
         hint_text = "You dont have any windows :( Add me again by right clicking anywhere!"
         self._ensure_closed_windows_hint_overlay()
         self._apply_closed_windows_hint_theme()
@@ -9456,7 +9689,7 @@ class MiscMixin(
                 empty_hint_label.show()
 
     def _ensure_closed_windows_hint_overlay(self) -> None:
-        """Internal helper for `_ensure_closed_windows_hint_overlay`."""
+        """Ensure closed windows hint overlay."""
         label = getattr(self, "_closed_windows_hint_label", None)
         if label is not None:
             return
@@ -9470,7 +9703,7 @@ class MiscMixin(
         self._closed_windows_hint_label = label
 
     def _apply_closed_windows_hint_theme(self) -> None:
-        """Internal helper for `_apply_closed_windows_hint_theme`."""
+        """Apply the current theme styling to the empty-layout hint overlay."""
         label = getattr(self, "_closed_windows_hint_label", None)
         if label is None:
             return
@@ -9488,7 +9721,7 @@ class MiscMixin(
         )
 
     def resizeEvent(self, event) -> None:  # type: ignore[override]
-        """Execute the `resizeEvent` workflow."""
+        """Update layout-dependent state when the widget is resized."""
         super().resizeEvent(event)
         label = getattr(self, "_closed_windows_hint_label", None)
         if label is not None:
@@ -9498,13 +9731,13 @@ class MiscMixin(
             self._schedule_layout_auto_save()
 
     def moveEvent(self, event) -> None:  # type: ignore[override]
-        """Execute the `moveEvent` workflow."""
+        """Update cached position state when the widget moves."""
         super().moveEvent(event)
         if not getattr(self, "_layout_restore_in_progress", False):
             self._schedule_layout_auto_save()
 
     def _install_layout_auto_save(self) -> None:
-        """Internal helper for `_install_layout_auto_save`."""
+        """Install timers and signal hooks that auto-save layout changes."""
         if getattr(self, "_layout_auto_save_ready", False):
             return
         self._layout_auto_save_ready = True
@@ -9547,7 +9780,7 @@ class MiscMixin(
             toolbar.visibilityChanged.connect(lambda _visible, _tb=toolbar: self._schedule_layout_auto_save())
 
     def _schedule_layout_auto_save(self) -> None:
-        """Internal helper for `_schedule_layout_auto_save`."""
+        """Schedule a delayed layout save after a dock or window change."""
         if getattr(self, "_layout_restore_in_progress", False):
             return
         if bool(getattr(self, "_suspend_layout_autosave", False)):
@@ -9563,7 +9796,7 @@ class MiscMixin(
         self._layout_auto_save_timer.start(1200)
 
     def _persist_layout_snapshot(self) -> None:
-        """Internal helper for `_persist_layout_snapshot`."""
+        """Persist the current dock and window layout snapshot to settings."""
         if getattr(self, "_layout_restore_in_progress", False):
             return
         if hasattr(self, "save_current_layout"):
@@ -9573,7 +9806,7 @@ class MiscMixin(
                 self.log_event("Error", f"Failed to auto-save layout: {exc}")
 
     def _restore_editor_splitter_sizes(self, tab: EditorTab) -> None:
-        """Internal helper for `_restore_editor_splitter_sizes`."""
+        """Restore the saved splitter sizes for the given editor tab."""
         sizes = None
         if bool(self.settings.get("per_tab_splitter_sizes_enabled", True)):
             key = self._splitter_key_for_tab(tab)
@@ -9592,7 +9825,7 @@ class MiscMixin(
             tab.editor_splitter.setSizes(sizes)
 
     def _splitter_key_for_tab(self, tab: EditorTab) -> str:
-        """Internal helper for `_splitter_key_for_tab`."""
+        """Return the settings key used to store splitter sizes for a tab."""
         if tab.current_file:
             return tab.current_file
         if tab.autosave_id:
@@ -9601,7 +9834,7 @@ class MiscMixin(
         return f"unsaved:{title}"
 
     def _on_editor_splitter_moved(self, _pos: int, _index: int, splitter: QSplitter) -> None:
-        """Internal helper for `_on_editor_splitter_moved`."""
+        """Persist splitter size changes after the editor splitter moves."""
         sizes = splitter.sizes()
         if not sizes:
             return
@@ -9619,23 +9852,23 @@ class MiscMixin(
         self._schedule_layout_auto_save()
     def toggle_workspace_panel(self, checked: bool) -> None:
         # Workspace panel has been removed; keep compatibility by routing to Explorer.
-        """Toggle the state controlled by `toggle_workspace_panel`."""
+        """Route the workspace-panel toggle to the explorer dock for compatibility."""
         self.toggle_explorer_panel(bool(checked))
 
     def toggle_explorer_panel(self, checked: bool) -> None:
-        """Toggle the state controlled by `toggle_explorer_panel`."""
+        """Show or hide the explorer dock."""
         if not hasattr(self, "explorer_dock"):
             return
         self.explorer_dock.setVisible(bool(checked))
 
     def toggle_search_results_panel(self, checked: bool) -> None:
-        """Toggle the state controlled by `toggle_search_results_panel`."""
+        """Show or hide the search results dock."""
         if not hasattr(self, "search_results_dock"):
             return
         self.search_results_dock.setVisible(bool(checked))
 
     def toggle_terminal_panel(self, checked: bool) -> None:
-        """Toggle the state controlled by `toggle_terminal_panel`."""
+        """Show or hide the terminal tasks dock."""
         if not hasattr(self, "terminal_tasks_dock"):
             self._build_terminal_tasks_dock()
         self.terminal_tasks_dock.setVisible(bool(checked))
@@ -9643,7 +9876,7 @@ class MiscMixin(
             self._refresh_terminal_tasks_panel()
 
     def toggle_git_panel(self, checked: bool) -> None:
-        """Toggle the state controlled by `toggle_git_panel`."""
+        """Show or hide the Git dock."""
         if not hasattr(self, "git_dock"):
             self._build_git_dock()
         self.git_dock.setVisible(bool(checked))
@@ -9651,7 +9884,7 @@ class MiscMixin(
             self._refresh_git_dock()
 
     def toggle_productivity_hub_panel(self, checked: bool) -> None:
-        """Toggle the state controlled by `toggle_productivity_hub_panel`."""
+        """Show or hide the productivity hub dialog."""
         if not hasattr(self, "productivity_hub_dialog"):
             return
         if checked:
@@ -9664,13 +9897,13 @@ class MiscMixin(
         self._sync_layout_panel_actions()
 
     def toggle_editor_panel(self, checked: bool) -> None:
-        """Toggle the state controlled by `toggle_editor_panel`."""
+        """Show or hide the editor dock when layout controls expose it."""
         if not hasattr(self, "editor_dock"):
             return
         self.editor_dock.setVisible(bool(checked))
 
     def toggle_layout_lock(self, checked: bool) -> None:
-        """Toggle the state controlled by `toggle_layout_lock`."""
+        """Enable or disable dock moving and resizing in the current layout."""
         self.settings["layout_locked"] = bool(checked)
         self._apply_layout_lock()
         if hasattr(self, "save_settings_to_disk"):
@@ -9678,7 +9911,7 @@ class MiscMixin(
         self.show_status_message("Layout locked." if checked else "Layout unlocked.", 2000)
 
     def _apply_layout_lock(self) -> None:
-        """Internal helper for `_apply_layout_lock`."""
+        """Apply the current layout-lock setting to all managed docks."""
         locked = bool(self.settings.get("layout_locked", False))
         docks = []
         for name in (
@@ -9726,7 +9959,7 @@ class MiscMixin(
                 tab_bar.detach_enabled = not locked
 
     def _focused_dock_widget(self) -> QDockWidget | None:
-        """Internal helper for `_focused_dock_widget`."""
+        """Return the dock widget that currently owns keyboard focus, if any."""
         focus = QApplication.focusWidget()
         if focus is not None:
             widget = focus
@@ -9740,7 +9973,7 @@ class MiscMixin(
         return None
 
     def _snap_focused_dock(self, area: Qt.DockWidgetArea, label: str) -> None:
-        """Internal helper for `_snap_focused_dock`."""
+        """Move the focused dock into a target docking area and announce the change."""
         dock = self._focused_dock_widget()
         if dock is None:
             self.show_status_message("Focus a dock panel to snap it.", 2500)
@@ -9750,30 +9983,30 @@ class MiscMixin(
         self.show_status_message(f'Snapped "{dock.windowTitle()}" to {label}.', 2200)
 
     def snap_dock_left(self) -> None:
-        """Execute the `snap_dock_left` workflow."""
+        """Snap the focused dock to the left docking area."""
         self._snap_focused_dock(Qt.LeftDockWidgetArea, "left")
 
     def snap_dock_right(self) -> None:
-        """Execute the `snap_dock_right` workflow."""
+        """Snap the focused dock to the right docking area."""
         self._snap_focused_dock(Qt.RightDockWidgetArea, "right")
 
     def snap_dock_bottom(self) -> None:
-        """Execute the `snap_dock_bottom` workflow."""
+        """Snap the focused dock to the bottom docking area."""
         self._snap_focused_dock(Qt.BottomDockWidgetArea, "bottom")
 
     def _encode_layout_bytes(self, data: QByteArray) -> str:
-        """Internal helper for `_encode_layout_bytes`."""
+        """Encode Qt layout bytes into a base64 string for settings storage."""
         return base64.b64encode(bytes(data)).decode("ascii")
 
     def _decode_layout_bytes(self, data: str) -> QByteArray:
-        """Internal helper for `_decode_layout_bytes`."""
+        """Decode a base64 layout payload back into Qt layout bytes."""
         try:
             return QByteArray(base64.b64decode(data.encode("ascii")))
         except Exception:
             return QByteArray()
 
     def _layout_snapshot(self) -> dict[str, Any]:
-        """Internal helper for `_layout_snapshot`."""
+        """Capture the current dock, splitter, and window layout into a serializable snapshot."""
         snapshot: dict[str, Any] = {
             "state": self._encode_layout_bytes(self.saveState()),
             "geometry": self._encode_layout_bytes(self.saveGeometry()),
@@ -9790,7 +10023,7 @@ class MiscMixin(
         return snapshot
 
     def _current_window_mode(self) -> str:
-        """Internal helper for `_current_window_mode`."""
+        """Return the current top-level window mode such as normal, maximized, or fullscreen."""
         state = self.windowState()
         if bool(state & Qt.WindowState.WindowFullScreen):
             return "fullscreen"
@@ -9799,7 +10032,7 @@ class MiscMixin(
         return "normal"
 
     def _apply_window_mode(self, mode: str) -> None:
-        """Internal helper for `_apply_window_mode`."""
+        """Apply the requested top-level window mode to the main window."""
         normalized = str(mode or "normal").strip().lower()
         if normalized == "fullscreen":
             self.showFullScreen()
@@ -9816,7 +10049,7 @@ class MiscMixin(
         self.setWindowState(state)
 
     def _capture_primary_horizontal_dock_sizes(self) -> list[int] | None:
-        """Internal helper for `_capture_primary_horizontal_dock_sizes`."""
+        """Capture primary horizontal dock sizes."""
         editor_dock = getattr(self, "editor_dock", None)
         ai_chat_dock = getattr(self, "ai_chat_dock", None)
         if editor_dock is None or ai_chat_dock is None:
@@ -9831,7 +10064,7 @@ class MiscMixin(
         return [editor_w, ai_w]
 
     def _rebalance_primary_side_docks(self) -> None:
-        """Internal helper for `_rebalance_primary_side_docks`."""
+        """Rebalance the primary side docks after layout changes affect their widths."""
         editor_dock = getattr(self, "editor_dock", None)
         if editor_dock is None or not editor_dock.isVisible():
             return
@@ -9898,7 +10131,7 @@ class MiscMixin(
             return
 
     def _apply_primary_horizontal_dock_sizes(self, payload: dict[str, Any]) -> None:
-        """Internal helper for `_apply_primary_horizontal_dock_sizes`."""
+        """Apply saved horizontal dock sizes from a layout snapshot payload."""
         if not isinstance(payload, dict):
             return
         raw = payload.get("primary_dock_sizes")
@@ -9929,7 +10162,7 @@ class MiscMixin(
         self._enforce_ai_chat_dock_width(payload)
 
     def _enforce_ai_chat_dock_width(self, payload: dict[str, Any]) -> None:
-        """Internal helper for `_enforce_ai_chat_dock_width`."""
+        """Restore the AI chat dock width from the current layout snapshot when possible."""
         if not isinstance(payload, dict):
             return
         raw = payload.get("ai_chat_dock_width")
@@ -9948,7 +10181,7 @@ class MiscMixin(
             return
 
         def _apply_once() -> None:
-            """Internal helper for `_apply_once`."""
+            """Apply the deferred dock width adjustment after Qt finishes layout work."""
             dock = getattr(self, "ai_chat_dock", None)
             if dock is None or not dock.isVisible():
                 return
@@ -9968,7 +10201,7 @@ class MiscMixin(
         QTimer.singleShot(700, _apply_once)
 
     def _ensure_default_layout(self) -> None:
-        """Internal helper for `_ensure_default_layout`."""
+        """Ensure a default layout preset exists in settings."""
         layouts = self.settings.get("layout_presets")
         if not isinstance(layouts, dict):
             layouts = {}
@@ -9980,7 +10213,7 @@ class MiscMixin(
 
     def _ensure_main_window_on_screen(self) -> None:
         # Guard against saved layouts restoring the main window off-screen or tiny.
-        """Internal helper for `_ensure_main_window_on_screen`."""
+        """Move the main window back on screen if saved geometry would place it off-screen."""
         try:
             frame_rect = self.frameGeometry()
             geo = self.geometry()
@@ -10028,7 +10261,7 @@ class MiscMixin(
             pass
 
     def _restore_layout_from_settings(self) -> None:
-        """Internal helper for `_restore_layout_from_settings`."""
+        """Restore the dock, splitter, and window layout saved in settings."""
         if getattr(self, "_layout_restore_in_progress", False):
             return
         name = str(self.settings.get("layout_active", "") or "")
@@ -10070,7 +10303,7 @@ class MiscMixin(
         self._sync_layout_panel_actions()
 
     def save_current_layout(self, *, persist: bool = True, show_status: bool = True) -> None:
-        """Save data handled by `save_current_layout`."""
+        """Save the current layout into the active layout preset."""
         name = str(self.settings.get("layout_active", "") or "Default")
         layouts = self.settings.get("layout_presets", {})
         if not isinstance(layouts, dict):
@@ -10102,7 +10335,7 @@ class MiscMixin(
             self.show_status_message(f'Layout saved: "{name}"', 2500)
 
     def save_layout_as(self) -> None:
-        """Save data handled by `save_layout_as`."""
+        """Save the current layout under a new user-provided preset name."""
         name, ok = QInputDialog.getText(self, "Save Layout As", "Layout name:")
         if not ok or not name.strip():
             return
@@ -10118,7 +10351,7 @@ class MiscMixin(
         self.show_status_message(f'Layout saved: "{name}"', 2500)
 
     def load_layout(self) -> None:
-        """Load data required by `load_layout`."""
+        """Load a saved layout preset from settings and apply it to the window."""
         layouts = self.settings.get("layout_presets", {})
         if not isinstance(layouts, dict) or not layouts:
             QMessageBox.information(self, "Load Layout", "No saved layouts yet.")
@@ -10136,7 +10369,7 @@ class MiscMixin(
         self.show_status_message(f'Layout loaded: "{name}"', 2500)
 
     def reset_layout(self) -> None:
-        """Execute the `reset_layout` workflow."""
+        """Restore the default dock and window layout."""
         self._ensure_default_layout()
         self.settings["layout_active"] = "Default"
         self._restore_layout_from_settings()
@@ -10145,7 +10378,7 @@ class MiscMixin(
         self.show_status_message("Layout reset to Default.", 2500)
 
     def _open_search_result(self, item: dict[str, object]) -> None:
-        """Internal helper for `_open_search_result`."""
+        """Open search result."""
         path = str(item.get("path", "") or "")
         line_no = int(item.get("line_no", 1) or 1)
         if not path:
@@ -10160,7 +10393,7 @@ class MiscMixin(
         self.update_status_bar()
 
     def search_next_result(self) -> None:
-        """Execute the `search_next_result` workflow."""
+        """Jump to the next item in the search results list."""
         items = list(getattr(self, "_search_results_items", []))
         if not items:
             QMessageBox.information(self, "Search Results", "No search results available.")
@@ -10171,7 +10404,7 @@ class MiscMixin(
         self._open_search_result(items[idx])
 
     def search_prev_result(self) -> None:
-        """Execute the `search_prev_result` workflow."""
+        """Jump to the previous item in the search results list."""
         items = list(getattr(self, "_search_results_items", []))
         if not items:
             QMessageBox.information(self, "Search Results", "No search results available.")
@@ -10184,7 +10417,7 @@ class MiscMixin(
         self._open_search_result(items[idx])
 
     def show_search_results_window(self) -> None:
-        """Execute the `show_search_results_window` workflow."""
+        """Show search results window."""
         items = list(getattr(self, "_search_results_items", []))
         if not items:
             QMessageBox.information(self, "Search Results", "No search results available.")
@@ -10266,7 +10499,7 @@ class MiscMixin(
         )
 
         def _open_selected() -> None:
-            """Internal helper for `_open_selected`."""
+            """Open selected."""
             current = list_widget.currentItem()
             if current is None:
                 return
@@ -10278,7 +10511,7 @@ class MiscMixin(
             dlg.accept()
 
         def _export_results() -> None:
-            """Internal helper for `_export_results`."""
+            """Export the current search results to a text file."""
             default = "search_results.txt"
             path, _ = QFileDialog.getSaveFileName(self, "Export Search Results", default, "Text Files (*.txt)")
             if not path:
@@ -10302,7 +10535,7 @@ class MiscMixin(
         dlg.exec()
 
     def search_select_and_find_next(self) -> None:
-        """Execute the `search_select_and_find_next` workflow."""
+        """Search select and find next."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -10312,7 +10545,7 @@ class MiscMixin(
         self.edit_find_next()
 
     def search_select_and_find_previous(self) -> None:
-        """Execute the `search_select_and_find_previous` workflow."""
+        """Search select and find previous."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -10322,21 +10555,21 @@ class MiscMixin(
         self.edit_find_previous()
 
     def search_find_volatile_next(self) -> None:
-        """Execute the `search_find_volatile_next` workflow."""
+        """Search find volatile next."""
         self.edit_find_next()
 
     def search_find_volatile_previous(self) -> None:
-        """Execute the `search_find_volatile_previous` workflow."""
+        """Search find volatile previous."""
         self.edit_find_previous()
 
     def search_incremental(self) -> None:
-        """Execute the `search_incremental` workflow."""
+        """Focus the incremental search panel for live searching."""
         self.show_search_panel()
         if hasattr(self, "search_input"):
             self.search_input.setFocus()
 
     def search_goto_line(self) -> None:
-        """Execute the `search_goto_line` workflow."""
+        """Prompt for a line number and move the caret there."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -10348,7 +10581,7 @@ class MiscMixin(
         self.update_status_bar()
 
     def search_mark(self) -> None:
-        """Execute the `search_mark` workflow."""
+        """Mark all matches for the current search term in the active tab."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -10367,7 +10600,7 @@ class MiscMixin(
         self.show_status_message("Marked search matches.", 2500)
 
     def search_change_history_next(self) -> None:
-        """Execute the `search_change_history_next` workflow."""
+        """Search change history next."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -10382,7 +10615,7 @@ class MiscMixin(
         tab.text_edit.set_cursor_position(lines[0], 0)
 
     def search_change_history_previous(self) -> None:
-        """Execute the `search_change_history_previous` workflow."""
+        """Search change history previous."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -10397,7 +10630,7 @@ class MiscMixin(
         tab.text_edit.set_cursor_position(lines[-1], 0)
 
     def search_change_history_clear(self) -> None:
-        """Execute the `search_change_history_clear` workflow."""
+        """Search change history clear."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -10405,7 +10638,7 @@ class MiscMixin(
         self.show_status_message("Change history cleared.", 2500)
 
     def search_style_all_occurrences(self, style_id: int) -> None:
-        """Execute the `search_style_all_occurrences` workflow."""
+        """Search style all occurrences."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -10422,7 +10655,7 @@ class MiscMixin(
         self._apply_line_styles(tab)
 
     def search_style_one_token(self, style_id: int) -> None:
-        """Execute the `search_style_one_token` workflow."""
+        """Search style one token."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -10432,7 +10665,7 @@ class MiscMixin(
         self._apply_line_styles(tab)
 
     def search_clear_style(self, style_id: int | None = None) -> None:
-        """Execute the `search_clear_style` workflow."""
+        """Search clear style."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -10446,7 +10679,7 @@ class MiscMixin(
         self._apply_line_styles(tab)
 
     def search_jump_up_styled(self) -> None:
-        """Execute the `search_jump_up_styled` workflow."""
+        """Search jump up styled."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -10462,7 +10695,7 @@ class MiscMixin(
         tab.text_edit.set_cursor_position(lines[-1], 0)
 
     def search_jump_down_styled(self) -> None:
-        """Execute the `search_jump_down_styled` workflow."""
+        """Search jump down styled."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -10478,7 +10711,7 @@ class MiscMixin(
         tab.text_edit.set_cursor_position(lines[0], 0)
 
     def search_copy_styled_text(self, style_id: int | None = None) -> None:
-        """Execute the `search_copy_styled_text` workflow."""
+        """Search copy styled text."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -10499,11 +10732,11 @@ class MiscMixin(
 
     # ---- Bookmark line operations ----
     def _bookmarked_lines_sorted(self, tab: EditorTab) -> list[int]:
-        """Internal helper for `_bookmarked_lines_sorted`."""
+        """Return the bookmarked line numbers in ascending order."""
         return sorted(int(x) for x in tab.bookmarks if isinstance(x, int))
 
     def bookmark_cut_lines(self) -> None:
-        """Execute the `bookmark_cut_lines` workflow."""
+        """Cut all bookmarked lines from the active document."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -10520,7 +10753,7 @@ class MiscMixin(
         self._sync_scintilla_bookmark_markers(tab)
 
     def bookmark_copy_lines(self) -> None:
-        """Execute the `bookmark_copy_lines` workflow."""
+        """Copy all bookmarked lines from the active document."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -10533,7 +10766,7 @@ class MiscMixin(
         self.show_status_message("Bookmarked lines copied.", 2500)
 
     def bookmark_paste_replace_lines(self) -> None:
-        """Execute the `bookmark_paste_replace_lines` workflow."""
+        """Replace bookmarked lines with clipboard text."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -10554,7 +10787,7 @@ class MiscMixin(
         tab.text_edit.set_modified(True)
 
     def bookmark_remove_lines(self) -> None:
-        """Execute the `bookmark_remove_lines` workflow."""
+        """Delete all bookmarked lines from the active document."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -10569,7 +10802,7 @@ class MiscMixin(
         self._sync_scintilla_bookmark_markers(tab)
 
     def bookmark_remove_non_bookmarked_lines(self) -> None:
-        """Execute the `bookmark_remove_non_bookmarked_lines` workflow."""
+        """Delete every line except the bookmarked ones."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -10584,7 +10817,7 @@ class MiscMixin(
         self._sync_scintilla_bookmark_markers(tab)
 
     def bookmark_inverse(self) -> None:
-        """Execute the `bookmark_inverse` workflow."""
+        """Invert bookmark placement across the active document."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -10594,7 +10827,7 @@ class MiscMixin(
         self._sync_scintilla_bookmark_markers(tab)
 
     def show_about(self) -> None:
-        """Execute the `show_about` workflow."""
+        """Show the About dialog for the application."""
         username = getpass.getuser()
         self.log_event("Info", "Opened About dialog")
         app_mode_text = "You are using the production app." if getattr(sys, "frozen", False) else "You are using the development app."
@@ -10644,7 +10877,7 @@ class MiscMixin(
         if text_label is not None:
             text_label.setOpenExternalLinks(False)
             def _about_easter_egg(link: str) -> None:
-                """Internal helper for `_about_easter_egg`."""
+                """Launch the hidden easter egg when the special About dialog link is clicked."""
                 if link != "easteregg":
                     return
                 now = time.time()
@@ -10664,7 +10897,7 @@ class MiscMixin(
         about_box.exec()
 
     def show_open_source_licenses(self) -> None:
-        """Execute the `show_open_source_licenses` workflow."""
+        """Show the open-source licenses bundled with the application."""
         self.log_event("Info", "Opened Open Source Licenses dialog")
         dialog = QDialog(self)
         dialog.setWindowTitle("Open Source Licenses")
@@ -10730,7 +10963,7 @@ class MiscMixin(
             library_list.addItem(item)
 
         def _render_selected_preview() -> None:
-            """Internal helper for `_render_selected_preview`."""
+            """Render the preview for the currently selected license document."""
             current = library_list.currentItem()
             if current is None:
                 output.setPlainText("Select a library to preview its license metadata.")
@@ -10762,7 +10995,7 @@ class MiscMixin(
         dialog.exec()
 
     def _maybe_show_welcome_tutorial(self) -> None:
-        """Internal helper for `_maybe_show_welcome_tutorial`."""
+        """Show the welcome tutorial when onboarding is enabled and it has not been completed."""
         if not bool(self.settings.get("onboarding_enabled", True)):
             return
         if self.settings.get("welcome_tutorial_seen", False):
@@ -10776,7 +11009,7 @@ class MiscMixin(
         self.show_first_time_tutorial()
 
     def _onboarding_state(self) -> dict[str, Any]:
-        """Internal helper for `_onboarding_state`."""
+        """Return the mutable onboarding state dictionary stored in settings."""
         state = self.settings.get("onboarding_state")
         if not isinstance(state, dict):
             state = {}
@@ -10787,7 +11020,7 @@ class MiscMixin(
         return state
 
     def _onboarding_mark_step(self, step: str) -> None:
-        """Internal helper for `_onboarding_mark_step`."""
+        """Mark an onboarding step as completed and persist the updated state."""
         key = str(step or "").strip()
         if not key:
             return
@@ -10800,7 +11033,7 @@ class MiscMixin(
         self.save_settings_to_disk()
 
     def _onboarding_has_step(self, step: str) -> bool:
-        """Internal helper for `_onboarding_has_step`."""
+        """Return whether a specific onboarding step has already been completed."""
         key = str(step or "").strip()
         if not key:
             return False
@@ -10809,7 +11042,7 @@ class MiscMixin(
         return key in completed
 
     def _onboarding_mark_tip(self, tip_key: str) -> None:
-        """Internal helper for `_onboarding_mark_tip`."""
+        """Mark a contextual onboarding tip as shown so it is not repeated unnecessarily."""
         key = str(tip_key or "").strip()
         if not key:
             return
@@ -10822,7 +11055,7 @@ class MiscMixin(
         self.save_settings_to_disk()
 
     def _maybe_show_contextual_tip(self, reason: str = "general") -> None:
-        """Internal helper for `_maybe_show_contextual_tip`."""
+        """Show a contextual onboarding tip when the current reason warrants one."""
         if not bool(self.settings.get("onboarding_enabled", True)):
             return
         if not bool(self.settings.get("onboarding_contextual_tips_enabled", True)):
@@ -10855,7 +11088,7 @@ class MiscMixin(
             return
 
     def _maybe_show_next_unlock_prompt(self) -> None:
-        """Internal helper for `_maybe_show_next_unlock_prompt`."""
+        """Offer the user the next unlock prompt when gamification progress allows it."""
         if not bool(self.settings.get("onboarding_enabled", True)):
             return
         if not bool(self.settings.get("onboarding_next_unlock_prompts_enabled", True)):
@@ -10891,7 +11124,7 @@ class MiscMixin(
         self.save_settings_to_disk()
 
     def _maybe_show_daily_briefing_prompt(self) -> None:
-        """Internal helper for `_maybe_show_daily_briefing_prompt`."""
+        """Prompt the user to open the daily briefing when it is due."""
         if not bool(self.settings.get("onboarding_enabled", True)):
             return
         if not bool(self.settings.get("onboarding_next_unlock_prompts_enabled", True)):
@@ -10906,7 +11139,7 @@ class MiscMixin(
         self.save_settings_to_disk()
 
     def _maybe_show_seasonal_event_prompt(self) -> None:
-        """Internal helper for `_maybe_show_seasonal_event_prompt`."""
+        """Prompt the user to open the current seasonal event briefing when available."""
         if not bool(self.settings.get("onboarding_enabled", True)):
             return
         if not self._gamification_enabled() or not hasattr(self, "gamification"):
@@ -10921,7 +11154,7 @@ class MiscMixin(
         self.save_settings_to_disk()
 
     def show_first_time_tutorial(self) -> None:
-        """Execute the `show_first_time_tutorial` workflow."""
+        """Show the first-time tutorial dialog and persist the onboarding result."""
         tutorial = InteractiveTutorialDialog(self)
         accepted = tutorial.exec() == QDialog.Accepted
         if not accepted:
@@ -10937,7 +11170,7 @@ class MiscMixin(
         QTimer.singleShot(2800, self._maybe_show_seasonal_event_prompt)
 
     def open_demo_pack_first_template(self) -> None:
-        """Open the UI or resource handled by `open_demo_pack_first_template`."""
+        """Open the first available template from the bundled demo pack."""
         root_fn = getattr(self, "_demo_templates_root", None)
         if not callable(root_fn):
             QMessageBox.information(self, "Open Demo Pack", "Demo pack path resolver is unavailable.")
@@ -10960,7 +11193,7 @@ class MiscMixin(
         self.show_status_message(f"Opened demo template: {candidate.name}", 3000)
 
     def show_user_guide(self) -> None:
-        """Execute the `show_user_guide` workflow."""
+        """Show the built-in user guide dialog."""
         guide_text = """
 Pypad User Guide
 
@@ -11042,7 +11275,7 @@ Pypad User Guide
 
     @staticmethod
     def _fmt_timestamp(ts: float | None) -> str:
-        """Internal helper for `_fmt_timestamp`."""
+        """Format an optional timestamp into user-facing date and time text."""
         if ts is None:
             return "N/A"
         try:
@@ -11052,7 +11285,7 @@ Pypad User Guide
 
     @staticmethod
     def _text_stats(text: str) -> dict[str, int]:
-        """Internal helper for `_text_stats`."""
+        """Return line, word, and character counts for a block of text."""
         probe = str(text or "")
         return {
             "words": len(re.findall(r"\S+", probe)),
@@ -11062,7 +11295,7 @@ Pypad User Guide
         }
 
     def _selection_stats_text(self, tab: EditorTab | None) -> str:
-        """Internal helper for `_selection_stats_text`."""
+        """Build the status text that summarizes the current editor selection."""
         if tab is None:
             return "Words 0 | Chars 0"
         selected = ""
@@ -11075,7 +11308,7 @@ Pypad User Guide
         return f"{prefix} W {stats['words']} | C {stats['chars_no_eol']} | L {stats['lines']}"
 
     def show_document_summary(self) -> None:
-        """Execute the `show_document_summary` workflow."""
+        """Show a dialog summarizing document length, selection stats, and structure."""
         tab = self.active_tab()
         if tab is None:
             QMessageBox.information(self, "Document Summary", "No active document.")
@@ -11142,14 +11375,14 @@ Pypad User Guide
         dlg.exec()
 
     def _spellcheck_custom_words(self) -> list[str]:
-        """Internal helper for `_spellcheck_custom_words`."""
+        """Return the custom spellcheck dictionary words from settings."""
         raw = self.settings.get("spellcheck_user_dictionary", [])
         if isinstance(raw, list):
             return [str(item).strip().lower() for item in raw if str(item).strip()]
         return []
 
     def open_spell_check_dialog(self) -> None:
-        """Open the UI or resource handled by `open_spell_check_dialog`."""
+        """Open the spell check dialog for the active document."""
         tab = self.active_tab()
         if tab is None:
             QMessageBox.information(self, "Spell Check", "No active document.")
@@ -11192,7 +11425,7 @@ Pypad User Guide
             words_list.addItem(str(row.get("word", "")))
 
         def _refresh_suggestions(row_index: int) -> None:
-            """Internal helper for `_refresh_suggestions`."""
+            """Refresh the replacement suggestions for the selected misspelled word."""
             suggestion_list.clear()
             if row_index < 0 or row_index >= len(findings):
                 return
@@ -11200,7 +11433,7 @@ Pypad User Guide
                 suggestion_list.addItem(str(item))
 
         def _replace_selected() -> None:
-            """Internal helper for `_replace_selected`."""
+            """Replace the selected misspelling with the chosen suggestion."""
             row_index = words_list.currentRow()
             if row_index < 0 or row_index >= len(findings):
                 return
@@ -11226,7 +11459,7 @@ Pypad User Guide
         dlg.exec()
 
     def show_spellcheck_suggestions_for_current_word(self) -> None:
-        """Execute the `show_spellcheck_suggestions_for_current_word` workflow."""
+        """Show a context menu with spellcheck suggestions for the word at the cursor."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -11259,7 +11492,7 @@ Pypad User Guide
         menu.exec(self.mapToGlobal(self.rect().center()))
 
     def show_discoverability_guide(self) -> None:
-        """Execute the `show_discoverability_guide` workflow."""
+        """Show a quick guide that highlights major features and how to find them."""
         body = (
             "Core workflows\n"
             "- File > Open / Quick Open for jumping into files fast\n"
@@ -11291,7 +11524,7 @@ Pypad User Guide
         dlg.exec()
 
     def enforce_privacy_lock(self) -> None:
-        """Show a simple lock screen if privacy_lock is enabled.
+        """Show the privacy lock dialog when privacy lock is enabled.
 
         The user can unlock with either the configured password or PIN.
         This is intentionally lightweight and not cryptographically secure.
@@ -11307,9 +11540,9 @@ Pypad User Guide
             return
 
         class LockDialog(QDialog):
-            """Dialog class that implements the `LockDialog` workflow."""
+            """Dialog for collecting the password and PIN used by privacy lock."""
             def __init__(self, parent=None, want_password: bool = True, want_pin: bool = True) -> None:
-                """Initialize the `misc` state for this instance."""
+                """Build the privacy lock dialog and initialize its password and PIN inputs."""
                 super().__init__(parent)
                 self.setWindowTitle("Unlock Pypad")
                 layout = QFormLayout(self)
@@ -11338,7 +11571,7 @@ Pypad User Guide
                 layout.addRow(buttons)
 
             def get_values(self) -> tuple[str, str]:
-                """Return the value produced by `get_values`."""
+                """Return the password and PIN currently entered in the lock dialog."""
                 pw = self.password_edit.text() if self.password_edit is not None else ""
                 pin = self.pin_edit.text() if self.pin_edit is not None else ""
                 return pw.strip(), pin.strip()
@@ -11371,7 +11604,7 @@ Pypad User Guide
             )
 
     def _easter_egg_ball_state(self) -> dict[str, Any]:
-        """Internal helper for `_easter_egg_ball_state`."""
+        """Return the persisted state used to restore the easter egg ball widget."""
         state = self.gamification.state()
         ball_state = state.get("easter_egg_ball")
         if not isinstance(ball_state, dict):
@@ -11421,7 +11654,7 @@ Pypad User Guide
         ball.setFocus(Qt.FocusReason.OtherFocusReason)
 
         def _clear_ball() -> None:
-            """Internal helper for `_clear_ball`."""
+            """Remove the floating easter egg ball widget from the window."""
             self._easter_egg_running = False
             if getattr(self, "_easter_egg_ball", None) is ball:
                 self._easter_egg_ball = None

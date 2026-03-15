@@ -33,7 +33,7 @@ from PySide6.QtWidgets import (
 
 @dataclass
 class Reminder:
-    """Class that implements the `Reminder` runtime behavior."""
+    """Reminder record with scheduling and recurrence metadata."""
     reminder_id: str
     title: str
     note_ref: str
@@ -44,16 +44,16 @@ class Reminder:
 
     @property
     def due_datetime(self) -> datetime:
-        """Execute the `due_datetime` workflow."""
+        """Handle due datetime."""
         return datetime.fromisoformat(self.due_iso)
 
     def set_due(self, due_dt: datetime) -> None:
-        """Update state handled by `set_due`."""
+        """Update the reminder due date and regenerate its derived scheduling fields."""
         self.due_iso = due_dt.isoformat()
 
 
 def _add_months(dt: datetime, months: int) -> datetime:
-    """Internal helper for `_add_months`."""
+    """Add months."""
     year = dt.year + ((dt.month - 1 + months) // 12)
     month = ((dt.month - 1 + months) % 12) + 1
     day = min(dt.day, [31, 29 if year % 4 == 0 and (year % 100 != 0 or year % 400 == 0) else 28,
@@ -64,12 +64,12 @@ def _add_months(dt: datetime, months: int) -> datetime:
 class ReminderStore:
     """State container that manages `ReminderStore` data and persistence."""
     def __init__(self, path: Path) -> None:
-        """Initialize the `reminders` state for this instance."""
+        """Load reminder data and prepare in-memory reminder state."""
         self.path = path
         self.reminders: list[Reminder] = []
 
     def load(self) -> None:
-        """Execute the `load` workflow."""
+        """Load the value."""
         if not self.path.exists():
             self.reminders = []
             return
@@ -91,7 +91,7 @@ class ReminderStore:
             self.reminders = []
 
     def save(self) -> None:
-        """Execute the `save` workflow."""
+        """Save the value."""
         data = [
             {
                 "reminder_id": r.reminder_id,
@@ -107,7 +107,7 @@ class ReminderStore:
         self.path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
     def add(self, title: str, note_ref: str, due_dt: datetime, notes: str, recurrence: str) -> Reminder:
-        """Execute the `add` workflow."""
+        """Add the value."""
         reminder = Reminder(
             reminder_id=str(uuid.uuid4()),
             title=title,
@@ -120,23 +120,23 @@ class ReminderStore:
         return reminder
 
     def remove(self, reminder_id: str) -> None:
-        """Execute the `remove` workflow."""
+        """Remove the value."""
         self.reminders = [r for r in self.reminders if r.reminder_id != reminder_id]
 
     def by_id(self, reminder_id: str) -> Reminder | None:
-        """Execute the `by_id` workflow."""
+        """Handle by id."""
         for reminder in self.reminders:
             if reminder.reminder_id == reminder_id:
                 return reminder
         return None
 
     def snooze(self, reminder: Reminder, delta: timedelta) -> None:
-        """Execute the `snooze` workflow."""
+        """Handle snooze."""
         reminder.set_due(datetime.now() + delta)
         reminder.fired = False
 
     def reschedule_recurring(self, reminder: Reminder) -> None:
-        """Execute the `reschedule_recurring` workflow."""
+        """Handle reschedule recurring."""
         due = reminder.due_datetime
         if reminder.recurrence == "daily":
             reminder.set_due(due + timedelta(days=1))
@@ -147,9 +147,9 @@ class ReminderStore:
 
 
 class RemindersDialog(QDialog):
-    """Dialog class that implements the `RemindersDialog` workflow."""
+    """Dialog for viewing, editing, and snoozing reminders."""
     def __init__(self, parent, store: ReminderStore, note_ref: str, note_title: str) -> None:
-        """Initialize the `reminders` state for this instance."""
+        """Build the reminders dialog and initialize its controls."""
         super().__init__(parent)
         self.setWindowTitle("Reminders")
         self.resize(760, 460)
@@ -226,7 +226,7 @@ class RemindersDialog(QDialog):
         self._refresh()
 
     def _refresh(self) -> None:
-        """Internal helper for `_refresh`."""
+        """Handle refresh."""
         self.list_widget.clear()
         for reminder in sorted(self.store.reminders, key=lambda r: r.due_iso):
             status = "done" if reminder.fired else "pending"
@@ -235,7 +235,7 @@ class RemindersDialog(QDialog):
             item.setData(Qt.UserRole, reminder.reminder_id)
 
     def _selected_reminder(self) -> Reminder | None:
-        """Internal helper for `_selected_reminder`."""
+        """Handle selected reminder."""
         item = self.list_widget.currentItem()
         if item is None:
             return None
@@ -243,7 +243,7 @@ class RemindersDialog(QDialog):
         return self.store.by_id(reminder_id)
 
     def _load_selected(self, _current: QListWidgetItem | None, _prev: QListWidgetItem | None) -> None:
-        """Internal helper for `_load_selected`."""
+        """Load selected."""
         reminder = self._selected_reminder()
         if reminder is None:
             return
@@ -255,7 +255,7 @@ class RemindersDialog(QDialog):
             self.recurrence_combo.setCurrentIndex(idx)
 
     def _add_reminder(self) -> None:
-        """Internal helper for `_add_reminder`."""
+        """Add reminder."""
         due_dt = self.due_input.dateTime().toPython()
         if due_dt <= datetime.now():
             QMessageBox.warning(self, "Reminder", "Pick a time in the future.")
@@ -268,7 +268,7 @@ class RemindersDialog(QDialog):
         self._refresh()
 
     def _update_selected(self) -> None:
-        """Internal helper for `_update_selected`."""
+        """Update selected."""
         reminder = self._selected_reminder()
         if reminder is None:
             return
@@ -285,7 +285,7 @@ class RemindersDialog(QDialog):
         self._refresh()
 
     def _delete_selected(self) -> None:
-        """Internal helper for `_delete_selected`."""
+        """Handle delete selected."""
         reminder = self._selected_reminder()
         if reminder is None:
             return
@@ -294,7 +294,7 @@ class RemindersDialog(QDialog):
         self._refresh()
 
     def _snooze_selected(self, delta: timedelta) -> None:
-        """Internal helper for `_snooze_selected`."""
+        """Handle snooze selected."""
         reminder = self._selected_reminder()
         if reminder is None:
             return

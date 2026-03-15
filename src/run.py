@@ -23,7 +23,7 @@ def _configure_startup_runtime_env() -> None:
     # Read any existing Chromium/WebEngine flags so startup keeps user- or
     # environment-provided options intact.
     # Reduce Chromium/WebEngine stderr noise from benign GPU/direct-composition diagnostics.
-    """Internal helper for `_configure_startup_runtime_env`."""
+    """Handle configure startup runtime env."""
     flags = str(os.environ.get("QTWEBENGINE_CHROMIUM_FLAGS", "") or "").strip()
     # These flags suppress verbose Chromium logging that is not actionable for normal users.
     desired_parts = ["--disable-logging", "--log-level=3"]
@@ -96,7 +96,7 @@ LOGGER = get_logger(__name__)
 def _build_shell_open_command() -> str:
     # The shell command differs between frozen and source runs. Explorer passes the
     # clicked file path in place of %1.
-    """Internal helper for `_build_shell_open_command`."""
+    """Build shell open command."""
     if getattr(sys, "frozen", False):
         exe = Path(sys.executable).resolve()
         return f'"{exe}" "%1"'
@@ -106,7 +106,7 @@ def _build_shell_open_command() -> str:
 
 
 def _register_windows_shell_menu() -> None:
-    """Internal helper for `_register_windows_shell_menu`."""
+    """Handle register windows shell menu."""
     if os.name != "nt":
         raise RuntimeError("Windows shell integration is only supported on Windows.")
     import winreg
@@ -124,7 +124,7 @@ def _register_windows_shell_menu() -> None:
 
 
 def _delete_registry_tree(root, subkey: str) -> None:
-    """Internal helper for `_delete_registry_tree`."""
+    """Handle delete registry tree."""
     import winreg
 
     # Recursively delete child keys first because Windows registry keys must be empty
@@ -140,7 +140,7 @@ def _delete_registry_tree(root, subkey: str) -> None:
 
 
 def _unregister_windows_shell_menu() -> None:
-    """Internal helper for `_unregister_windows_shell_menu`."""
+    """Handle unregister windows shell menu."""
     if os.name != "nt":
         raise RuntimeError("Windows shell integration is only supported on Windows.")
     import winreg
@@ -153,7 +153,7 @@ def _unregister_windows_shell_menu() -> None:
 
 
 def _save_startup_traceback(traceback_text: str) -> None:
-    """Internal helper for `_save_startup_traceback`."""
+    """Save startup traceback."""
     try:
         # Append instead of overwrite so repeated startup failures preserve history.
         path = get_crash_logs_file_path()
@@ -169,16 +169,16 @@ def _save_startup_traceback(traceback_text: str) -> None:
 
 def _startup_log(message: str) -> None:
     # Small wrapper used for startup-focused messages so the call sites stay concise.
-    """Internal helper for `_startup_log`."""
+    """Handle startup log."""
     LOGGER.info(message)
 
 
 def _install_startup_exception_hooks() -> None:
     # Route uncaught exceptions into the crash log before Python performs its normal
     # exception handling.
-    """Internal helper for `_install_startup_exception_hooks`."""
+    """Install startup exception hooks."""
     def _handle_exception(exc_type, exc_value, exc_tb) -> None:
-        """Internal helper for `_handle_exception`."""
+        """Log an uncaught exception raised on the main thread."""
         error_text = "".join(
             traceback.format_exception(exc_type, exc_value, exc_tb)
         ).strip()
@@ -188,7 +188,7 @@ def _install_startup_exception_hooks() -> None:
     # Thread exceptions are handled separately in modern Python, so install the same
     # persistence logic for worker threads.
     def _handle_thread_exception(args: threading.ExceptHookArgs) -> None:
-        """Internal helper for `_handle_thread_exception`."""
+        """Log an uncaught exception raised on a background thread."""
         error_text = "".join(
             traceback.format_exception(args.exc_type, args.exc_value, args.exc_traceback)
         ).strip()
@@ -203,7 +203,7 @@ def _install_startup_exception_hooks() -> None:
     def _qt_message_handler(mode, context, message) -> None:
         # Qt can pass either enum values or compatibility shims depending on bindings,
         # so normalize the mode into a readable label first.
-        """Internal helper for `_qt_message_handler`."""
+        """Handle Qt message handler."""
         if isinstance(mode, QtMsgType):
             mode_name = mode.name
         else:
@@ -368,7 +368,7 @@ if __name__ == "__main__":
     def mark_app_started(window) -> None:
         # Centralize startup completion so timing and splash teardown happen once no
         # matter which code path marks the app as ready.
-        """Execute the `mark_app_started` workflow."""
+        """Record startup completion, close the splash screen, and update startup state."""
         if startup_reported[0]:
             return
         startup_reported[0] = True
@@ -387,7 +387,7 @@ if __name__ == "__main__":
 
     # Start main window after short delay
     def start_main():
-        """Execute the `start_main` workflow."""
+        """Start the main window and enter the Qt event loop."""
         LOGGER.info("Launching main window bootstrap")
         try:
             # Reuse the existing QApplication instead of letting the app module create
@@ -408,7 +408,7 @@ if __name__ == "__main__":
         _MAIN_WINDOW = window
         # Diagnostics for unexpected exits (connect before showing in case startup quits immediately)
         def _log_quit(reason: str) -> None:
-            """Internal helper for `_log_quit`."""
+            """Handle log quit."""
             _startup_log(f"App quitting ({reason})")
 
         app.aboutToQuit.connect(lambda: _log_quit("aboutToQuit"))
@@ -421,7 +421,7 @@ if __name__ == "__main__":
         def _show_and_activate_main_window() -> None:
             # Separate showing from construction so startup code can delay visibility
             # until internal initialization is complete.
-            """Internal helper for `_show_and_activate_main_window`."""
+            """Show and activate main window."""
             _startup_log("[Startup] Showing main window...")
             if window.isMinimized():
                 window.showNormal()
@@ -442,7 +442,7 @@ if __name__ == "__main__":
             mark_app_started(window)
             # Defer native activation calls; they can be fragile during first show on some setups.
             def _activate_main_window() -> None:
-                """Internal helper for `_activate_main_window`."""
+                """Handle activate main window."""
                 try:
                     if not window.isVisible():
                         window.show()
@@ -457,7 +457,7 @@ if __name__ == "__main__":
         def _check_window_visibility() -> None:
             # Record a delayed visibility snapshot because some startup failures only
             # appear after the first event-loop turns.
-            """Internal helper for `_check_window_visibility`."""
+            """Handle check window visibility."""
             try:
                 visible = window.isVisible()
                 minimized = window.isMinimized()
@@ -472,13 +472,13 @@ if __name__ == "__main__":
 
         def _show_when_startup_ready() -> None:
             # Poll lightweight readiness flags instead of blocking the event loop.
-            """Internal helper for `_show_when_startup_ready`."""
+            """Show when startup ready."""
             max_wait_ms = 15000
             poll_ms = 50
             waited = {"ms": 0}
 
             def _poll() -> None:
-                """Internal helper for `_poll`."""
+                """Handle poll."""
                 try:
                     # The window is considered ready when either the app has already
                     # reported startup completion or the window's own startup sequence
@@ -516,10 +516,10 @@ if __name__ == "__main__":
         _show_when_startup_ready()
 
     class _QuitEventFilter(QObject):
-        """Class that implements the `_QuitEventFilter` runtime behavior."""
+        """Event filter that records Qt quit events during startup."""
         def eventFilter(self, obj, event):  # type: ignore[override]
             # Log raw Qt quit events as an extra breadcrumb for diagnosing unexpected exits.
-            """Execute the `eventFilter` workflow."""
+            """Log application quit events before Qt continues normal event processing."""
             if event.type() == QEvent.Type.Quit:
                 _startup_log("Quit event received by QApplication.")
             return False

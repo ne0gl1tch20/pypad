@@ -24,7 +24,7 @@ ALWAYS_BLOCKED_CALLS = {"eval", "exec", "__import__", "compile"}
 
 @dataclass(frozen=True)
 class DiscoverableAction:
-    """Class that implements the `DiscoverableAction` runtime behavior."""
+    """discoverable action."""
     action_id: str
     label: str
     section: str
@@ -33,17 +33,17 @@ class DiscoverableAction:
 
 
 def _clean_action_text(text: str) -> str:
-    """Internal helper for `_clean_action_text`."""
+    """Handle clean action text."""
     return str(text or "").replace("&", "").strip()
 
 
 def _seq_to_text(seq: QKeySequence) -> str:
-    """Internal helper for `_seq_to_text`."""
+    """Handle seq to text."""
     return seq.toString(QKeySequence.SequenceFormat.NativeText).strip()
 
 
 def _action_shortcut_text(action: QAction) -> str:
-    """Internal helper for `_action_shortcut_text`."""
+    """Handle action shortcut text."""
     seqs = [_seq_to_text(x) for x in action.shortcuts() if not x.isEmpty()]
     if not seqs:
         fallback = action.shortcut()
@@ -53,7 +53,7 @@ def _action_shortcut_text(action: QAction) -> str:
 
 
 def _walk_menu(menu: QMenu, parent_path: str, sink: dict[int, str]) -> None:
-    """Internal helper for `_walk_menu`."""
+    """Handle walk menu."""
     title = _clean_action_text(menu.title())
     path = f"{parent_path} > {title}" if parent_path and title else (title or parent_path)
     for action in menu.actions():
@@ -67,7 +67,7 @@ def _walk_menu(menu: QMenu, parent_path: str, sink: dict[int, str]) -> None:
 
 
 def discover_window_actions(window: Any) -> list[DiscoverableAction]:
-    """Execute the `discover_window_actions` workflow."""
+    """Handle discover window actions."""
     attr_name_by_action_id: dict[int, str] = {}
     for name, value in vars(window).items():
         if isinstance(value, QAction):
@@ -130,7 +130,7 @@ def assess_plugin_security(
     plugin_id: str,
     permissions: set[str],
 ) -> list[str]:
-    """Execute the `assess_plugin_security` workflow."""
+    """Inspect plugin files and report behaviors that raise security concerns."""
     issues: list[str] = []
     try:
         root_resolved = plugin_root.resolve()

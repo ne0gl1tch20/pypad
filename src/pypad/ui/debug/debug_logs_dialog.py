@@ -8,9 +8,9 @@ from PySide6.QtWidgets import QApplication, QDialog, QHBoxLayout, QPushButton, Q
 from pypad.ui.theme.theme_tokens import build_debug_logs_dialog_qss, build_dialog_theme_qss_from_tokens, build_tokens_from_settings
 
 class DebugLogsDialog(QDialog):
-    """Dialog class that implements the `DebugLogsDialog` workflow."""
+    """debug logs dialog."""
     def __init__(self, parent=None) -> None:
-        """Initialize the `debug_logs_dialog` state for this instance."""
+        """Build the debug logs dialog and prepare its widgets."""
         super().__init__(parent)
         self.setWindowTitle("Debug Logs")
         self.resize(860, 520)
@@ -37,20 +37,20 @@ class DebugLogsDialog(QDialog):
         self._apply_theme_from_parent()
 
     def _apply_theme_from_parent(self) -> None:
-        """Internal helper for `_apply_theme_from_parent`."""
+        """Apply theme from parent."""
         settings = getattr(self.parent(), "settings", {}) if self.parent() is not None else {}
         tokens = build_tokens_from_settings(settings if isinstance(settings, dict) else {})
         self.setStyleSheet(build_dialog_theme_qss_from_tokens(tokens) + "\n" + build_debug_logs_dialog_qss(tokens))
 
     def set_lines(self, lines: list[str]) -> None:
-        """Update state handled by `set_lines`."""
+        """Replace the visible debug log lines in the dialog."""
         self.logs_view.setPlainText("\n".join(lines))
         cursor = self.logs_view.textCursor()
         cursor.movePosition(QTextCursor.End)
         self.logs_view.setTextCursor(cursor)
 
     def append_line(self, line: str) -> None:
-        """Execute the `append_line` workflow."""
+        """Append line."""
         if not self.logs_view.toPlainText():
             self.logs_view.setPlainText(line)
         else:
@@ -60,11 +60,11 @@ class DebugLogsDialog(QDialog):
         self.logs_view.setTextCursor(cursor)
 
     def _copy_all(self) -> None:
-        """Internal helper for `_copy_all`."""
+        """Handle copy all."""
         QApplication.clipboard().setText(self.logs_view.toPlainText())
 
     def _clear_all(self) -> None:
-        """Internal helper for `_clear_all`."""
+        """Clear all."""
         self.logs_view.clear()
 
 

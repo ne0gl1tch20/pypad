@@ -4,6 +4,40 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, and this project uses Semantic Versioning.
 
+## [1.8.2] - 2026-03-15
+
+### Added
+- Security profiles now support profile-scoped saved security state, so `beginner`, `balanced`, `power_user`, and `custom` can each retain their own trust store, save/privacy preferences, and custom security overrides.
+- External notes now surface a persistent untrusted-note banner with explicit `Trust and Edit`, `Trust for This Session`, and `Keep Read-Only` actions.
+- Security settings now expose fuller custom-profile override controls for plugin, AI, update, save, and trust-persistence behavior.
+- New accessibility coverage across major custom UI surfaces, including accessible names/descriptions for the trust banner, AI chat dock, workspace dialogs, plugin dialogs, tutorial flow, and core dock panels.
+- New accessibility presets for `Large Text` and `Low Stimulation`, alongside the existing high-contrast and dyslexic-font presets.
+- New accessibility smoke coverage for keyboard-first navigation and major dialog metadata.
+
+### Changed
+- Trust, safe-save, AI privacy, and update-signature enforcement now resolve through the active security profile instead of relying on one shared global set of security toggles.
+- Beginner and balanced profiles now default AI redaction to emails, paths, and tokens enabled, and default AI key usage to `env_only`.
+- Encrypted notes now use a versioned PyPad armored format with AES-256-GCM for new saves while remaining backward-compatible with older encrypted note payloads.
+- Enabling note encryption now rewrites the selected file as armored encrypted text, and disabling note encryption rewrites decrypted plaintext back into that same file.
+- Encrypted saves no longer create `.bak` files, and other editors only see the armored encrypted payload rather than readable note contents.
+- Built-in-only plugin mode now isolates discovery and trust checks to the packaged plugin root.
+- Soft Light, High Contrast, Solarized Light, and Ocean Blue now provide dedicated token sets in both light and dark mode instead of collapsing to one generic dark palette.
+- Print View, AI chat inline code/link cards, terminal/tasks output, and settings-search highlights now derive colors from active theme tokens so palette changes carry through consistently.
+- Custom dialogs, docks, and interactive widgets now use stronger global focus-ring styling for clearer keyboard focus visibility.
+- Reduced-motion preferences now suppress remaining custom UI animations such as tutorial fades and AI typing animation states.
+- Keyboard navigation is more consistent across trust actions, AI chat controls, workspace dialogs, plugin dialogs, terminal/tasks, and Git dock controls.
+- App/version metadata has been aligned to the `1.8.2` release line across release files, summaries, and update feed metadata.
+
+### Fixed
+- Plugin event emission and plugin write APIs no longer bypass untrusted-note protections when plugin blocking is enabled.
+- Plugin automation now enforces profile-level restrictions for `macros_only`, `restricted`, and `advanced` modes.
+- Settings profile switching no longer overwrites another profile's saved security/trust/privacy state in memory before apply.
+- Enabling note encryption from `File > More > Security` now persists the encrypted form of the current file instead of only toggling in-memory state.
+- Theme preset switches no longer leave those named palettes partially unsupported when dark mode is enabled.
+- AI chat assistant bubbles no longer pin code blocks and action links to a hard-coded dark appearance in light themes.
+- Terminal & Tasks dock no longer forces a dark-only output surface regardless of the selected palette.
+- Keyboard and screen-reader users now get clearer metadata on major custom widgets instead of relying on unnamed controls.
+
 ## [1.8.1] - 2026-03-14
 
 ### Added

@@ -14,7 +14,7 @@ from PySide6.QtGui import QGuiApplication
 
 
 def _normalize_hex(value: object, fallback: str) -> str:
-    """Internal helper for `_normalize_hex`."""
+    """Normalize a hex color string and fall back when the value is invalid."""
     text = str(value or "").strip()
     if not text:
         return fallback
@@ -31,18 +31,18 @@ def _normalize_hex(value: object, fallback: str) -> str:
 
 
 def _hex_to_rgb(value: str) -> tuple[int, int, int]:
-    """Internal helper for `_hex_to_rgb`."""
+    """Handle hex to rgb."""
     text = _normalize_hex(value, "#000000")
     return int(text[1:3], 16), int(text[3:5], 16), int(text[5:7], 16)
 
 
 def _rgb_to_hex(r: int, g: int, b: int) -> str:
-    """Internal helper for `_rgb_to_hex`."""
+    """Handle rgb to hex."""
     return "#{:02x}{:02x}{:02x}".format(max(0, min(255, r)), max(0, min(255, g)), max(0, min(255, b)))
 
 
 def _mix(a: str, b: str, t: float) -> str:
-    """Internal helper for `_mix`."""
+    """Handle mix."""
     ar, ag, ab = _hex_to_rgb(a)
     br, bg, bb = _hex_to_rgb(b)
     t = max(0.0, min(1.0, float(t)))
@@ -54,28 +54,103 @@ def _mix(a: str, b: str, t: float) -> str:
 
 
 def _lighten(color: str, amount: float) -> str:
-    """Internal helper for `_lighten`."""
+    """Handle lighten."""
     return _mix(color, "#ffffff", amount)
 
 
 def _darken(color: str, amount: float) -> str:
-    """Internal helper for `_darken`."""
+    """Handle darken."""
     return _mix(color, "#000000", amount)
 
 
 def _relative_luma(color: str) -> float:
-    """Internal helper for `_relative_luma`."""
+    """Handle relative luma."""
     r, g, b = _hex_to_rgb(color)
     return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255.0
 
 
 def _contrast_fg(bg: str, *, dark: str = "#111111", light: str = "#ffffff", threshold: float = 0.58) -> str:
-    """Internal helper for `_contrast_fg`."""
+    """Handle contrast fg."""
     return dark if _relative_luma(bg) >= threshold else light
 
 
+def _build_palette_variant(
+    *,
+    window_bg: str,
+    text: str,
+    chrome_bg: str,
+    accent: str,
+    dark: bool,
+) -> dict[str, str]:
+    """Derive a full UI palette from a small set of base colors."""
+    blend_target = "#000000" if dark else "#ffffff"
+    panel_mix = 0.12 if dark else 0.38
+    surface_mix = 0.16 if dark else 0.08
+    input_mix = 0.10 if dark else 0.04
+    button_mix = 0.20 if dark else 0.25
+    border_mix = 0.32 if dark else 0.45
+    soft_mix = 0.22 if dark else 0.18
+    strong_mix = 0.45 if dark else 0.55
+    muted_mix = 0.46 if dark else 0.55
+    selection_mix = 0.22 if dark else 0.68
+    tab_hover_mix = 0.08 if dark else 0.34
+    dock_mix = 0.07 if dark else 0.28
+    dock_hover_mix = 0.14 if dark else 0.14
+    dock_pressed_mix = 0.03 if dark else 0.22
+    track_mix = 0.10 if dark else 0.35
+    handle_mix = 0.38 if dark else 0.52
+    hover_mix = 0.52 if dark else 0.62
+    toolbar_checked_mix = 0.20 if dark else 0.82
+    toolbar_checked_hover_mix = 0.28 if dark else 0.74
+
+    panel_bg = _mix(chrome_bg, blend_target, panel_mix)
+    surface_bg = _mix(window_bg, blend_target, surface_mix)
+    input_bg = _mix(surface_bg, blend_target, input_mix)
+    button_bg = _mix(chrome_bg, blend_target, button_mix)
+    border = _mix(chrome_bg, text, border_mix)
+    border_soft = _mix(chrome_bg, text, soft_mix)
+    border_strong = _mix(chrome_bg, text, strong_mix)
+    text_muted = _mix(text, window_bg, muted_mix)
+    selection_bg = _mix(accent, blend_target, selection_mix)
+    selection_fg = "#ffffff" if dark else _contrast_fg(selection_bg)
+    scrollbar_track = _mix(window_bg, chrome_bg if dark else "#d8dee8", track_mix)
+    scrollbar_handle = _mix(chrome_bg, text if dark else "#99a4b2", handle_mix)
+    scrollbar_hover = _mix(chrome_bg, text if dark else "#7f8b99", hover_mix)
+    toolbar_checked_bg = _mix(accent, blend_target, toolbar_checked_mix)
+    toolbar_checked_hover_bg = _mix(accent, blend_target, toolbar_checked_hover_mix)
+    tab_hover_bg = _mix(chrome_bg, blend_target, tab_hover_mix)
+    dock_button_bg = _mix(chrome_bg, blend_target, dock_mix)
+    dock_button_hover_bg = _mix(chrome_bg, accent, dock_hover_mix)
+    dock_button_pressed_bg = _mix(chrome_bg, accent if not dark else "#000000", dock_pressed_mix)
+
+    return {
+        "window_bg": window_bg,
+        "text": text,
+        "chrome_bg": chrome_bg,
+        "panel_bg": panel_bg,
+        "surface_bg": surface_bg,
+        "input_bg": input_bg,
+        "button_bg": button_bg,
+        "border": border,
+        "border_soft": border_soft,
+        "border_strong": border_strong,
+        "text_muted": text_muted,
+        "selection_bg": selection_bg,
+        "selection_fg": selection_fg,
+        "scrollbar_track": scrollbar_track,
+        "scrollbar_handle": scrollbar_handle,
+        "scrollbar_hover": scrollbar_hover,
+        "toolbar_checked_bg": toolbar_checked_bg,
+        "toolbar_checked_hover_bg": toolbar_checked_hover_bg,
+        "tab_hover_bg": tab_hover_bg,
+        "dock_button_bg": dock_button_bg,
+        "dock_button_hover_bg": dock_button_hover_bg,
+        "dock_button_pressed_bg": dock_button_pressed_bg,
+    }
+
+
 def resolve_dark_mode_from_settings(settings: dict[str, Any]) -> bool:
-    """Execute the `resolve_dark_mode_from_settings` workflow."""
+    """Resolve dark mode from settings."""
     s = settings if isinstance(settings, dict) else {}
     if not bool(s.get("follow_system_theme", False)):
         return bool(s.get("dark_mode", False))
@@ -100,7 +175,7 @@ def resolve_dark_mode_from_settings(settings: dict[str, Any]) -> bool:
 
 @dataclass(frozen=True)
 class UIThemeTokens:
-    """Class that implements the `UIThemeTokens` runtime behavior."""
+    """Resolved theme token set used to build application stylesheets."""
     dark_mode: bool
     theme_name: str
     density: str
@@ -146,7 +221,7 @@ class UIThemeTokens:
 
 
 def build_tokens_from_settings(settings: dict[str, Any]) -> UIThemeTokens:
-    """Build and return the value produced by `build_tokens_from_settings`."""
+    """Build theme tokens from persisted application settings."""
     s = settings if isinstance(settings, dict) else {}
     dark = resolve_dark_mode_from_settings(s)
     theme = str(s.get("theme", "Default") or "Default")
@@ -154,60 +229,110 @@ def build_tokens_from_settings(settings: dict[str, Any]) -> UIThemeTokens:
     accent = _normalize_hex(s.get("accent_color", "#4a90e2"), "#4a90e2")
 
     palette_map = {
-        "Default": {"window_bg": "#ffffff", "text": "#111111", "chrome_bg": "#f0f2f5"},
-        "Soft Light": {"window_bg": "#f6f7fb", "text": "#1f2630", "chrome_bg": "#e8ecf3"},
-        "High Contrast": {"window_bg": "#000000", "text": "#ffffff", "chrome_bg": "#000000"},
-        "Solarized Light": {"window_bg": "#fdf6e3", "text": "#586e75", "chrome_bg": "#eee8d5"},
-        "Ocean Blue": {"window_bg": "#eaf4ff", "text": "#10324a", "chrome_bg": "#dcecff"},
+        "Default": {
+            False: _build_palette_variant(
+                window_bg="#ffffff",
+                text="#111111",
+                chrome_bg="#f0f2f5",
+                accent=accent,
+                dark=False,
+            ),
+            True: _build_palette_variant(
+                window_bg="#1d2127",
+                text="#e8edf3",
+                chrome_bg="#252b33",
+                accent=accent,
+                dark=True,
+            ),
+        },
+        "Soft Light": {
+            False: _build_palette_variant(
+                window_bg="#f6f7fb",
+                text="#1f2630",
+                chrome_bg="#e8ecf3",
+                accent=accent,
+                dark=False,
+            ),
+            True: _build_palette_variant(
+                window_bg="#20242c",
+                text="#edf2f7",
+                chrome_bg="#2a313c",
+                accent=accent,
+                dark=True,
+            ),
+        },
+        "High Contrast": {
+            False: _build_palette_variant(
+                window_bg="#ffffff",
+                text="#000000",
+                chrome_bg="#f2f2f2",
+                accent="#005fcc",
+                dark=False,
+            ),
+            True: _build_palette_variant(
+                window_bg="#000000",
+                text="#ffffff",
+                chrome_bg="#050505",
+                accent="#59b7ff",
+                dark=True,
+            ),
+        },
+        "Solarized Light": {
+            False: _build_palette_variant(
+                window_bg="#fdf6e3",
+                text="#586e75",
+                chrome_bg="#eee8d5",
+                accent="#268bd2",
+                dark=False,
+            ),
+            True: _build_palette_variant(
+                window_bg="#002b36",
+                text="#93a1a1",
+                chrome_bg="#073642",
+                accent="#2aa198",
+                dark=True,
+            ),
+        },
+        "Ocean Blue": {
+            False: _build_palette_variant(
+                window_bg="#eaf4ff",
+                text="#10324a",
+                chrome_bg="#dcecff",
+                accent="#2a78c8",
+                dark=False,
+            ),
+            True: _build_palette_variant(
+                window_bg="#0f2233",
+                text="#e3f2fd",
+                chrome_bg="#173247",
+                accent="#54a8ff",
+                dark=True,
+            ),
+        },
     }
-
-    if dark:
-        window_bg = "#1d2127"
-        text = "#e8edf3"
-        chrome_bg = "#252b33"
-        panel_bg = "#20262d"
-        surface_bg = "#1a2026"
-        input_bg = "#161c22"
-        button_bg = "#2a313a"
-        border = "#3a4450"
-        border_soft = "#2f3842"
-        border_strong = "#4b5866"
-        text_muted = "#9dadbf"
-        selection_bg = _mix(accent, "#ffffff", 0.18)
-        selection_fg = "#ffffff"
-        scrollbar_track = "#1c2228"
-        scrollbar_handle = "#516070"
-        scrollbar_hover = "#647588"
-        toolbar_checked_bg = _mix(chrome_bg, accent, 0.16)
-        toolbar_checked_hover_bg = _mix(chrome_bg, accent, 0.24)
-        tab_hover_bg = _lighten(chrome_bg, 0.08)
-        dock_button_bg = _lighten(chrome_bg, 0.05)
-        dock_button_hover_bg = _lighten(chrome_bg, 0.09)
-        dock_button_pressed_bg = _darken(chrome_bg, 0.06)
-    else:
-        base = palette_map.get(theme, palette_map["Default"])
-        window_bg = base["window_bg"]
-        text = base["text"]
-        chrome_bg = base["chrome_bg"]
-        panel_bg = _mix(chrome_bg, "#ffffff", 0.38)
-        surface_bg = "#ffffff"
-        input_bg = "#ffffff"
-        button_bg = _mix(chrome_bg, "#ffffff", 0.25)
-        border = _mix(chrome_bg, "#7e8b99", 0.45)
-        border_soft = _mix(chrome_bg, "#ffffff", 0.18)
-        border_strong = _mix(chrome_bg, "#667484", 0.55)
-        text_muted = _mix(text, "#ffffff", 0.55)
-        selection_bg = _mix(accent, "#ffffff", 0.68)
-        selection_fg = _contrast_fg(selection_bg)
-        scrollbar_track = _mix(window_bg, "#d8dee8", 0.35)
-        scrollbar_handle = _mix(chrome_bg, "#99a4b2", 0.52)
-        scrollbar_hover = _mix(chrome_bg, "#7f8b99", 0.62)
-        toolbar_checked_bg = _mix(accent, "#ffffff", 0.82)
-        toolbar_checked_hover_bg = _mix(accent, "#ffffff", 0.74)
-        tab_hover_bg = _mix(chrome_bg, "#ffffff", 0.34)
-        dock_button_bg = _mix(chrome_bg, "#ffffff", 0.28)
-        dock_button_hover_bg = _mix(chrome_bg, accent, 0.14)
-        dock_button_pressed_bg = _mix(chrome_bg, accent, 0.22)
+    base = palette_map.get(theme, palette_map["Default"])[dark]
+    window_bg = base["window_bg"]
+    text = base["text"]
+    chrome_bg = base["chrome_bg"]
+    panel_bg = base["panel_bg"]
+    surface_bg = base["surface_bg"]
+    input_bg = base["input_bg"]
+    button_bg = base["button_bg"]
+    border = base["border"]
+    border_soft = base["border_soft"]
+    border_strong = base["border_strong"]
+    text_muted = base["text_muted"]
+    selection_bg = base["selection_bg"]
+    selection_fg = base["selection_fg"]
+    scrollbar_track = base["scrollbar_track"]
+    scrollbar_handle = base["scrollbar_handle"]
+    scrollbar_hover = base["scrollbar_hover"]
+    toolbar_checked_bg = base["toolbar_checked_bg"]
+    toolbar_checked_hover_bg = base["toolbar_checked_hover_bg"]
+    tab_hover_bg = base["tab_hover_bg"]
+    dock_button_bg = base["dock_button_bg"]
+    dock_button_hover_bg = base["dock_button_hover_bg"]
+    dock_button_pressed_bg = base["dock_button_pressed_bg"]
 
     if bool(s.get("use_custom_colors", False)):
         custom_editor_bg = _normalize_hex(s.get("custom_editor_bg", ""), "")
@@ -292,13 +417,13 @@ def build_tokens_from_settings(settings: dict[str, Any]) -> UIThemeTokens:
 
 
 def tokens_signature(tokens: UIThemeTokens) -> str:
-    """Execute the `tokens_signature` workflow."""
+    """Handle tokens signature."""
     payload = json.dumps(asdict(tokens), sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha1(payload).hexdigest()
 
 
 def tokens_to_css_vars_qss(tokens: UIThemeTokens) -> str:
-    """Execute the `tokens_to_css_vars_qss` workflow."""
+    """Handle tokens to css vars QSS."""
     rows = asdict(tokens)
     lines = ["/* pypad theme tokens"]
     for key in sorted(rows):
@@ -308,7 +433,7 @@ def tokens_to_css_vars_qss(tokens: UIThemeTokens) -> str:
 
 
 def build_color_swatch_style(tokens: UIThemeTokens | None, value: str) -> str:
-    """Build and return the value produced by `build_color_swatch_style`."""
+    """Build a stylesheet for showing a single color swatch."""
     val = str(value or "").strip()
     if not val:
         return ""
@@ -319,7 +444,8 @@ def build_color_swatch_style(tokens: UIThemeTokens | None, value: str) -> str:
 
 
 def build_dialog_theme_qss_from_tokens(tokens: UIThemeTokens) -> str:
-    """Build and return the value produced by `build_dialog_theme_qss_from_tokens`."""
+    """Build dialog QSS from resolved theme tokens."""
+    focus_ring = _mix(tokens.accent, "#ffffff", 0.18 if tokens.dark_mode else 0.08)
     return f"""
         QDialog {{
             background: {tokens.panel_bg};
@@ -395,6 +521,12 @@ def build_dialog_theme_qss_from_tokens(tokens: UIThemeTokens) -> str:
             color: {tokens.text_on_accent};
             border: 1px solid {tokens.accent};
         }}
+        QPushButton:focus, QToolButton:focus, QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus,
+        QListWidget:focus, QListView:focus, QTreeView:focus, QTreeWidget:focus, QTableView:focus,
+        QTableWidget:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus, QAbstractSpinBox:focus {{
+            border: 2px solid {focus_ring};
+            outline: none;
+        }}
         QPushButton:disabled {{
             color: {tokens.text_muted};
         }}
@@ -408,7 +540,7 @@ def build_dialog_theme_qss_from_tokens(tokens: UIThemeTokens) -> str:
 
 
 def build_tool_dialog_qss(tokens: UIThemeTokens) -> str:
-    """Build and return the value produced by `build_tool_dialog_qss`."""
+    """Build QSS for the tool dialog surfaces."""
     return f"""
         QGroupBox {{
             padding-top: {tokens.space_sm}px;
@@ -428,7 +560,7 @@ def build_tool_dialog_qss(tokens: UIThemeTokens) -> str:
 
 
 def build_quick_open_qss(tokens: UIThemeTokens) -> str:
-    """Build and return the value produced by `build_quick_open_qss`."""
+    """Build QSS for the quick open dialog."""
     return f"""
         #quickOpenDialog {{ background: {tokens.panel_bg}; }}
         #quickOpenHeader {{ color: {tokens.text}; font-size: 13px; font-weight: 600; }}
@@ -473,7 +605,7 @@ def build_quick_open_qss(tokens: UIThemeTokens) -> str:
 
 
 def build_ai_chat_qss(tokens: UIThemeTokens) -> tuple[str, str]:
-    """Build and return the value produced by `build_ai_chat_qss`."""
+    """Build QSS for the AI chat dock."""
     surface_bg = _mix(tokens.surface_bg, "#000000" if tokens.dark_mode else "#ffffff", 0.03)
     user_bg = _mix(tokens.accent, tokens.surface_bg, 0.68 if tokens.dark_mode else 0.82)
     user_border = _mix(tokens.accent, tokens.border, 0.35)
@@ -623,7 +755,7 @@ def build_ai_chat_qss(tokens: UIThemeTokens) -> tuple[str, str]:
 
 
 def build_settings_dialog_qss(tokens: UIThemeTokens) -> str:
-    """Build and return the value produced by `build_settings_dialog_qss`."""
+    """Build QSS for the settings dialog."""
     nav_selected_bg = _mix(tokens.accent, tokens.surface_bg, 0.20 if tokens.dark_mode else 0.30)
     nav_hover_bg = _mix(tokens.tab_hover_bg, tokens.surface_bg, 0.35 if tokens.dark_mode else 0.45)
     scope_bg = _mix(tokens.button_bg, tokens.surface_bg, 0.22 if tokens.dark_mode else 0.35)
@@ -771,7 +903,7 @@ def build_settings_dialog_qss(tokens: UIThemeTokens) -> str:
 
 
 def build_tutorial_dialog_qss(tokens: UIThemeTokens) -> str:
-    """Build and return the value produced by `build_tutorial_dialog_qss`."""
+    """Build QSS for the tutorial dialog."""
     card_bg = _mix(tokens.surface_bg, tokens.chrome_bg, 0.16)
     return f"""
         QDialog {{
@@ -795,7 +927,7 @@ def build_tutorial_dialog_qss(tokens: UIThemeTokens) -> str:
 
 
 def build_autosave_dialog_qss(tokens: UIThemeTokens) -> str:
-    """Build and return the value produced by `build_autosave_dialog_qss`."""
+    """Build QSS for the autosave dialog."""
     return f"""
         QListWidget, QTextEdit {{
             background: {tokens.surface_bg};
@@ -821,7 +953,7 @@ def build_autosave_dialog_qss(tokens: UIThemeTokens) -> str:
 
 
 def build_workspace_dialog_qss(tokens: UIThemeTokens) -> str:
-    """Build and return the value produced by `build_workspace_dialog_qss`."""
+    """Build QSS for workspace dialogs."""
     return f"""
         QListWidget, QTextEdit {{
             background: {tokens.surface_bg};
@@ -847,7 +979,7 @@ def build_workspace_dialog_qss(tokens: UIThemeTokens) -> str:
 
 
 def build_ai_edit_preview_dialog_qss(tokens: UIThemeTokens) -> str:
-    """Build and return the value produced by `build_ai_edit_preview_dialog_qss`."""
+    """Build QSS for the AI edit preview dialog."""
     return f"""
         QListWidget, QTextEdit {{
             background: {tokens.surface_bg};
@@ -875,7 +1007,7 @@ def build_ai_edit_preview_dialog_qss(tokens: UIThemeTokens) -> str:
 
 
 def build_debug_logs_dialog_qss(tokens: UIThemeTokens) -> str:
-    """Build and return the value produced by `build_debug_logs_dialog_qss`."""
+    """Build QSS for the debug logs dialog."""
     return f"""
         QTextEdit {{
             background: {tokens.surface_bg};
@@ -894,7 +1026,7 @@ def build_debug_logs_dialog_qss(tokens: UIThemeTokens) -> str:
 
 
 def build_main_window_qss(*, tokens: UIThemeTokens, tab_close_icon_url: str, close_button_visibility_qss: str = "") -> str:
-    """Build and return the value produced by `build_main_window_qss`."""
+    """Build QSS for the main application window."""
     tool_padding = f"{tokens.toolbar_pad_v}px {tokens.toolbar_pad_h}px"
     tab_close_bg = _mix("#d13438", tokens.chrome_bg, 0.18 if tokens.dark_mode else 0.10)
     tab_close_hover_bg = _mix("#e74856", tokens.chrome_bg, 0.15 if tokens.dark_mode else 0.08)
@@ -902,6 +1034,7 @@ def build_main_window_qss(*, tokens: UIThemeTokens, tab_close_icon_url: str, clo
     tab_close_border = _mix(tab_close_bg, "#6f1014", 0.38)
     tab_close_hover_border = _mix(tab_close_hover_bg, "#7a1217", 0.34)
     tab_close_pressed_border = _mix(tab_close_pressed_bg, "#5f0b0f", 0.28)
+    focus_ring = _mix(tokens.accent, "#ffffff", 0.18 if tokens.dark_mode else 0.08)
     return f"""
         QMainWindow {{
             background-color: {tokens.window_bg};
@@ -1029,6 +1162,12 @@ def build_main_window_qss(*, tokens: UIThemeTokens, tab_close_icon_url: str, clo
             color: {tokens.text};
             border: 1px solid {tokens.accent};
         }}
+        QPushButton:focus, QToolButton:focus, QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus,
+        QListWidget:focus, QListView:focus, QTreeView:focus, QTreeWidget:focus, QTableView:focus,
+        QTableWidget:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus, QAbstractSpinBox:focus {{
+            border: 2px solid {focus_ring};
+            outline: none;
+        }}
         QToolBar QLabel, QToolBar QCheckBox {{
             color: {tokens.text};
             background: transparent;
@@ -1076,6 +1215,31 @@ def build_main_window_qss(*, tokens: UIThemeTokens, tab_close_icon_url: str, clo
             color: {tokens.text};
             selection-background-color: {tokens.accent};
             selection-color: {tokens.text_on_accent};
+        }}
+        QWidget#noteTrustBanner {{
+            background: {tokens.chrome_bg};
+            border-bottom: 1px solid {tokens.border_soft};
+        }}
+        QWidget#noteTrustBanner QLabel {{
+            color: {tokens.text};
+        }}
+        QWidget#noteTrustBanner QPushButton {{
+            background: {tokens.button_bg};
+            color: {tokens.text};
+            border: 1px solid {tokens.border};
+            border-radius: {tokens.radius_lg}px;
+            min-height: {tokens.input_height}px;
+            padding: 3px 12px;
+        }}
+        QWidget#noteTrustBanner QPushButton:hover {{
+            background: {tokens.accent};
+            color: {tokens.text_on_accent};
+            border: 1px solid {tokens.accent};
+        }}
+        QWidget#noteTrustBanner QPushButton:pressed {{
+            background: {tokens.toolbar_checked_bg};
+            color: {tokens.text};
+            border: 1px solid {tokens.accent};
         }}
         QTabWidget::pane {{
             border: 1px solid {tokens.border_soft};
@@ -1153,7 +1317,7 @@ def build_main_window_qss(*, tokens: UIThemeTokens, tab_close_icon_url: str, clo
 
 
 def build_gamification_widget_qss(tokens: UIThemeTokens) -> str:
-    """Build and return the value produced by `build_gamification_widget_qss`."""
+    """Build QSS for gamification widgets and dashboards."""
     card_bg = _mix(tokens.surface_bg, tokens.chrome_bg, 0.18 if tokens.dark_mode else 0.08)
     quest_bg = _mix(tokens.accent, tokens.surface_bg, 0.88 if tokens.dark_mode else 0.90)
     toast_border = _mix(tokens.accent, tokens.border, 0.45)
@@ -1318,3 +1482,4 @@ def build_gamification_widget_qss(tokens: UIThemeTokens) -> str:
             border: 1px solid {tokens.border_strong};
         }}
     """
+

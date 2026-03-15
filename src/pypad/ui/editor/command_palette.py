@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (
 
 @dataclass(frozen=True)
 class PaletteItem:
-    """Class that implements the `PaletteItem` runtime behavior."""
+    """palette item."""
     label: str
     section: str
     action: QAction
@@ -32,7 +32,7 @@ class PaletteItem:
 
 
 def _score(query: str, candidate: str) -> int:
-    """Internal helper for `_score`."""
+    """Handle score."""
     if not query:
         return 0
     q = query.lower().strip()
@@ -50,9 +50,9 @@ def _score(query: str, candidate: str) -> int:
 
 
 class CommandPaletteDialog(QDialog):
-    """Dialog class that implements the `CommandPaletteDialog` workflow."""
+    """command palette dialog."""
     def __init__(self, parent, items: list[PaletteItem], *, initial_query: str = "") -> None:
-        """Initialize the `command_palette` state for this instance."""
+        """Build the command palette dialog and initialize its search model."""
         super().__init__(parent)
         self.setWindowTitle("Command Palette")
         self.resize(560, 440)
@@ -90,7 +90,7 @@ class CommandPaletteDialog(QDialog):
         self.search_edit.setFocus()
 
     def _refresh_list(self) -> None:
-        """Internal helper for `_refresh_list`."""
+        """Refresh list."""
         query = self.search_edit.text().strip()
         self.list_widget.clear()
         scored: list[tuple[int, PaletteItem]] = []
@@ -110,7 +110,7 @@ class CommandPaletteDialog(QDialog):
             self.list_widget.setCurrentRow(0)
 
     def _accept_selected(self) -> None:
-        """Internal helper for `_accept_selected`."""
+        """Handle accept selected."""
         item = self.list_widget.currentItem()
         if item is None:
             self.reject()

@@ -23,14 +23,14 @@ class MiscTabMetadataMixin:
 
     @staticmethod
     def _is_path_read_only(path: str) -> bool:
-        """Internal helper for `_is_path_read_only`."""
+        """Return whether path read only."""
         try:
             return not os.access(path, os.W_OK)
         except OSError:
             return False
 
     def _apply_tab_color(self, tab: EditorTab) -> None:
-        """Internal helper for `_apply_tab_color`."""
+        """Apply tab color."""
         index = self.tab_widget.indexOf(tab)
         if index < 0:
             return
@@ -45,7 +45,7 @@ class MiscTabMetadataMixin:
         bar.setTabTextColor(index, self.palette().color(QPalette.Text))
 
     def _color_swatch_icon(self, color_hex: str, size: int = 12) -> QIcon:
-        """Internal helper for `_color_swatch_icon`."""
+        """Handle color swatch icon."""
         color = QColor(color_hex)
         if not color.isValid():
             return QIcon()
@@ -60,13 +60,16 @@ class MiscTabMetadataMixin:
         return QIcon(pixmap)
 
     def _apply_file_metadata_to_tab(self, tab: EditorTab) -> None:
-        """Internal helper for `_apply_file_metadata_to_tab`."""
+        """Apply file metadata to tab."""
         if not tab.current_file:
             tab.favorite = False
             tab.tags = []
             tab.tab_color = None
-            tab.read_only = False
-            tab.text_edit.set_read_only(False)
+            if hasattr(self, "_apply_trust_state_to_tab"):
+                self._apply_trust_state_to_tab(tab)
+            else:
+                tab.read_only = False
+                tab.text_edit.set_read_only(False)
             return
         favorites = set(self.settings.get("favorite_files", []))
         tags_map = self.settings.get("file_tags", {})
@@ -85,13 +88,16 @@ class MiscTabMetadataMixin:
                 tab.tab_color = tab.tab_color or None
         else:
             tab.tab_color = tab.tab_color or None
-        tab.read_only = self._is_path_read_only(tab.current_file)
-        tab.text_edit.set_read_only(tab.read_only)
+        if hasattr(self, "_apply_trust_state_to_tab"):
+            self._apply_trust_state_to_tab(tab)
+        else:
+            tab.read_only = self._is_path_read_only(tab.current_file)
+            tab.text_edit.set_read_only(tab.read_only)
         self._apply_tab_color(tab)
         self._refresh_tab_title(tab)
 
     def _persist_file_metadata_for_tab(self, tab: EditorTab) -> None:
-        """Internal helper for `_persist_file_metadata_for_tab`."""
+        """Persist file metadata for tab."""
         if not tab.current_file:
             return
         favorites = [p for p in self.settings.get("favorite_files", []) if isinstance(p, str)]

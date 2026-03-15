@@ -101,23 +101,23 @@ class EditOpsMixin:
             self.hide_search_panel()
 
     def edit_undo(self) -> None:
-        """Execute the `edit_undo` workflow."""
+        """Handle edit undo."""
         self.text_edit.undo()
 
     def edit_redo(self) -> None:
-        """Execute the `edit_redo` workflow."""
+        """Handle edit redo."""
         self.text_edit.redo()
 
     def edit_cut(self) -> None:
-        """Execute the `edit_cut` workflow."""
+        """Handle edit cut."""
         self.text_edit.cut()
 
     def edit_copy(self) -> None:
-        """Execute the `edit_copy` workflow."""
+        """Handle edit copy."""
         self.text_edit.copy()
 
     def edit_paste(self) -> None:
-        """Execute the `edit_paste` workflow."""
+        """Handle edit paste."""
         self.text_edit.paste()
 
     def edit_paste_special(self) -> None:
@@ -143,11 +143,11 @@ class EditOpsMixin:
             self.text_edit.insert_text(converted)
 
     def edit_select_all(self) -> None:
-        """Execute the `edit_select_all` workflow."""
+        """Handle edit select all."""
         self.text_edit.select_all()
 
     def edit_delete(self) -> None:
-        """Execute the `edit_delete` workflow."""
+        """Handle edit delete."""
         if self.text_edit.has_selection():
             self.text_edit.replace_selection("")
             return
@@ -159,7 +159,7 @@ class EditOpsMixin:
             self.text_edit.set_selection_by_index(idx, idx)
 
     def edit_time_date(self) -> None:
-        """Execute the `edit_time_date` workflow."""
+        """Handle edit time date."""
         self.text_edit.insert_text(datetime.now().strftime("%H:%M %d/%m/%Y"))
 
     def _do_find(self, text: str, backward: bool = False) -> bool:
@@ -187,7 +187,7 @@ class EditOpsMixin:
         return True
 
     def edit_find(self) -> None:
-        """Execute the `edit_find` workflow."""
+        """Handle edit find."""
         self.show_search_panel()
 
     def edit_find_next(self) -> None:
@@ -219,9 +219,9 @@ class EditOpsMixin:
         from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QLineEdit, QGridLayout
 
         class ReplaceDialog(QDialog):
-            """Dialog class that implements the `ReplaceDialog` workflow."""
+            """Dialog for collecting workspace replace options."""
             def __init__(self, parent=None, last_search: str | None = None) -> None:
-                """Initialize the `edit_ops` state for this instance."""
+                """Build the replace dialog and initialize its search and replacement inputs."""
                 super().__init__(parent)
                 self.setWindowTitle("Replace")
                 self.find_edit = QLineEdit(self)
@@ -246,7 +246,7 @@ class EditOpsMixin:
                 layout.addWidget(buttons, 2, 0, 1, 2)
 
             def get_values(self) -> tuple[str, str]:
-                """Return the value produced by `get_values`."""
+                """Return values."""
                 return self.find_edit.text(), self.replace_edit.text()
 
         dlg = ReplaceDialog(self, self.last_search_text)
@@ -277,9 +277,9 @@ class EditOpsMixin:
         from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QLineEdit, QGridLayout
 
         class RegexReplaceDialog(QDialog):
-            """Dialog class that implements the `RegexReplaceDialog` workflow."""
+            """regex replace dialog."""
             def __init__(self, parent=None, seed: str | None = None, has_selection: bool = False) -> None:
-                """Initialize the `edit_ops` state for this instance."""
+                """Build the regex replace preview dialog and initialize its filters and preview state."""
                 super().__init__(parent)
                 self.setWindowTitle("Regex Replace Preview")
                 self.resize(780, 520)
@@ -320,14 +320,14 @@ class EditOpsMixin:
                 self._last_regex: re.Pattern[str] | None = None
 
             def _build_flags(self) -> int:
-                """Internal helper for `_build_flags`."""
+                """Build flags."""
                 flags = 0 if self.case_checkbox.isChecked() else re.IGNORECASE
                 if self.multiline_checkbox.isChecked():
                     flags |= re.MULTILINE
                 return flags
 
             def preview_requested(self) -> None:
-                """Execute the `preview_requested` workflow."""
+                """Handle preview requested."""
                 pattern = self.find_edit.text()
                 repl = self.replace_edit.text()
                 source = self._source_text_for_preview()
@@ -371,7 +371,7 @@ class EditOpsMixin:
                 self._last_regex = rx
 
             def _source_text_for_preview(self) -> str:
-                """Internal helper for `_source_text_for_preview`."""
+                """Handle source text for preview."""
                 if self.selection_only_checkbox.isChecked():
                     return self.parent().text_edit.selected_text()  # type: ignore[union-attr]
                 return self.parent().text_edit.get_text()  # type: ignore[union-attr]
@@ -416,9 +416,9 @@ class EditOpsMixin:
         from PySide6.QtWidgets import QDialog, QDialogButtonBox, QLabel, QLineEdit, QGridLayout
 
         class RegexFilterDialog(QDialog):
-            """Dialog class that implements the `RegexFilterDialog` workflow."""
+            """regex filter dialog."""
             def __init__(self, parent=None, seed: str | None = None, has_selection: bool = False) -> None:
-                """Initialize the `edit_ops` state for this instance."""
+                """Build the regex include or exclude preview dialog and initialize its controls."""
                 super().__init__(parent)
                 self.setWindowTitle("Regex Include/Exclude Preview")
                 self.resize(820, 560)
@@ -465,20 +465,20 @@ class EditOpsMixin:
                 buttons.rejected.connect(self.reject)
 
             def _flags(self) -> int:
-                """Internal helper for `_flags`."""
+                """Handle flags."""
                 flags = 0 if self.case_checkbox.isChecked() else re.IGNORECASE
                 if self.multiline_checkbox.isChecked():
                     flags |= re.MULTILINE
                 return flags
 
             def _source_text(self) -> str:
-                """Internal helper for `_source_text`."""
+                """Handle source text."""
                 if self.selection_only_checkbox.isChecked():
                     return self.parent().text_edit.selected_text()  # type: ignore[union-attr]
                 return self.parent().text_edit.get_text()  # type: ignore[union-attr]
 
             def preview_requested(self) -> None:
-                """Execute the `preview_requested` workflow."""
+                """Handle preview requested."""
                 pattern = self.find_edit.text()
                 source = self._source_text()
                 if not pattern:

@@ -19,12 +19,14 @@ from pypad.ui.theme.theme_tokens import build_dialog_theme_qss_from_tokens, buil
 
 
 class InteractiveTutorialDialog(QDialog):
-    """Dialog class that implements the `InteractiveTutorialDialog` workflow."""
+    """interactive tutorial dialog."""
     def __init__(self, parent: QWidget | None = None) -> None:
-        """Initialize the `tutorial_dialog` state for this instance."""
+        """Build the interactive tutorial dialog and prepare its step state."""
         super().__init__(parent)
         self.setWindowTitle("Welcome Tutorial")
         self.resize(700, 420)
+        self.setAccessibleName("Interactive tutorial dialog")
+        self.setAccessibleDescription("Step-by-step introduction to core PyPad features.")
         self._steps = [
             ("Welcome", "Welcome to Pypad!\n\nThis quick walkthrough highlights the key features."),
             ("Tabs", "Use tabs for multiple notes.\nPin or favorite important files.\nRight-click a tab for advanced actions."),
@@ -39,6 +41,7 @@ class InteractiveTutorialDialog(QDialog):
         layout = QVBoxLayout(self)
         self.title_label = QLabel("", self)
         self.title_label.setStyleSheet("font-size: 22px; font-weight: 600;")
+        self.title_label.setAccessibleName("Tutorial step title")
         layout.addWidget(self.title_label)
 
         self.body_label = QLabel("", self)
@@ -46,6 +49,7 @@ class InteractiveTutorialDialog(QDialog):
         self.body_label.setWordWrap(True)
         self.body_label.setContentsMargins(12, 10, 12, 10)
         self.body_label.setStyleSheet("font-size: 14px;")
+        self.body_label.setAccessibleName("Tutorial step content")
         layout.addWidget(self.body_label, 1)
 
         self.opacity = QGraphicsOpacityEffect(self)
@@ -58,10 +62,15 @@ class InteractiveTutorialDialog(QDialog):
         self.prev_btn = QPushButton("Previous", self)
         self.next_btn = QPushButton("Next", self)
         self.close_btn = QPushButton("Finish", self)
+        self.prev_btn.setAccessibleName("Previous tutorial step")
+        self.next_btn.setAccessibleName("Next tutorial step")
+        self.close_btn.setAccessibleName("Finish tutorial")
         nav.addButton(self.prev_btn, QDialogButtonBox.ButtonRole.ActionRole)
         nav.addButton(self.next_btn, QDialogButtonBox.ButtonRole.ActionRole)
         nav.addButton(self.close_btn, QDialogButtonBox.ButtonRole.AcceptRole)
         layout.addWidget(nav)
+        self.setTabOrder(self.prev_btn, self.next_btn)
+        self.setTabOrder(self.next_btn, self.close_btn)
 
         self.prev_btn.clicked.connect(self._prev_step)
         self.next_btn.clicked.connect(self._next_step)
@@ -72,7 +81,7 @@ class InteractiveTutorialDialog(QDialog):
 
     @staticmethod
     def _normalize_hex(value: str, fallback: str) -> str:
-        """Internal helper for `_normalize_hex`."""
+        """Normalize a hex color string and fall back when the value is invalid."""
         text = (value or "").strip()
         if not text:
             return fallback
@@ -85,20 +94,24 @@ class InteractiveTutorialDialog(QDialog):
         return text
 
     def _apply_theme_from_parent(self) -> None:
-        """Internal helper for `_apply_theme_from_parent`."""
+        """Apply theme from parent."""
         parent = self.parent()
         settings = getattr(parent, "settings", {}) if parent is not None else {}
         tokens = build_tokens_from_settings(settings if isinstance(settings, dict) else {})
         self.setStyleSheet(build_dialog_theme_qss_from_tokens(tokens) + "\n" + build_tutorial_dialog_qss(tokens))
 
     def _animate_swap(self, callback) -> None:
-        """Internal helper for `_animate_swap`."""
+        """Handle animate swap."""
+        if self._reduce_motion_enabled():
+            callback()
+            self.opacity.setOpacity(1.0)
+            return
         self.anim.stop()
         self.anim.setStartValue(1.0)
         self.anim.setEndValue(0.0)
 
         def after_fade_out() -> None:
-            """Execute the `after_fade_out` workflow."""
+            """Handle after fade out."""
             callback()
             self.anim.finished.disconnect(after_fade_out)
             self.anim.setStartValue(0.0)
@@ -109,30 +122,36 @@ class InteractiveTutorialDialog(QDialog):
         self.anim.start()
 
     def _render(self, *, animate: bool = True) -> None:
-        """Internal helper for `_render`."""
+        """Handle render."""
         def apply() -> None:
-            """Execute the `apply` workflow."""
+            """Handle apply."""
             title, body = self._steps[self._index]
             self.title_label.setText(title)
             self.body_label.setText(body)
             self.prev_btn.setEnabled(self._index > 0)
             self.next_btn.setEnabled(self._index < len(self._steps) - 1)
 
-        if animate:
+        if animate and not self._reduce_motion_enabled():
             self._animate_swap(apply)
         else:
             apply()
             self.opacity.setOpacity(1.0)
 
+    def _reduce_motion_enabled(self) -> bool:
+        """Return whether the parent window requests reduced motion."""
+        parent = self.parent()
+        settings = getattr(parent, "settings", {}) if parent is not None else {}
+        return bool(settings.get("accessibility_reduce_motion", False)) if isinstance(settings, dict) else False
+
     def _next_step(self) -> None:
-        """Internal helper for `_next_step`."""
+        """Handle next step."""
         if self._index >= len(self._steps) - 1:
             return
         self._index += 1
         self._render(animate=True)
 
     def _prev_step(self) -> None:
-        """Internal helper for `_prev_step`."""
+        """Handle prev step."""
         if self._index <= 0:
             return
         self._index -= 1

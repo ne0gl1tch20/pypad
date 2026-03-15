@@ -34,12 +34,12 @@ class MiscWindowTabsMixin:
             ...
 
     def _tab_at_index(self, index: int) -> EditorTab | None:
-        """Internal helper for `_tab_at_index`."""
+        """Handle tab at index."""
         widget = self.tab_widget.widget(index)
         return widget if isinstance(widget, EditorTab) else None
 
     def _close_tabs_by_indices(self, indices: list[int]) -> None:
-        """Internal helper for `_close_tabs_by_indices`."""
+        """Handle close tabs by indices."""
         for index in sorted(indices, reverse=True):
             if 0 <= index < self.tab_widget.count():
                 tab = self._tab_at_index(index)
@@ -48,15 +48,15 @@ class MiscWindowTabsMixin:
                 self.close_tab(index)
 
     def close_all_tabs(self) -> None:
-        """Execute the `close_all_tabs` workflow."""
+        """Handle close all tabs."""
         self._close_tabs_by_indices(list(range(self.tab_widget.count())))
 
     def close_all_but(self, index: int) -> None:
-        """Execute the `close_all_but` workflow."""
+        """Handle close all but."""
         self._close_tabs_by_indices([i for i in range(self.tab_widget.count()) if i != index])
 
     def close_all_but_pinned(self) -> None:
-        """Execute the `close_all_but_pinned` workflow."""
+        """Handle close all but pinned."""
         indices = []
         for i in range(self.tab_widget.count()):
             tab = self._tab_at_index(i)
@@ -65,15 +65,15 @@ class MiscWindowTabsMixin:
         self._close_tabs_by_indices(indices)
 
     def close_all_left_of(self, index: int) -> None:
-        """Execute the `close_all_left_of` workflow."""
+        """Handle close all left of."""
         self._close_tabs_by_indices(list(range(0, index)))
 
     def close_all_right_of(self, index: int) -> None:
-        """Execute the `close_all_right_of` workflow."""
+        """Handle close all right of."""
         self._close_tabs_by_indices(list(range(index + 1, self.tab_widget.count())))
 
     def close_all_unchanged(self) -> None:
-        """Execute the `close_all_unchanged` workflow."""
+        """Handle close all unchanged."""
         indices = []
         for i in range(self.tab_widget.count()):
             tab = self._tab_at_index(i)
@@ -82,7 +82,7 @@ class MiscWindowTabsMixin:
         self._close_tabs_by_indices(indices)
 
     def save_all_tabs(self) -> None:
-        """Save data handled by `save_all_tabs`."""
+        """Save all open tabs that currently have writable backing files."""
         for i in range(self.tab_widget.count()):
             tab = self._tab_at_index(i)
             if tab is None:
@@ -93,7 +93,7 @@ class MiscWindowTabsMixin:
                 self.file_save_tab(tab)
 
     def _window_tab_type(self, tab: EditorTab) -> str:
-        """Internal helper for `_window_tab_type`."""
+        """Handle window tab type."""
         if tab.text_edit.is_read_only():
             return "read-only"
         if tab.text_edit.is_modified():
@@ -101,7 +101,7 @@ class MiscWindowTabsMixin:
         return "normal"
 
     def _window_tab_rows(self) -> list[dict[str, object]]:
-        """Internal helper for `_window_tab_rows`."""
+        """Handle window tab rows."""
         rows: list[dict[str, object]] = []
         for index in range(self.tab_widget.count()):
             tab = self._tab_at_index(index)
@@ -139,7 +139,7 @@ class MiscWindowTabsMixin:
         return rows
 
     def window_sort_tabs(self, mode: str) -> None:
-        """Execute the `window_sort_tabs` workflow."""
+        """Handle window sort tabs."""
         tabs: list[EditorTab] = []
         for i in range(self.tab_widget.count()):
             tab = self._tab_at_index(i)
@@ -151,7 +151,7 @@ class MiscWindowTabsMixin:
         current = self.active_tab()
 
         def key_for(tab: EditorTab) -> tuple:
-            """Execute the `key_for` workflow."""
+            """Handle key for."""
             name = self._tab_display_name(tab).lower()
             path = (tab.current_file or "").lower()
             tab_type = self._window_tab_type(tab).lower()
@@ -193,7 +193,7 @@ class MiscWindowTabsMixin:
         self.show_status_message("Window tabs sorted.", 2000)
 
     def _refresh_window_menu_entries(self) -> None:
-        """Internal helper for `_refresh_window_menu_entries`."""
+        """Refresh window menu entries."""
         menu = getattr(self, "window_menu", None)
         tabs_separator = getattr(self, "window_tabs_separator", None)
         if menu is None or tabs_separator is None:
@@ -282,7 +282,7 @@ class MiscWindowTabsMixin:
                 return
 
     def show_windows_manager(self) -> None:
-        """Execute the `show_windows_manager` workflow."""
+        """Show windows manager."""
         dialog = QDialog(self)
         dialog.setWindowTitle(f"Windows - Total documents: {self.tab_widget.count()}")
         dialog.resize(760, 520)
@@ -326,7 +326,7 @@ class MiscWindowTabsMixin:
         sort_map = {label: mode for label, mode in sort_modes}
 
         def populate() -> None:
-            """Execute the `populate` workflow."""
+            """Handle populate."""
             rows = self._window_tab_rows()
             dialog.setWindowTitle(f"Windows - Total documents: {len(rows)}")
             table.setRowCount(len(rows))
@@ -340,7 +340,7 @@ class MiscWindowTabsMixin:
                 table.setItem(row_idx, 4, QTableWidgetItem(str(row["modified_text"])))
 
         def selected_indices() -> list[int]:
-            """Execute the `selected_indices` workflow."""
+            """Handle selected indices."""
             rows = sorted({item.row() for item in table.selectedItems()})
             indices: list[int] = []
             for row in rows:
@@ -353,7 +353,7 @@ class MiscWindowTabsMixin:
             return sorted(indices)
 
         def activate_selected() -> None:
-            """Execute the `activate_selected` workflow."""
+            """Handle activate selected."""
             idxs = selected_indices()
             if not idxs:
                 return
@@ -362,7 +362,7 @@ class MiscWindowTabsMixin:
             populate()
 
         def save_selected() -> None:
-            """Save data handled by `save_selected`."""
+            """Save the tabs selected in the windows manager dialog."""
             for idx in selected_indices():
                 tab = self._tab_at_index(idx)
                 if tab is not None:
@@ -370,7 +370,7 @@ class MiscWindowTabsMixin:
             populate()
 
         def close_selected() -> None:
-            """Execute the `close_selected` workflow."""
+            """Handle close selected."""
             idxs = selected_indices()
             if not idxs:
                 return
@@ -379,7 +379,7 @@ class MiscWindowTabsMixin:
             populate()
 
         def sort_selected_mode() -> None:
-            """Execute the `sort_selected_mode` workflow."""
+            """Handle sort selected mode."""
             labels = [label for label, _mode in sort_modes]
             choice, ok = QInputDialog.getItem(dialog, "Sort tabs", "Sort mode:", labels, 0, False)
             if not ok or not choice:

@@ -19,7 +19,7 @@ WORD_RE = re.compile(r"\b[A-Za-z][A-Za-z'_-]{1,}\b")
 
 
 def iter_words(text: str) -> list[tuple[str, int, int]]:
-    """Execute the `iter_words` workflow."""
+    """Handle iter words."""
     rows: list[tuple[str, int, int]] = []
     for match in WORD_RE.finditer(str(text or "")):
         rows.append((match.group(0), match.start(), match.end()))
@@ -27,7 +27,7 @@ def iter_words(text: str) -> list[tuple[str, int, int]]:
 
 
 def word_span_at(text: str, index: int) -> tuple[str, int, int] | None:
-    """Execute the `word_span_at` workflow."""
+    """Handle word span at."""
     probe = str(text or "")
     cursor = max(0, min(len(probe), int(index)))
     for word, start, end in iter_words(probe):
@@ -38,7 +38,7 @@ def word_span_at(text: str, index: int) -> tuple[str, int, int] | None:
 
 @lru_cache(maxsize=8)
 def _spellchecker_for_language(language: str):
-    """Internal helper for `_spellchecker_for_language`."""
+    """Handle spellchecker for language."""
     if SpellChecker is None:
         return None
     normalized = str(language or "en").strip().lower() or "en"
@@ -52,12 +52,12 @@ def _spellchecker_for_language(language: str):
 
 
 def spellcheck_available() -> bool:
-    """Execute the `spellcheck_available` workflow."""
+    """Handle spellcheck available."""
     return SpellChecker is not None
 
 
 def _dictionary_words(engine) -> list[str]:
-    """Internal helper for `_dictionary_words`."""
+    """Handle dictionary words."""
     word_frequency = getattr(engine, "word_frequency", None)
     if word_frequency is None:
         return []
@@ -79,7 +79,7 @@ def _dictionary_words(engine) -> list[str]:
 
 
 def _safe_candidates(engine, word: str) -> list[str]:
-    """Internal helper for `_safe_candidates`."""
+    """Handle safe candidates."""
     try:
         raw = engine.candidates(word)
     except Exception:
@@ -131,7 +131,7 @@ def unknown_words(
     language: str = "en",
     custom_words: list[str] | set[str] | tuple[str, ...] | None = None,
 ) -> list[dict[str, object]]:
-    """Execute the `unknown_words` workflow."""
+    """Return misspelled words and their positions for the requested language."""
     engine = _spellchecker_for_language(language)
     if engine is None:
         return []
@@ -161,7 +161,7 @@ def suggestions_for_word(
     language: str = "en",
     custom_words: list[str] | set[str] | tuple[str, ...] | None = None,
 ) -> list[str]:
-    """Execute the `suggestions_for_word` workflow."""
+    """Return spelling suggestions for a single word in the requested language."""
     engine = _spellchecker_for_language(language)
     probe = str(word or "").strip()
     if engine is None or not probe:

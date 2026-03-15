@@ -157,7 +157,7 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
         startup_stages: list[tuple[str, int]] = []
 
         def _mark_startup_stage(name: str) -> None:
-            """Internal helper for `_mark_startup_stage`."""
+            """Mark startup stage."""
             elapsed_ms = int((time.perf_counter() - startup_t0) * 1000)
             startup_stages.append((name, elapsed_ms))
             try:
@@ -223,6 +223,45 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
         self.central_stack = QStackedWidget(self)
         self.central_stack.addWidget(self.tab_widget)
         self.central_stack.addWidget(self.empty_tabs_widget)
+        self.editor_host = QWidget(self)
+        self.editor_host_layout = QVBoxLayout(self.editor_host)
+        self.editor_host_layout.setContentsMargins(0, 0, 0, 0)
+        self.editor_host_layout.setSpacing(0)
+        self.note_trust_banner = QWidget(self.editor_host)
+        self.note_trust_banner.setObjectName("noteTrustBanner")
+        self.note_trust_banner.setAccessibleName("Untrusted note banner")
+        self.note_trust_banner.setAccessibleDescription(
+            "Security banner shown when the active note is read-only until you explicitly trust it."
+        )
+        self.note_trust_banner_layout = QHBoxLayout(self.note_trust_banner)
+        self.note_trust_banner_layout.setContentsMargins(12, 8, 12, 8)
+        self.note_trust_banner_layout.setSpacing(8)
+        self.note_trust_banner_label = QLabel("This note is untrusted and read-only.", self.note_trust_banner)
+        self.note_trust_banner_label.setWordWrap(True)
+        self.note_trust_banner_label.setAccessibleName("Untrusted note explanation")
+        self.note_trust_banner_label.setAccessibleDescription(
+            "Explains why the active note is read-only and what trust actions are available."
+        )
+        self.note_trust_banner_layout.addWidget(self.note_trust_banner_label, 1)
+        self.note_trust_banner_trust_btn = QPushButton("Trust and Edit", self.note_trust_banner)
+        self.note_trust_banner_session_btn = QPushButton("Trust for This Session", self.note_trust_banner)
+        self.note_trust_banner_keep_btn = QPushButton("Keep Read-Only", self.note_trust_banner)
+        self.note_trust_banner_trust_btn.setAccessibleName("Trust note and edit")
+        self.note_trust_banner_trust_btn.setAccessibleDescription("Marks the active note as trusted and enables editing.")
+        self.note_trust_banner_session_btn.setAccessibleName("Trust note for this session")
+        self.note_trust_banner_session_btn.setAccessibleDescription(
+            "Temporarily trusts the active note until PyPad closes."
+        )
+        self.note_trust_banner_keep_btn.setAccessibleName("Keep note read only")
+        self.note_trust_banner_keep_btn.setAccessibleDescription("Keeps the active note untrusted and read-only.")
+        self.note_trust_banner_layout.addWidget(self.note_trust_banner_trust_btn)
+        self.note_trust_banner_layout.addWidget(self.note_trust_banner_session_btn)
+        self.note_trust_banner_layout.addWidget(self.note_trust_banner_keep_btn)
+        self.setTabOrder(self.note_trust_banner_trust_btn, self.note_trust_banner_session_btn)
+        self.setTabOrder(self.note_trust_banner_session_btn, self.note_trust_banner_keep_btn)
+        self.note_trust_banner.hide()
+        self.editor_host_layout.addWidget(self.note_trust_banner)
+        self.editor_host_layout.addWidget(self.central_stack, 1)
         placeholder = QWidget(self)
         placeholder.setFixedSize(0, 0)
         placeholder.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
@@ -235,10 +274,17 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
         )
         if hasattr(self, "_install_custom_dock_title_bar"):
             self._install_custom_dock_title_bar(self.editor_dock, "Editor", "editor_dock_title_bar")
-        self.editor_dock.setWidget(self.central_stack)
+        self.editor_dock.setWidget(self.editor_host)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.editor_dock)
         if hasattr(self, "_sync_layout_panel_actions"):
             self.editor_dock.visibilityChanged.connect(lambda _v: self._sync_layout_panel_actions())
+        self.note_trust_banner_trust_btn.clicked.connect(lambda: self.active_tab() and self.trust_tab_persistently(self.active_tab()))
+        self.note_trust_banner_session_btn.clicked.connect(
+            lambda: self.active_tab() and self.trust_tab_for_session(self.active_tab())
+        )
+        self.note_trust_banner_keep_btn.clicked.connect(
+            lambda: self.active_tab() and self.show_status_message("Note remains read-only.", 2000)
+        )
         self.markdown_preview_dock = QDockWidget("Markdown Preview", self)
         self.markdown_preview_dock.setObjectName("markdownPreviewDock")
         self.markdown_preview_dock.setAllowedAreas(Qt.AllDockWidgetAreas)
@@ -436,12 +482,12 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
 
         # Finish startup on the next event-loop tick so the main window can appear sooner.
         def _finish_startup_sequence() -> None:
-            """Internal helper for `_finish_startup_sequence`."""
+            """Handle finish startup sequence."""
             deferred_start = time.perf_counter()
             deferred_marks: list[tuple[str, int]] = []
 
             def _mark_deferred(name: str) -> None:
-                """Internal helper for `_mark_deferred`."""
+                """Mark deferred."""
                 deferred_marks.append((name, int((time.perf_counter() - deferred_start) * 1000)))
 
             if not self._startup_first_paint_ready:
@@ -609,7 +655,7 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
         opened: list[str] = []
         first_opened: str | None = None
         for path in files:
-            if self._open_file_path(path):
+            if self._open_file_path(path, open_origin="startup_arg"):
                 opened.append(path)
                 if first_opened is None:
                     first_opened = path

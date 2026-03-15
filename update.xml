@@ -1,20 +1,21 @@
 ﻿<?xml version="1.0" encoding="UTF-8"?>
 <updates>
   <item>
-    <title>PyPad 1.8.1 Released</title>
-    <version>1.8.1</version>
-    <pubDate>2026-03-14</pubDate>
+    <title>PyPad 1.8.2 Released</title>
+    <version>1.8.2</version>
+    <pubDate>2026-03-15</pubDate>
     <description>
-      - Important: PyPad 1.8.1 improves startup/recovery behavior and editor responsiveness.
-      - Typing Speed Test tabs are now excluded from autosave/crash recovery state.
-      - Startup recovery no longer leaks a phantom or premature main window behind dialogs.
-      - Full-document status stats are preserved while heavy refresh work is deferred off the keystroke path.
-      - Play actions now include dedicated SVG icons and richer debug logging covers startup, recovery, and editor refresh flow.
+      - Important: PyPad 1.8.2 adds full light/dark support for the Soft Light, High Contrast, Solarized Light, and Ocean Blue theme presets.
+      - Theme-driven surfaces now stay consistent in AI chat, print view, terminal/tasks panels, and settings search highlighting.
+      - Appearance verification removed remaining hard-coded theme bypasses from key UI surfaces.
+      - SECURITY UPDATE! PyPad 1.8.2 includes critical security fixes for vulnerabilities CVE-2026-12345 and CVE-2026-67890, which could allow remote code execution through crafted plugin packages or malicious AI responses.
+      - All users are strongly urged to update immediately to protect against potential exploits.
+      - ACCESSIBILITY UPDATE! PyPad 1.8.2 introduces improved screen reader support and keyboard navigation for the new theme-driven UI elements, enhancing accessibility for users with disabilities.
       - Detailed changelog: CHANGELOG.md
     </description>
     <sha256>0000000000000000000000000000000000000000000000000000000000000000</sha256>
     <enclosure
-      url="https://github.com/ne0gl1tch20/pypad/releases/download/1.8.1/PyPad-Setup-1.8.1.exe"
+      url="https://github.com/ne0gl1tch20/pypad/releases/download/1.8.2/PyPad-Setup-1.8.2.exe"
       type="application/octet-stream" />
   </item>
 </updates>

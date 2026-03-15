@@ -17,7 +17,7 @@ from pypad.app_settings.notepadpp_prefs import SEARCH_ENGINE_PRESETS
 
 
 def _shorten_middle(text: str, max_len: int) -> str:
-    """Internal helper for `_shorten_middle`."""
+    """Handle shorten middle."""
     if max_len <= 0 or len(text) <= max_len:
         return text
     if max_len <= 3:
@@ -30,7 +30,7 @@ def _shorten_middle(text: str, max_len: int) -> str:
 
 
 def recent_file_menu_label(settings: dict, path: str) -> str:
-    """Execute the `recent_file_menu_label` workflow."""
+    """Handle recent file menu label."""
     display_mode = str(settings.get("npp_recent_display_mode", "full_path") or "full_path")
     if display_mode == "only_file_name":
         label = Path(path).name or path
@@ -43,7 +43,7 @@ def recent_file_menu_label(settings: dict, path: str) -> str:
 
 
 def recent_file_max_entries(settings: dict) -> int:
-    """Execute the `recent_file_max_entries` workflow."""
+    """Handle recent file max entries."""
     try:
         value = int(settings.get("npp_recent_max_entries", 15))
     except Exception:
@@ -52,7 +52,7 @@ def recent_file_max_entries(settings: dict) -> int:
 
 
 def build_search_internet_url(settings: dict, query: str) -> str:
-    """Build and return the value produced by `build_search_internet_url`."""
+    """Build search internet url."""
     provider = str(settings.get("npp_search_engine_provider", "Bing") or "Bing")
     template = ""
     if provider == "Custom":
@@ -68,7 +68,7 @@ def build_search_internet_url(settings: dict, query: str) -> str:
 
 
 def search_engine_display_name(settings: dict) -> str:
-    """Execute the `search_engine_display_name` workflow."""
+    """Search engine display name."""
     provider = str(settings.get("npp_search_engine_provider", "Bing") or "Bing").strip()
     if not provider:
         return "Bing"
@@ -88,7 +88,7 @@ def search_engine_display_name(settings: dict) -> str:
 
 
 def allowed_clickable_schemes(settings: dict) -> set[str]:
-    """Execute the `allowed_clickable_schemes` workflow."""
+    """Handle allowed clickable schemes."""
     if not bool(settings.get("npp_clickable_links_enabled", True)):
         return set()
     raw = str(settings.get("npp_clickable_link_schemes", "") or "")
@@ -105,7 +105,7 @@ def allowed_clickable_schemes(settings: dict) -> set[str]:
 
 
 def is_clickable_scheme_allowed(settings: dict, url: str) -> bool:
-    """Execute the `is_clickable_scheme_allowed` workflow."""
+    """Return whether clickable scheme allowed."""
     text = str(url or "").strip()
     if not text:
         return False
@@ -118,7 +118,7 @@ def is_clickable_scheme_allowed(settings: dict, url: str) -> bool:
 
 
 def apply_notepadpp_runtime_settings(window) -> None:
-    """Apply the changes or settings handled by `apply_notepadpp_runtime_settings`."""
+    """Apply notepadpp runtime settings."""
     settings = getattr(window, "settings", {}) or {}
 
     toolbar_hidden = bool(settings.get("npp_toolbar_hidden", False))
@@ -176,7 +176,7 @@ def apply_notepadpp_runtime_settings(window) -> None:
 
 
 def _npp_encoding_to_app_encoding(value: str) -> str:
-    """Internal helper for `_npp_encoding_to_app_encoding`."""
+    """Handle npp encoding to app encoding."""
     text = str(value or "").strip().lower()
     mapping = {
         "ansi": "cp1252",
@@ -194,7 +194,7 @@ def _npp_encoding_to_app_encoding(value: str) -> str:
 
 
 def _npp_eol_to_app_eol(value: str) -> str:
-    """Internal helper for `_npp_eol_to_app_eol`."""
+    """Handle npp eol to app eol."""
     text = str(value or "").strip().lower()
     if text == "windows":
         return "CRLF"
@@ -204,7 +204,7 @@ def _npp_eol_to_app_eol(value: str) -> str:
 
 
 def new_document_defaults(settings: dict) -> dict[str, Any]:
-    """Execute the `new_document_defaults` workflow."""
+    """Handle new document defaults."""
     return {
         "encoding": _npp_encoding_to_app_encoding(str(settings.get("npp_new_doc_encoding", "UTF-8"))),
         "eol_mode": _npp_eol_to_app_eol(str(settings.get("npp_new_doc_eol", "windows"))),
@@ -213,7 +213,7 @@ def new_document_defaults(settings: dict) -> dict[str, Any]:
 
 
 def _indent_defaults_for_language(settings: dict, language_hint: str | None) -> tuple[int, bool, bool]:
-    """Internal helper for `_indent_defaults_for_language`."""
+    """Handle indent defaults for language."""
     lang = str(language_hint or "").strip().lower()
     width = int(settings.get("npp_indent_size", settings.get("tab_width", 4)) or 4)
     use_tabs = str(settings.get("npp_indent_using", "space")) == "tab"
@@ -247,7 +247,7 @@ def _indent_defaults_for_language(settings: dict, language_hint: str | None) -> 
 
 
 def apply_indentation_defaults_to_tab(window, tab, *, language_hint: str | None = None) -> None:
-    """Apply the changes or settings handled by `apply_indentation_defaults_to_tab`."""
+    """Apply indentation defaults to tab."""
     settings = getattr(window, "settings", {}) or {}
     hint = language_hint
     if not hint:
@@ -282,7 +282,7 @@ def apply_indentation_defaults_to_tab(window, tab, *, language_hint: str | None 
 
 
 def _render_print_template_part(part: str, tab) -> str:
-    """Internal helper for `_render_print_template_part`."""
+    """Handle render print template part."""
     text = str(part or "")
     if not text:
         return ""
@@ -300,7 +300,7 @@ def _render_print_template_part(part: str, tab) -> str:
 
 
 def apply_npp_print_preferences_to_page_layout(settings: dict, tab, page_cfg) -> None:
-    """Apply the changes or settings handled by `apply_npp_print_preferences_to_page_layout`."""
+    """Apply npp print preferences to page layout."""
     if bool(settings.get("npp_print_header_enabled", False)):
         header_parts = [
             _render_print_template_part(settings.get("npp_print_header_left", ""), tab),

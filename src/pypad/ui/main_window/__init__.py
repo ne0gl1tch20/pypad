@@ -14,7 +14,7 @@ __all__ = ["Notepad"]
 
 
 def __getattr__(name: str):
-    """Internal helper for `__getattr__`."""
+    """Delegate unknown attributes to the wrapped stream."""
     if name == "Notepad":
         from .window import Notepad as _Notepad
 

@@ -34,56 +34,56 @@ class MiscSettingsRecentMixin:
 
     @staticmethod
     def _get_settings_file_path() -> Path:
-        """Internal helper for `_get_settings_file_path`."""
+        """Return settings file path."""
         return get_settings_file_path()
 
     @staticmethod
     def _get_themes_file_path() -> Path:
-        """Internal helper for `_get_themes_file_path`."""
+        """Return themes file path."""
         return get_themes_file_path()
 
     @staticmethod
     def _get_legacy_settings_file_path() -> Path:
-        """Internal helper for `_get_legacy_settings_file_path`."""
+        """Return legacy settings file path."""
         return get_legacy_settings_file_path()
 
     @staticmethod
     def _get_password_file_path() -> Path:
-        """Internal helper for `_get_password_file_path`."""
+        """Return password file path."""
         return get_password_file_path()
 
     @staticmethod
     def _get_reminders_file_path() -> Path:
-        """Internal helper for `_get_reminders_file_path`."""
+        """Return reminders file path."""
         return get_reminders_file_path()
 
     @staticmethod
     def _get_autosave_dir_path() -> Path:
-        """Internal helper for `_get_autosave_dir_path`."""
+        """Return autosave dir path."""
         return get_autosave_dir_path()
 
     @staticmethod
     def _get_translation_cache_path() -> Path:
-        """Internal helper for `_get_translation_cache_path`."""
+        """Return translation cache path."""
         return get_translation_cache_path()
 
     @staticmethod
     def _get_ai_chats_dir_path() -> Path:
-        """Internal helper for `_get_ai_chats_dir_path`."""
+        """Return AI chats dir path."""
         return get_ai_chats_dir_path()
 
     @staticmethod
     def _get_debug_logs_file_path() -> Path:
-        """Internal helper for `_get_debug_logs_file_path`."""
+        """Return debug logs file path."""
         return get_debug_logs_file_path()
 
     @staticmethod
     def _get_crash_logs_file_path() -> Path:
-        """Internal helper for `_get_crash_logs_file_path`."""
+        """Return crash logs file path."""
         return get_crash_logs_file_path()
 
     def _add_recent_file(self, path: str | None) -> None:
-        """Internal helper for `_add_recent_file`."""
+        """Add recent file."""
         if not path:
             return
         recent = [p for p in self.settings.get("recent_files", []) if isinstance(p, str) and p]
@@ -94,7 +94,7 @@ class MiscSettingsRecentMixin:
         self._refresh_favorite_files_menu()
 
     def _refresh_recent_files_menu(self) -> None:
-        """Internal helper for `_refresh_recent_files_menu`."""
+        """Refresh recent files menu."""
         menu = getattr(self, "recent_files_menu", None)
         if menu is None:
             return
@@ -130,7 +130,7 @@ class MiscSettingsRecentMixin:
                 return
 
     def _refresh_favorite_files_menu(self) -> None:
-        """Internal helper for `_refresh_favorite_files_menu`."""
+        """Refresh favorite files menu."""
         menu = getattr(self, "favorite_files_menu", None)
         if menu is None:
             return

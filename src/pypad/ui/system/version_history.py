@@ -24,21 +24,21 @@ from PySide6.QtWidgets import (
 
 @dataclass
 class VersionEntry:
-    """Class that implements the `VersionEntry` runtime behavior."""
+    """Single saved version entry for version and local history views."""
     timestamp: str
     text: str
     label: str
 
 
 class VersionHistory:
-    """Class that implements the `VersionHistory` runtime behavior."""
+    """In-memory store of version history snapshots."""
     def __init__(self, max_entries: int = 50) -> None:
-        """Initialize the `version_history` state for this instance."""
+        """Create the version history store and initialize its snapshot list."""
         self.max_entries = max(1, int(max_entries))
         self.entries: list[VersionEntry] = []
 
     def add_snapshot(self, text: str, label: str = "Snapshot") -> None:
-        """Execute the `add_snapshot` workflow."""
+        """Add snapshot."""
         if self.entries and self.entries[-1].text == text:
             return
         stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -48,9 +48,9 @@ class VersionHistory:
 
 
 class VersionHistoryDialog(QDialog):
-    """Dialog class that implements the `VersionHistoryDialog` workflow."""
+    """Dialog for browsing and restoring saved document versions."""
     def __init__(self, parent, history: VersionHistory, current_text: str) -> None:
-        """Initialize the `version_history` state for this instance."""
+        """Build the version history dialog and prepare its state."""
         super().__init__(parent)
         self.setWindowTitle("Version History")
         self.resize(820, 500)
@@ -92,7 +92,7 @@ class VersionHistoryDialog(QDialog):
         self.cancel_btn.clicked.connect(self.reject)
 
     def _populate(self, history: VersionHistory, current_text: str) -> None:
-        """Internal helper for `_populate`."""
+        """Handle populate."""
         current_item = QListWidgetItem("Current (unsaved)", self.list_widget)
         current_item.setData(Qt.UserRole, current_text)
         self.list_widget.addItem(current_item)
@@ -103,7 +103,7 @@ class VersionHistoryDialog(QDialog):
             self.list_widget.addItem(item)
 
     def _update_preview(self, current: QListWidgetItem | None, _prev: QListWidgetItem | None) -> None:
-        """Internal helper for `_update_preview`."""
+        """Update preview."""
         if current is None:
             self.preview.clear()
             self.restore_btn.setEnabled(False)
@@ -121,7 +121,7 @@ class VersionHistoryDialog(QDialog):
         self.restore_btn.setEnabled(True)
 
     def _accept_restore(self) -> None:
-        """Internal helper for `_accept_restore`."""
+        """Handle accept restore."""
         item = self.list_widget.currentItem()
         if item is None:
             return
@@ -130,14 +130,14 @@ class VersionHistoryDialog(QDialog):
 
     @property
     def selected_text(self) -> str | None:
-        """Execute the `selected_text` workflow."""
+        """Handle selected text."""
         return self._selected_text
 
 
 class LocalHistoryTimelineDialog(QDialog):
-    """Dialog class that implements the `LocalHistoryTimelineDialog` workflow."""
+    """Dialog for browsing and restoring the local history timeline."""
     def __init__(self, parent, history: VersionHistory, current_text: str) -> None:
-        """Initialize the `version_history` state for this instance."""
+        """Build the local history timeline dialog and initialize its timeline widgets."""
         super().__init__(parent)
         self.setWindowTitle("Local History Timeline")
         self.resize(980, 620)
@@ -181,7 +181,7 @@ class LocalHistoryTimelineDialog(QDialog):
             self.list_widget.setCurrentRow(0)
 
     def _populate(self, history: VersionHistory) -> None:
-        """Internal helper for `_populate`."""
+        """Handle populate."""
         current_item = QListWidgetItem("Current (unsaved)", self.list_widget)
         current_item.setData(Qt.UserRole, self._current_text)
         current_item.setData(Qt.UserRole + 1, "current")
@@ -194,7 +194,7 @@ class LocalHistoryTimelineDialog(QDialog):
             self.list_widget.addItem(item)
 
     def _update_views(self, row: int) -> None:
-        """Internal helper for `_update_views`."""
+        """Update views."""
         item = self.list_widget.item(row) if row >= 0 else None
         if item is None:
             self.preview.clear()
@@ -228,7 +228,7 @@ class LocalHistoryTimelineDialog(QDialog):
         self.diff_view.setPlainText("\n".join(diff_lines) or "(No visible diff)")
 
     def _accept_restore(self) -> None:
-        """Internal helper for `_accept_restore`."""
+        """Handle accept restore."""
         item = self.list_widget.currentItem()
         if item is None:
             return
@@ -239,5 +239,5 @@ class LocalHistoryTimelineDialog(QDialog):
 
     @property
     def selected_text(self) -> str | None:
-        """Execute the `selected_text` workflow."""
+        """Handle selected text."""
         return self._selected_text

@@ -1,4 +1,4 @@
-﻿# Pypad
+# Pypad
 
 Pypad is a PySide6 desktop text editor focused on fast note-taking and power-user workflows.
 - More than a simple notepad app, PyPad includes powerful tools for productivity, quick navigation, and workspace management.

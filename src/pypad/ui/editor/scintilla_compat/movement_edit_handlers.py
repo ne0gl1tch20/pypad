@@ -9,7 +9,7 @@ from PySide6.QtGui import QTextCursor
 
 
 def handle_movement_edit_command(editor, msg: int, args: tuple[int, ...]) -> int | None:
-    """Execute the `handle_movement_edit_command` workflow."""
+    """Apply Scintilla-compatible cursor movement and edit commands."""
     if msg == int(editor.SCI_GETCURLINE):
         cur = editor.textCursor()
         block = cur.block()

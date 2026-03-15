@@ -245,14 +245,14 @@ NPP_PREF_DEFAULTS: dict[str, Any] = {
 
 @dataclass(frozen=True)
 class _BoolKey:
-    """Class that implements the `_BoolKey` runtime behavior."""
+    """Preference key descriptor for boolean Notepad++-style settings."""
     key: str
     default: bool
 
 
 @dataclass(frozen=True)
 class _IntKey:
-    """Class that implements the `_IntKey` runtime behavior."""
+    """Preference key descriptor for integer Notepad++-style settings."""
     key: str
     default: int
     min_value: int
@@ -261,14 +261,14 @@ class _IntKey:
 
 @dataclass(frozen=True)
 class _EnumKey:
-    """Class that implements the `_EnumKey` runtime behavior."""
+    """Preference key descriptor for enum-backed Notepad++-style settings."""
     key: str
     default: str
     allowed: set[str]
 
 
 def _coerce_bool(value: Any, default: bool) -> bool:
-    """Internal helper for `_coerce_bool`."""
+    """Handle coerce bool."""
     if isinstance(value, bool):
         return value
     if isinstance(value, (int, float)):
@@ -283,7 +283,7 @@ def _coerce_bool(value: Any, default: bool) -> bool:
 
 
 def _coerce_int(value: Any, default: int, min_value: int, max_value: int) -> int:
-    """Internal helper for `_coerce_int`."""
+    """Handle coerce int."""
     try:
         num = int(value)
     except Exception:
@@ -292,13 +292,13 @@ def _coerce_int(value: Any, default: int, min_value: int, max_value: int) -> int
 
 
 def _coerce_enum(value: Any, default: str, allowed: set[str]) -> str:
-    """Internal helper for `_coerce_enum`."""
+    """Handle coerce enum."""
     text = str(value or "").strip()
     return text if text in allowed else default
 
 
 def _coerce_hex(value: Any, default: str = "") -> str:
-    """Internal helper for `_coerce_hex`."""
+    """Handle coerce hex."""
     text = str(value or "").strip()
     if not text:
         return default
@@ -312,7 +312,7 @@ def _coerce_hex(value: Any, default: str = "") -> str:
 
 
 def _coerce_string_list(value: Any) -> list[str]:
-    """Internal helper for `_coerce_string_list`."""
+    """Handle coerce string list."""
     if not isinstance(value, list):
         return []
     out: list[str] = []
@@ -329,7 +329,7 @@ def _coerce_string_list(value: Any) -> list[str]:
 
 
 def _coerce_indent_overrides(value: Any) -> dict[str, dict[str, Any]]:
-    """Internal helper for `_coerce_indent_overrides`."""
+    """Handle coerce indent overrides."""
     if not isinstance(value, dict):
         return {}
     cleaned: dict[str, dict[str, Any]] = {}
@@ -402,7 +402,7 @@ _ENUM_KEYS = [
 
 
 def coerce_notepadpp_prefs(settings: dict) -> dict:
-    """Execute the `coerce_notepadpp_prefs` workflow."""
+    """Coerce notepadpp prefs."""
     current = dict(settings)
     for key, default in NPP_PREF_DEFAULTS.items():
         current.setdefault(key, default)

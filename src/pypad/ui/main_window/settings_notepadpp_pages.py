@@ -37,7 +37,7 @@ from pypad.ui.theme.theme_tokens import build_color_swatch_style, build_tokens_f
 
 
 def _tokens_for_dialog(dialog):
-    """Internal helper for `_tokens_for_dialog`."""
+    """Handle tokens for dialog."""
     settings = getattr(dialog, "_settings", {})
     if not isinstance(settings, dict):
         settings = {}
@@ -45,19 +45,19 @@ def _tokens_for_dialog(dialog):
 
 
 def _ensure_storage(dialog) -> None:
-    """Internal helper for `_ensure_storage`."""
+    """Ensure storage."""
     if not hasattr(dialog, "_npp_pref_controls"):
         dialog._npp_pref_controls = {}
 
 
 def _register(dialog, key: str, kind: str, widget: Any, **meta: Any) -> None:
-    """Internal helper for `_register`."""
+    """Handle register."""
     _ensure_storage(dialog)
     dialog._npp_pref_controls[key] = {"kind": kind, "widget": widget, **meta}
 
 
 def _add_check(dialog, layout: QVBoxLayout | QFormLayout, idx: int, key: str, label: str) -> QCheckBox:
-    """Internal helper for `_add_check`."""
+    """Add check."""
     cb = QCheckBox(label)
     if isinstance(layout, QFormLayout):
         layout.addRow(cb)
@@ -69,7 +69,7 @@ def _add_check(dialog, layout: QVBoxLayout | QFormLayout, idx: int, key: str, la
 
 
 def _add_spin(dialog, form: QFormLayout, idx: int, key: str, label: str, min_v: int, max_v: int) -> QSpinBox:
-    """Internal helper for `_add_spin`."""
+    """Add spin."""
     spin = QSpinBox(form.parentWidget())
     spin.setRange(min_v, max_v)
     form.addRow(label, spin)
@@ -79,7 +79,7 @@ def _add_spin(dialog, form: QFormLayout, idx: int, key: str, label: str, min_v: 
 
 
 def _add_line(dialog, form: QFormLayout, idx: int, key: str, label: str, *, browse_dir: bool = False) -> QLineEdit:
-    """Internal helper for `_add_line`."""
+    """Add line."""
     edit = QLineEdit(form.parentWidget())
     if not browse_dir:
         form.addRow(label, edit)
@@ -92,7 +92,7 @@ def _add_line(dialog, form: QFormLayout, idx: int, key: str, label: str, *, brow
         row.addWidget(btn)
 
         def _browse() -> None:
-            """Internal helper for `_browse`."""
+            """Handle browse."""
             picked = QFileDialog.getExistingDirectory(dialog, f"Choose {label}", edit.text().strip())
             if picked:
                 edit.setText(picked)
@@ -105,7 +105,7 @@ def _add_line(dialog, form: QFormLayout, idx: int, key: str, label: str, *, brow
 
 
 def _add_text(dialog, form: QFormLayout, idx: int, key: str, label: str, height: int = 70) -> QTextEdit:
-    """Internal helper for `_add_text`."""
+    """Add text."""
     edit = QTextEdit(form.parentWidget())
     edit.setMinimumHeight(height)
     form.addRow(label, edit)
@@ -115,7 +115,7 @@ def _add_text(dialog, form: QFormLayout, idx: int, key: str, label: str, height:
 
 
 def _add_combo(dialog, form: QFormLayout, idx: int, key: str, label: str, options: list[str]) -> QComboBox:
-    """Internal helper for `_add_combo`."""
+    """Add combo."""
     combo = QComboBox(form.parentWidget())
     combo.addItems(options)
     form.addRow(label, combo)
@@ -125,7 +125,7 @@ def _add_combo(dialog, form: QFormLayout, idx: int, key: str, label: str, option
 
 
 def _set_color_label(label: QLabel, value: str) -> None:
-    """Internal helper for `_set_color_label`."""
+    """Set color label."""
     tokens = None
     try:
         tokens = _tokens_for_dialog(label.window())
@@ -140,7 +140,7 @@ def _set_color_label(label: QLabel, value: str) -> None:
 
 
 def _add_color(dialog, form: QFormLayout, idx: int, key: str, label: str) -> QLabel:
-    """Internal helper for `_add_color`."""
+    """Add color."""
     holder = QWidget(form.parentWidget())
     row = QHBoxLayout(holder)
     row.setContentsMargins(0, 0, 0, 0)
@@ -153,7 +153,7 @@ def _add_color(dialog, form: QFormLayout, idx: int, key: str, label: str) -> QLa
     row.addWidget(clear)
 
     def _pick() -> None:
-        """Internal helper for `_pick`."""
+        """Handle pick."""
         base = preview.text() if preview.text() != "(auto)" else "#ffffff"
         color = QColorDialog.getColor(QColor(base), dialog, f"Select {label}")
         if color.isValid():
@@ -168,7 +168,7 @@ def _add_color(dialog, form: QFormLayout, idx: int, key: str, label: str) -> QLa
 
 
 def _add_radio_group(dialog, root: QVBoxLayout, idx: int, key: str, title: str, options: list[tuple[str, str]]) -> None:
-    """Internal helper for `_add_radio_group`."""
+    """Add radio group."""
     group_box = QGroupBox(title)
     v = QVBoxLayout(group_box)
     buttons = QButtonGroup(group_box)
@@ -184,7 +184,7 @@ def _add_radio_group(dialog, root: QVBoxLayout, idx: int, key: str, title: str, 
 
 
 def _sort_list(widget: QListWidget) -> None:
-    """Internal helper for `_sort_list`."""
+    """Handle sort list."""
     vals = sorted(widget.item(i).text() for i in range(widget.count()))
     widget.clear()
     for v in vals:
@@ -192,7 +192,7 @@ def _sort_list(widget: QListWidget) -> None:
 
 
 def _add_dual_list_editor(dialog, root: QVBoxLayout, idx: int, key: str, title: str, all_items: list[str]) -> None:
-    """Internal helper for `_add_dual_list_editor`."""
+    """Add dual list editor."""
     group = QGroupBox(title)
     lay = QHBoxLayout(group)
     avail = QListWidget(group)
@@ -216,7 +216,7 @@ def _add_dual_list_editor(dialog, root: QVBoxLayout, idx: int, key: str, title: 
     _register(dialog, key, "dual_list", (avail, disabled), all_items=all_items)
 
     def _move(src: QListWidget, dst: QListWidget) -> None:
-        """Internal helper for `_move`."""
+        """Handle move."""
         rows = sorted({src.row(item) for item in src.selectedItems()}, reverse=True)
         for row in rows:
             item = src.takeItem(row)
@@ -230,7 +230,7 @@ def _add_dual_list_editor(dialog, root: QVBoxLayout, idx: int, key: str, title: 
 
 
 def _add_string_list_editor(dialog, root: QVBoxLayout, idx: int, key: str, title: str) -> None:
-    """Internal helper for `_add_string_list_editor`."""
+    """Add string list editor."""
     group = QGroupBox(title)
     v = QVBoxLayout(group)
     lst = QListWidget(group)
@@ -248,7 +248,7 @@ def _add_string_list_editor(dialog, root: QVBoxLayout, idx: int, key: str, title
     _register(dialog, key, "string_list", (lst, edit))
 
     def _add() -> None:
-        """Internal helper for `_add`."""
+        """Handle add."""
         text = edit.text().strip()
         if not text:
             return
@@ -264,7 +264,7 @@ def _add_string_list_editor(dialog, root: QVBoxLayout, idx: int, key: str, title
 
 
 def _add_indent_overrides_table(dialog, root: QVBoxLayout, idx: int, key: str) -> None:
-    """Internal helper for `_add_indent_overrides_table`."""
+    """Add indent overrides table."""
     group = QGroupBox("Per-language indentation overrides")
     v = QVBoxLayout(group)
     table = QTableWidget(group)
@@ -314,7 +314,7 @@ def _add_indent_overrides_table(dialog, root: QVBoxLayout, idx: int, key: str) -
     )
 
     def _set_row(row: int, language: str = "", size: int = 4, use_tabs: bool = False, auto_indent: bool = True) -> None:
-        """Internal helper for `_set_row`."""
+        """Set row."""
         lang_combo = table.cellWidget(row, 0)
         if not isinstance(lang_combo, QComboBox):
             lang_combo = QComboBox(table)
@@ -352,14 +352,14 @@ def _add_indent_overrides_table(dialog, root: QVBoxLayout, idx: int, key: str) -
         auto_indent_cb.setChecked(bool(auto_indent))
 
     def _add_row() -> None:
-        """Internal helper for `_add_row`."""
+        """Add row."""
         row = table.rowCount()
         table.insertRow(row)
         _set_row(row)
         _validate_indent_override_rows(table)
 
     def _remove_row() -> None:
-        """Internal helper for `_remove_row`."""
+        """Remove row."""
         row = table.currentRow()
         if row >= 0:
             table.removeRow(row)
@@ -371,7 +371,7 @@ def _add_indent_overrides_table(dialog, root: QVBoxLayout, idx: int, key: str) -
 
 
 def _validate_indent_override_rows(table: QTableWidget) -> None:
-    """Internal helper for `_validate_indent_override_rows`."""
+    """Handle validate indent override rows."""
     try:
         tokens = _tokens_for_dialog(table.window())
     except Exception:
@@ -419,7 +419,7 @@ def _validate_indent_override_rows(table: QTableWidget) -> None:
 
 
 def validate_notepadpp_like_page_inputs(dialog) -> list[str]:
-    """Execute the `validate_notepadpp_like_page_inputs` workflow."""
+    """Handle validate notepadpp like page inputs."""
     errors: list[str] = []
     controls = getattr(dialog, "_npp_pref_controls", {})
     for key, spec in controls.items():
@@ -457,7 +457,7 @@ def validate_notepadpp_like_page_inputs(dialog) -> list[str]:
 
 
 def focus_first_invalid_notepadpp_like_input(dialog) -> bool:
-    """Execute the `focus_first_invalid_notepadpp_like_input` workflow."""
+    """Move focus to first invalid notepadpp like input."""
     controls = getattr(dialog, "_npp_pref_controls", {})
     for _key, spec in controls.items():
         if spec.get("kind") != "indent_overrides_table":
@@ -504,7 +504,7 @@ def focus_first_invalid_notepadpp_like_input(dialog) -> bool:
 
 
 def _build_group_page(dialog, name: str, aliases: list[str], build_fn) -> None:
-    """Internal helper for `_build_group_page`."""
+    """Build group page."""
     page = QWidget(dialog)
     root = QVBoxLayout(page)
     idx = dialog._add_category(name, page)
@@ -515,7 +515,7 @@ def _build_group_page(dialog, name: str, aliases: list[str], build_fn) -> None:
 
 
 def build_notepadpp_like_pages(dialog) -> None:
-    """Build and return the value produced by `build_notepadpp_like_pages`."""
+    """Build notepadpp like pages."""
     _build_group_page(dialog, "N++ • 🧭 General", ["npp-general"], _build_general_page)
     _build_group_page(dialog, "N++ • 🧰 Toolbar", ["npp-toolbar"], _build_toolbar_page)
     _build_group_page(dialog, "N++ • 🗂️ Tab Bar", ["npp-tab-bar"], _build_tabbar_page)
@@ -542,7 +542,7 @@ def build_notepadpp_like_pages(dialog) -> None:
 
 
 def _build_general_page(dialog, root: QVBoxLayout, idx: int) -> None:
-    """Internal helper for `_build_general_page`."""
+    """Build general page."""
     form = QFormLayout()
     root.addLayout(form)
     _add_combo(dialog, form, idx, "npp_localization", "Localization", ["English", "Spanish", "French", "German", "Hindi"])
@@ -558,7 +558,7 @@ def _build_general_page(dialog, root: QVBoxLayout, idx: int) -> None:
 
 
 def _build_toolbar_page(dialog, root: QVBoxLayout, idx: int) -> None:
-    """Internal helper for `_build_toolbar_page`."""
+    """Build toolbar page."""
     form = QFormLayout()
     root.addLayout(form)
     _add_check(dialog, form, idx, "npp_toolbar_hidden", "Hide")
@@ -583,7 +583,7 @@ def _build_toolbar_page(dialog, root: QVBoxLayout, idx: int) -> None:
 
 
 def _build_tabbar_page(dialog, root: QVBoxLayout, idx: int) -> None:
-    """Internal helper for `_build_tabbar_page`."""
+    """Build tabbar page."""
     behavior = QGroupBox("Behavior")
     bform = QFormLayout(behavior)
     _add_check(dialog, bform, idx, "npp_tabbar_hidden", "Hide")
@@ -609,7 +609,7 @@ def _build_tabbar_page(dialog, root: QVBoxLayout, idx: int) -> None:
 
 
 def _build_editing1_page(dialog, root: QVBoxLayout, idx: int) -> None:
-    """Internal helper for `_build_editing1_page`."""
+    """Build editing1 page."""
     _add_radio_group(
         dialog,
         root,
@@ -632,7 +632,7 @@ def _build_editing1_page(dialog, root: QVBoxLayout, idx: int) -> None:
 
 
 def _build_editing2_page(dialog, root: QVBoxLayout, idx: int) -> None:
-    """Internal helper for `_build_editing2_page`."""
+    """Build editing2 page."""
     form = QFormLayout()
     root.addLayout(form)
     _add_check(dialog, form, idx, "npp_multi_editing_enabled", "Enable Multi-Editing (Ctrl+Mouse click/selection)")
@@ -648,7 +648,7 @@ def _build_editing2_page(dialog, root: QVBoxLayout, idx: int) -> None:
 
 
 def _build_dark_mode_controls(dialog, root: QVBoxLayout, idx: int) -> None:
-    """Internal helper for `_build_dark_mode_controls`."""
+    """Build dark mode controls."""
     _add_radio_group(
         dialog,
         root,
@@ -668,12 +668,12 @@ def _build_dark_mode_controls(dialog, root: QVBoxLayout, idx: int) -> None:
 
 
 def _build_dark_mode_page(dialog, root: QVBoxLayout, idx: int) -> None:
-    """Internal helper for `_build_dark_mode_page`."""
+    """Build dark mode page."""
     _build_dark_mode_controls(dialog, root, idx)
 
 
 def build_npp_dark_mode_embedded_group(dialog, parent_layout: QVBoxLayout, idx: int) -> None:
-    """Build and return the value produced by `build_npp_dark_mode_embedded_group`."""
+    """Build npp dark mode embedded group."""
     group = QGroupBox("N++ Compatibility: Dark Mode")
     group_layout = QVBoxLayout(group)
     note = QLabel("Advanced compatibility dark-mode preferences that extend PyPad Appearance.")
@@ -681,14 +681,14 @@ def build_npp_dark_mode_embedded_group(dialog, parent_layout: QVBoxLayout, idx: 
     try:
         note.setStyleSheet(f"color: {_tokens_for_dialog(dialog).text_muted};")
     except Exception:
-        note.setStyleSheet("color: #888;")
+        note.setStyleSheet(f"color: {build_tokens_from_settings({}).text_muted};")
     group_layout.addWidget(note)
     _build_dark_mode_controls(dialog, group_layout, idx)
     parent_layout.addWidget(group)
 
 
 def _build_margins_page(dialog, root: QVBoxLayout, idx: int) -> None:
-    """Internal helper for `_build_margins_page`."""
+    """Build margins page."""
     form = QFormLayout()
     root.addLayout(form)
     _add_combo(dialog, form, idx, "npp_margin_fold_style", "Fold margin style", ["simple", "arrow", "circle_tree", "box_tree", "none"])
@@ -705,7 +705,7 @@ def _build_margins_page(dialog, root: QVBoxLayout, idx: int) -> None:
 
 
 def _build_new_document_page(dialog, root: QVBoxLayout, idx: int) -> None:
-    """Internal helper for `_build_new_document_page`."""
+    """Build new document page."""
     form = QFormLayout()
     root.addLayout(form)
     _add_combo(dialog, form, idx, "npp_new_doc_eol", "Format (line ending)", ["windows", "unix", "mac"])
@@ -717,7 +717,7 @@ def _build_new_document_page(dialog, root: QVBoxLayout, idx: int) -> None:
 
 
 def _build_default_directory_page(dialog, root: QVBoxLayout, idx: int) -> None:
-    """Internal helper for `_build_default_directory_page`."""
+    """Build default directory page."""
     form = QFormLayout()
     root.addLayout(form)
     _add_combo(dialog, form, idx, "npp_default_dir_mode", "Default Open/Save file Directory", ["follow_current_document", "remember_last_used", "custom"])
@@ -726,7 +726,7 @@ def _build_default_directory_page(dialog, root: QVBoxLayout, idx: int) -> None:
 
 
 def _build_recent_files_page(dialog, root: QVBoxLayout, idx: int) -> None:
-    """Internal helper for `_build_recent_files_page`."""
+    """Build recent files page."""
     form = QFormLayout()
     root.addLayout(form)
     _add_check(dialog, form, idx, "npp_recent_dont_check_exists", "Don't check at launch time")
@@ -737,7 +737,7 @@ def _build_recent_files_page(dialog, root: QVBoxLayout, idx: int) -> None:
 
 
 def _build_file_association_page(dialog, root: QVBoxLayout, idx: int) -> None:
-    """Internal helper for `_build_file_association_page`."""
+    """Build file association page."""
     info = QLabel("Profile-based extension lists. OS registration may require Administrator mode.")
     info.setWordWrap(True)
     root.addWidget(info)
@@ -746,7 +746,7 @@ def _build_file_association_page(dialog, root: QVBoxLayout, idx: int) -> None:
 
 
 def _build_language_page(dialog, root: QVBoxLayout, idx: int) -> None:
-    """Internal helper for `_build_language_page`."""
+    """Build language page."""
     form = QFormLayout()
     root.addLayout(form)
     _add_check(dialog, form, idx, "npp_language_menu_compact", "Make language menu compact")
@@ -755,7 +755,7 @@ def _build_language_page(dialog, root: QVBoxLayout, idx: int) -> None:
 
 
 def _build_indentation_page(dialog, root: QVBoxLayout, idx: int) -> None:
-    """Internal helper for `_build_indentation_page`."""
+    """Build indentation page."""
     form = QFormLayout()
     root.addLayout(form)
     _add_combo(dialog, form, idx, "npp_indent_scope", "Indent settings", ["default", "language_specific"])
@@ -767,7 +767,7 @@ def _build_indentation_page(dialog, root: QVBoxLayout, idx: int) -> None:
 
 
 def _build_highlighting_page(dialog, root: QVBoxLayout, idx: int) -> None:
-    """Internal helper for `_build_highlighting_page`."""
+    """Build highlighting page."""
     form = QFormLayout()
     root.addLayout(form)
     for key, label in [
@@ -786,7 +786,7 @@ def _build_highlighting_page(dialog, root: QVBoxLayout, idx: int) -> None:
 
 
 def _build_print_page(dialog, root: QVBoxLayout, idx: int) -> None:
-    """Internal helper for `_build_print_page`."""
+    """Build print page."""
     form = QFormLayout()
     root.addLayout(form)
     _add_check(dialog, form, idx, "npp_print_line_numbers", "Print line number")
@@ -812,7 +812,7 @@ def _build_print_page(dialog, root: QVBoxLayout, idx: int) -> None:
 
 
 def _build_searching_page(dialog, root: QVBoxLayout, idx: int) -> None:
-    """Internal helper for `_build_searching_page`."""
+    """Build searching page."""
     form = QFormLayout()
     root.addLayout(form)
     _add_spin(dialog, form, idx, "npp_find_min_selection_auto_checking", 'Minimum Size for Auto-Checking "In selection"', 32, 100000)
@@ -828,7 +828,7 @@ def _build_searching_page(dialog, root: QVBoxLayout, idx: int) -> None:
 
 
 def _build_backup_page(dialog, root: QVBoxLayout, idx: int) -> None:
-    """Internal helper for `_build_backup_page`."""
+    """Build backup page."""
     form = QFormLayout()
     root.addLayout(form)
     _add_check(dialog, form, idx, "npp_backup_remember_session_next_launch", "Remember current session for next launch")
@@ -842,7 +842,7 @@ def _build_backup_page(dialog, root: QVBoxLayout, idx: int) -> None:
 
 
 def _build_autocomplete_page(dialog, root: QVBoxLayout, idx: int) -> None:
-    """Internal helper for `_build_autocomplete_page`."""
+    """Build autocomplete page."""
     form = QFormLayout()
     root.addLayout(form)
     _add_check(dialog, form, idx, "npp_autocomplete_enabled", "Enable auto-completion on each input")
@@ -865,7 +865,7 @@ def _build_autocomplete_page(dialog, root: QVBoxLayout, idx: int) -> None:
 
 
 def _build_multi_instance_page(dialog, root: QVBoxLayout, idx: int) -> None:
-    """Internal helper for `_build_multi_instance_page`."""
+    """Build multi instance page."""
     form = QFormLayout()
     root.addLayout(form)
     _add_combo(dialog, form, idx, "npp_multi_instance_mode", "Multi-instance settings", ["default", "always_multi", "new_instance_and_save_session"])
@@ -885,7 +885,7 @@ def _build_multi_instance_page(dialog, root: QVBoxLayout, idx: int) -> None:
 
 
 def _build_delimiter_page(dialog, root: QVBoxLayout, idx: int) -> None:
-    """Internal helper for `_build_delimiter_page`."""
+    """Build delimiter page."""
     form = QFormLayout()
     root.addLayout(form)
     _add_combo(dialog, form, idx, "npp_delimiter_word_chars_mode", "Word character list", ["default", "custom"])
@@ -896,7 +896,7 @@ def _build_delimiter_page(dialog, root: QVBoxLayout, idx: int) -> None:
 
 
 def _build_performance_page(dialog, root: QVBoxLayout, idx: int) -> None:
-    """Internal helper for `_build_performance_page`."""
+    """Build performance page."""
     form = QFormLayout()
     root.addLayout(form)
     _add_check(dialog, form, idx, "npp_large_file_restriction_enabled", "Enable Large File Restriction (no syntax highlighting)")
@@ -910,7 +910,7 @@ def _build_performance_page(dialog, root: QVBoxLayout, idx: int) -> None:
 
 
 def _build_cloud_link_page(dialog, root: QVBoxLayout, idx: int) -> None:
-    """Internal helper for `_build_cloud_link_page`."""
+    """Build cloud link page."""
     form = QFormLayout()
     root.addLayout(form)
     _add_combo(dialog, form, idx, "npp_cloud_mode", "Settings on cloud", ["no_cloud", "custom_path"])
@@ -922,7 +922,7 @@ def _build_cloud_link_page(dialog, root: QVBoxLayout, idx: int) -> None:
 
 
 def _build_search_engine_page(dialog, root: QVBoxLayout, idx: int) -> None:
-    """Internal helper for `_build_search_engine_page`."""
+    """Build search engine page."""
     form = QFormLayout()
     root.addLayout(form)
     _add_combo(dialog, form, idx, "npp_search_engine_provider", "Search Engine", ["DuckDuckGo", "Google", "Yahoo!", "Stack Overflow", "Bing", "Custom"])
@@ -933,7 +933,7 @@ def _build_search_engine_page(dialog, root: QVBoxLayout, idx: int) -> None:
 
 
 def _build_misc_page(dialog, root: QVBoxLayout, idx: int) -> None:
-    """Internal helper for `_build_misc_page`."""
+    """Build misc page."""
     form = QFormLayout()
     root.addLayout(form)
     notes = _add_text(dialog, form, idx, "npp_misc_notes", "Misc notes", 120)
@@ -941,7 +941,7 @@ def _build_misc_page(dialog, root: QVBoxLayout, idx: int) -> None:
 
 
 def load_notepadpp_like_page_settings(dialog, settings: dict) -> None:
-    """Load data required by `load_notepadpp_like_page_settings`."""
+    """Load current settings values into the Notepad++-style settings pages."""
     if "language" in settings and "npp_localization" in getattr(dialog, "_npp_pref_controls", {}):
         settings = dict(settings)
         settings["npp_localization"] = str(settings.get("language", settings.get("npp_localization", "English")))
@@ -1052,7 +1052,7 @@ def load_notepadpp_like_page_settings(dialog, settings: dict) -> None:
 
 
 def collect_notepadpp_like_page_settings(dialog, settings: dict) -> dict:
-    """Execute the `collect_notepadpp_like_page_settings` workflow."""
+    """Collect notepadpp like page settings."""
     for key, spec in getattr(dialog, "_npp_pref_controls", {}).items():
         kind = spec["kind"]
         widget = spec["widget"]

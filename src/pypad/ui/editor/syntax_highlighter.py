@@ -34,7 +34,7 @@ STYLE_TOKENS: tuple[str, ...] = ("keyword", "string", "comment", "number")
 
 
 def _fmt(color: str, bold: bool = False, italic: bool = False) -> QTextCharFormat:
-    """Internal helper for `_fmt`."""
+    """Handle fmt."""
     fmt = QTextCharFormat()
     fmt.setForeground(QColor(color))
     if bold:
@@ -45,7 +45,7 @@ def _fmt(color: str, bold: bool = False, italic: bool = False) -> QTextCharForma
 
 
 class CodeSyntaxHighlighter(QSyntaxHighlighter):
-    """Class that implements the `CodeSyntaxHighlighter` runtime behavior."""
+    """code syntax highlighter."""
     def __init__(
         self,
         document,
@@ -54,7 +54,7 @@ class CodeSyntaxHighlighter(QSyntaxHighlighter):
         style_theme: str = "default",
         style_overrides: dict[str, dict[str, str]] | None = None,
     ) -> None:
-        """Initialize the `syntax_highlighter` state for this instance."""
+        """Set up the syntax highlighter with its language, theme, and token rules."""
         super().__init__(document)
         self.language = language
         self.style_theme = str(style_theme or "default").strip().lower()
@@ -64,13 +64,13 @@ class CodeSyntaxHighlighter(QSyntaxHighlighter):
         self._build_rules()
 
     def set_language(self, language: str) -> None:
-        """Update state handled by `set_language`."""
+        """Switch the active highlighting language and rebuild the rules."""
         self.language = language
         self._build_rules()
         self.rehighlight()
 
     def set_style_profile(self, *, style_theme: str, style_overrides: dict[str, dict[str, str]]) -> None:
-        """Update state handled by `set_style_profile`."""
+        """Replace the highlighting style profile and rehighlight the document."""
         self.style_theme = str(style_theme or "default").strip().lower()
         self.style_overrides = self._sanitize_style_overrides(style_overrides)
         self._build_rules()
@@ -78,7 +78,7 @@ class CodeSyntaxHighlighter(QSyntaxHighlighter):
 
     @staticmethod
     def _sanitize_style_overrides(raw: dict[str, dict[str, str]]) -> dict[str, dict[str, str]]:
-        """Internal helper for `_sanitize_style_overrides`."""
+        """Handle sanitize style overrides."""
         out: dict[str, dict[str, str]] = {}
         if not isinstance(raw, dict):
             return out
@@ -101,7 +101,7 @@ class CodeSyntaxHighlighter(QSyntaxHighlighter):
         return out
 
     def _style_color(self, language: str, token: str) -> str:
-        """Internal helper for `_style_color`."""
+        """Handle style color."""
         theme = self.style_theme if self.style_theme in THEME_PRESETS else "default"
         fallback = THEME_PRESETS[theme][token]
         language_key = str(language or "plain").strip().lower()
@@ -112,7 +112,7 @@ class CodeSyntaxHighlighter(QSyntaxHighlighter):
         return str(language_overrides.get(token) or shared_overrides.get(token) or fallback)
 
     def _build_rules(self) -> None:
-        """Internal helper for `_build_rules`."""
+        """Build rules."""
         self._rules_by_lang = {"plain": []}
 
         py_keyword_fmt = _fmt(self._style_color("python", "keyword"), bold=True)
@@ -176,7 +176,7 @@ class CodeSyntaxHighlighter(QSyntaxHighlighter):
         self._rules_by_lang["markdown"] = rules
 
     def _apply_rules(self, text: str, language: str) -> None:
-        """Internal helper for `_apply_rules`."""
+        """Apply rules."""
         rules = self._rules_by_lang.get(language, self._rules_by_lang["plain"])
         for pattern, fmt in rules:
             for match in pattern.finditer(text):
@@ -184,7 +184,7 @@ class CodeSyntaxHighlighter(QSyntaxHighlighter):
                 self.setFormat(start, end - start, fmt)
 
     def highlightBlock(self, text: str) -> None:
-        """Execute the `highlightBlock` workflow."""
+        """Handle highlight block."""
         language = self.language.lower()
         if language in {"markdown", "md"}:
             in_code = self.previousBlockState() == 1

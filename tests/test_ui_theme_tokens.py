@@ -68,6 +68,18 @@ class ThemeTokensTests(unittest.TestCase):
         self.assertLess(a.input_height, b.input_height)
         self.assertLessEqual(a.radius_md, b.radius_md)
 
+    def test_named_palettes_have_distinct_light_and_dark_variants(self) -> None:
+        for theme in ("Soft Light", "High Contrast", "Solarized Light", "Ocean Blue"):
+            light = build_tokens_from_settings({"theme": theme, "dark_mode": False})
+            dark = build_tokens_from_settings({"theme": theme, "dark_mode": True})
+            self.assertEqual(light.theme_name, theme)
+            self.assertEqual(dark.theme_name, theme)
+            self.assertFalse(light.dark_mode)
+            self.assertTrue(dark.dark_mode)
+            self.assertNotEqual(light.window_bg, dark.window_bg)
+            self.assertNotEqual(light.chrome_bg, dark.chrome_bg)
+            self.assertNotEqual(light.text, dark.text)
+
     def test_signature_changes_when_tokens_change(self) -> None:
         a = build_tokens_from_settings({"dark_mode": False})
         b = build_tokens_from_settings({"dark_mode": True})

@@ -12,7 +12,7 @@ from fnmatch import fnmatch
 
 @dataclass(frozen=True)
 class WorkspaceSearchHit:
-    """Class that implements the `WorkspaceSearchHit` runtime behavior."""
+    """Single search hit that stores a file path, line number, and matched text."""
     path: str
     line_no: int
     line_text: str
@@ -27,7 +27,7 @@ def collect_workspace_files(
     include_globs: list[str] | None = None,
     exclude_globs: list[str] | None = None,
 ) -> list[str]:
-    """Execute the `collect_workspace_files` workflow."""
+    """Collect workspace files that are eligible for project-wide search operations."""
     if not root:
         return []
     base = Path(root)
@@ -57,7 +57,7 @@ def collect_workspace_files(
 
 
 def _is_hidden_path(path: Path) -> bool:
-    """Internal helper for `_is_hidden_path`."""
+    """Return whether hidden path."""
     for part in path.parts:
         if part in {".", ".."}:
             continue
@@ -72,7 +72,7 @@ def search_files_for_query(
     max_results: int = 500,
     case_sensitive: bool = False,
 ) -> list[WorkspaceSearchHit]:
-    """Execute the `search_files_for_query` workflow."""
+    """Search the provided files for a query and return structured hit records."""
     if not query.strip():
         return []
     q = query if case_sensitive else query.lower()

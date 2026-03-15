@@ -23,7 +23,7 @@ class MiscExportMixin:
             ...
 
     def _export_document_html(self, tab: EditorTab) -> str:
-        """Internal helper for `_export_document_html`."""
+        """Handle export document html."""
         text = tab.text_edit.get_text()
         return render_text_to_html(
             text,
@@ -31,7 +31,7 @@ class MiscExportMixin:
         )
 
     def export_active_as_markdown(self) -> None:
-        """Execute the `export_active_as_markdown` workflow."""
+        """Export active as markdown."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -51,7 +51,7 @@ class MiscExportMixin:
         self.show_status_message(f"Exported Markdown: {path}", 3000)
 
     def export_active_as_html(self) -> None:
-        """Execute the `export_active_as_html` workflow."""
+        """Export active as HTML."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -71,7 +71,7 @@ class MiscExportMixin:
         self.show_status_message(f"Exported HTML: {path}", 3000)
 
     def export_active_as_docx(self) -> None:
-        """Execute the `export_active_as_docx` workflow."""
+        """Export active as docx."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -98,7 +98,7 @@ class MiscExportMixin:
         self.show_status_message(f"Exported DOCX: {path}", 3000)
 
     def export_active_as_odt(self) -> None:
-        """Execute the `export_active_as_odt` workflow."""
+        """Export active as odt."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -125,7 +125,7 @@ class MiscExportMixin:
         self.show_status_message(f"Exported ODT: {path}", 3000)
 
     def export_active_as_pdf(self) -> None:
-        """Execute the `export_active_as_pdf` workflow."""
+        """Export active as PDF."""
         tab = self.active_tab()
         if tab is None:
             return

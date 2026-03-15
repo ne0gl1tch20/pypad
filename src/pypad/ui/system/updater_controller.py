@@ -26,6 +26,7 @@ from pypad.logging_utils import get_logger
 from pypad.ui.theme.dialog_theme import create_themed_message_box, create_themed_progress_dialog, themed_message_box_exec
 from pypad.ui.theme.asset_paths import resolve_asset_path
 from pypad.services.updater_helpers import UpdateInfo, is_newer_version, parse_update_feed, verify_metadata_signature
+from pypad.ui.security.security_profile import profile_setting, resolve_security_policy
 
 _LOGGER = get_logger(__name__)
 
@@ -54,7 +55,7 @@ class _UpdateCheckWorker(QObject):
     status = Signal(str)
 
     def __init__(self, feed_url: str) -> None:
-        """Initialize the `updater_controller` state for this instance."""
+        """Create the worker used to check for updates in the background."""
         super().__init__()
         self.feed_url = feed_url
 
@@ -107,7 +108,7 @@ class _UpdateDownloadWorker(QObject):
     status = Signal(str)
 
     def __init__(self, download_url: str, destination: str) -> None:
-        """Initialize the `updater_controller` state for this instance."""
+        """Create the worker used to download update packages in the background."""
         super().__init__()
         self.download_url = download_url
         self.destination = destination
@@ -207,6 +208,17 @@ class UpdaterController(QObject):
         feed_url = str(self.window.settings.get("update_feed_url", DEFAULT_UPDATE_FEED_URL) or "").strip()
         if not feed_url:
             feed_url = DEFAULT_UPDATE_FEED_URL
+        resolved = resolve_security_policy(self.window.settings)
+        if not resolved.allow_custom_update_feed:
+            feed_url = DEFAULT_UPDATE_FEED_URL
+        if not str(feed_url).lower().startswith("https://"):
+            if manual:
+                self._show_error_with_details(
+                    title="Check for Updates Error",
+                    summary="Update feed must use HTTPS.",
+                    details=f"Rejected feed URL: {feed_url}",
+                )
+            return
         if not feed_url:
             if manual:
                 self._show_error_with_details(
@@ -346,7 +358,7 @@ class UpdaterController(QObject):
         self._update_available_box = box
 
         def _on_finished(_result: int, dialog=box, dl_btn=download_btn, update_info=info) -> None:
-            """Internal helper for `_on_finished`."""
+            """Handle on finished."""
             clicked = dialog.clickedButton()
             self._update_available_box = None
             if clicked == dl_btn:
@@ -360,7 +372,7 @@ class UpdaterController(QObject):
         box.open()
 
     def _on_check_failed(self, _thread: QThread, message: str, check_id: int) -> None:
-        """Handle a failed update check while guarding against stale or timed-out results."""
+        """Handle on check failed."""
         if check_id in self._timed_out_check_ids:
             self._timed_out_check_ids.discard(check_id)
             self._log_update(f"Ignoring late failed result for timed-out check (id={check_id}): {message}")
@@ -435,7 +447,7 @@ class UpdaterController(QObject):
         self._log_update(f"[CheckWorker] {message}")
 
     def _on_check_worker_finished(self, info: object) -> None:
-        """Internal helper for `_on_check_worker_finished`."""
+        """Handle on check worker finished."""
         worker = self.sender()
         if not isinstance(worker, _UpdateCheckWorker):
             return
@@ -447,7 +459,7 @@ class UpdaterController(QObject):
         self._on_checked(thread, info, check_id)
 
     def _on_check_worker_failed(self, message: str) -> None:
-        """Internal helper for `_on_check_worker_failed`."""
+        """Handle on check worker failed."""
         worker = self.sender()
         if not isinstance(worker, _UpdateCheckWorker):
             return
@@ -577,7 +589,7 @@ class UpdaterController(QObject):
         self._log_update(f"[DownloadWorker] {message}")
 
     def _on_download_worker_finished(self, path: str) -> None:
-        """Internal helper for `_on_download_worker_finished`."""
+        """Handle on download worker finished."""
         worker = self.sender()
         if not isinstance(worker, _UpdateDownloadWorker):
             return
@@ -588,7 +600,7 @@ class UpdaterController(QObject):
         self._on_download_finished(thread, path)
 
     def _on_download_worker_failed(self, message: str) -> None:
-        """Internal helper for `_on_download_worker_failed`."""
+        """Handle on download worker failed."""
         worker = self.sender()
         if not isinstance(worker, _UpdateDownloadWorker):
             return
@@ -723,7 +735,10 @@ class UpdaterController(QObject):
         if not re.fullmatch(r"[0-9a-f]{64}", digest):
             return "Feed must provide a valid 64-char SHA256 digest for the installer."
         signature = str(info.signature or "").strip().lower()
-        require_signed = bool(self.window.settings.get("update_require_signed_metadata", False))
+        resolved = resolve_security_policy(self.window.settings)
+        require_signed = bool(profile_setting(self.window.settings, "update_require_signed_metadata", True)) or bool(
+            resolved.require_signed_updates
+        )
         if not signature:
             return "Signed metadata is required but signature is missing." if require_signed else None
         signing_key = str(

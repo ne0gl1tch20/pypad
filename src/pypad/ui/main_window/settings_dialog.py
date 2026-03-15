@@ -45,6 +45,7 @@ from PySide6.QtWidgets import (
 
 from ...app_settings import migrate_settings
 from pypad.app_settings.scintilla_profile import ScintillaProfile
+from pypad.ui.security.security_profile import BUILTIN_SECURITY_PROFILES, get_profile_state_store
 from pypad.app_settings.defaults import DEFAULT_UPDATE_FEED_URL
 from pypad.ui.editor.syntax_highlighter import THEME_PRESETS as SYNTAX_THEME_PRESETS
 from pypad.i18n.translator import get_language_display_options
@@ -57,6 +58,7 @@ from pypad.ui.theme.dialog_theme import (
 from pypad.ui.theme.theme_tokens import (
     build_dialog_theme_qss_from_tokens,
     build_settings_dialog_qss,
+    build_color_swatch_style,
     build_tokens_from_settings,
 )
 from .settings_notepadpp_pages import (
@@ -139,7 +141,7 @@ class SettingsDialog(QDialog):
         self.settings_page_desc = QLabel("Customize PyPad and compatibility behavior.", self.settings_header_card)
         self.settings_page_desc.setObjectName("settingsPageDesc")
         self.settings_page_desc.setWordWrap(True)
-        self.settings_page_desc.setStyleSheet("font-size: 14px; color: #888;")
+        self.settings_page_desc.setStyleSheet("font-size: 14px;")
         header_layout.addWidget(self.settings_page_title)
         header_layout.addWidget(self.settings_page_desc)
         right_layout.addWidget(self.settings_header_card)
@@ -283,14 +285,14 @@ class SettingsDialog(QDialog):
 
     @staticmethod
     def _clean_nav_title(name: str) -> str:
-        """Internal helper for `_clean_nav_title`."""
+        """Handle clean nav title."""
         text = str(name or "").strip()
         if text.startswith("N++ "):
             return text.replace("N++ ", "", 1)
         return text
 
     def _format_nav_item_text(self, idx: int, count: int = 0, *, query_active: bool = False) -> str:
-        """Internal helper for `_format_nav_item_text`."""
+        """Format nav item text."""
         if idx < 0 or idx >= len(self._nav_base_labels):
             return ""
         base = self._nav_base_labels[idx]
@@ -304,7 +306,7 @@ class SettingsDialog(QDialog):
         return f"{header}\n{base}{suffix}" if header else f"{base}{suffix}"
 
     def _page_description_for_name(self, name: str) -> str:
-        """Internal helper for `_page_description_for_name`."""
+        """Handle page description for name."""
         text = str(name or "")
         key = self._normalize_route_key(text.replace("N++", ""))
         descriptions = {
@@ -375,7 +377,7 @@ class SettingsDialog(QDialog):
         self._apply_search_filter(self.settings_search_input.text())
 
     def _ensure_visible_nav_selection(self) -> None:
-        """Internal helper for `_ensure_visible_nav_selection`."""
+        """Ensure visible nav selection."""
         cur = self.settings_nav_list.currentRow()
         if 0 <= cur < self.settings_nav_list.count():
             item = self.settings_nav_list.item(cur)
@@ -388,7 +390,7 @@ class SettingsDialog(QDialog):
                 return
 
     def _register_route_aliases(self, idx: int, *aliases: str) -> None:
-        """Internal helper for `_register_route_aliases`."""
+        """Handle register route aliases."""
         for alias in aliases:
             key = self._normalize_route_key(alias)
             if key:
@@ -414,11 +416,11 @@ class SettingsDialog(QDialog):
         return True
 
     def _register_search(self, category_idx: int, label: str, widget: QWidget) -> None:
-        """Internal helper for `_register_search`."""
+        """Handle register search."""
         self._search_entries.append((category_idx, label.lower(), widget))
 
     def _add_combo(self, form: QFormLayout, category_idx: int, label: str, options: list[str]) -> QComboBox:
-        """Internal helper for `_add_combo`."""
+        """Add combo."""
         combo = QComboBox(form.parentWidget())
         combo.addItems(options)
         form.addRow(label, combo)
@@ -426,7 +428,7 @@ class SettingsDialog(QDialog):
         return combo
 
     def _add_check(self, layout: QVBoxLayout | QFormLayout, category_idx: int, label: str) -> QCheckBox:
-        """Internal helper for `_add_check`."""
+        """Add check."""
         cb = QCheckBox(label, layout.parentWidget())
         if isinstance(layout, QFormLayout):
             layout.addRow(cb)
@@ -436,7 +438,7 @@ class SettingsDialog(QDialog):
         return cb
 
     def _add_spin(self, form: QFormLayout, category_idx: int, label: str, min_v: int, max_v: int) -> QSpinBox:
-        """Internal helper for `_add_spin`."""
+        """Add spin."""
         spin = QSpinBox(form.parentWidget())
         spin.setRange(min_v, max_v)
         form.addRow(label, spin)
@@ -444,7 +446,7 @@ class SettingsDialog(QDialog):
         return spin
 
     def _add_settings_section(self, parent_layout: QVBoxLayout, title: str, description: str = "") -> tuple[QGroupBox, QFormLayout]:
-        """Internal helper for `_add_settings_section`."""
+        """Add settings section."""
         box = QGroupBox(title, parent_layout.parentWidget())
         box.setObjectName("settingsSectionGroup")
         box_layout = QVBoxLayout(box)
@@ -462,7 +464,7 @@ class SettingsDialog(QDialog):
         return box, form
 
     def _apply_non_stretch_settings_layout(self) -> None:
-        """Internal helper for `_apply_non_stretch_settings_layout`."""
+        """Apply non stretch settings layout."""
         for form in self.findChildren(QFormLayout):
             try:
                 form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.FieldsStayAtSizeHint)
@@ -516,7 +518,7 @@ class SettingsDialog(QDialog):
         *,
         on_change=None,
     ) -> tuple[QLabel, QWidget]:
-        """Internal helper for `_build_color_row`."""
+        """Build color row."""
         holder = QWidget(parent)
         row = QHBoxLayout(holder)
         row.setContentsMargins(0, 0, 0, 0)
@@ -530,10 +532,12 @@ class SettingsDialog(QDialog):
         self._register_search(category_idx, label, preview)
 
         def apply_value(hex_value: str) -> None:
-            """Apply the changes or settings handled by `apply_value`."""
+            """Apply value."""
             if hex_value:
                 preview.setText(hex_value)
-                preview.setStyleSheet(f"background-color: {hex_value}; border: 1px solid #888; padding: 2px;")
+                preview_settings = self._theme_probe_preview_settings()
+                tokens = build_tokens_from_settings(preview_settings)
+                preview.setStyleSheet(build_color_swatch_style(tokens, hex_value))
             else:
                 preview.setText("(auto)")
                 preview.setStyleSheet("")
@@ -543,7 +547,7 @@ class SettingsDialog(QDialog):
                 on_change()
 
         def pick_color() -> None:
-            """Execute the `pick_color` workflow."""
+            """Open a picker for color."""
             current = preview.text() if preview.text() != "(auto)" else "#ffffff"
             color = QColorDialog.getColor(QColor(current), self, "Select Color")
             if color.isValid():
@@ -555,7 +559,7 @@ class SettingsDialog(QDialog):
 
     @staticmethod
     def _status_preview_label_for_key(key: str) -> str:
-        """Internal helper for `_status_preview_label_for_key`."""
+        """Handle status preview label for key."""
         labels = {
             "status_show_position": "Ln 1, Col 1",
             "status_show_zoom": "100%",
@@ -573,7 +577,7 @@ class SettingsDialog(QDialog):
         return labels.get(key, key)
 
     def _refresh_status_layout_preview(self) -> None:
-        """Internal helper for `_refresh_status_layout_preview`."""
+        """Refresh status layout preview."""
         preview = getattr(self, "status_layout_preview", None)
         if not isinstance(preview, QLabel):
             return
@@ -584,19 +588,19 @@ class SettingsDialog(QDialog):
         preview.setText("  |  ".join(tokens) if tokens else "(No status items selected)")
 
     def _sync_accessibility_controls_enabled(self) -> None:
-        """Internal helper for `_sync_accessibility_controls_enabled`."""
+        """Sync accessibility controls enabled."""
         rate_spin = getattr(self, "accessibility_cursor_blink_rate_spin", None)
         blink_toggle = getattr(self, "accessibility_cursor_blink_checkbox", None)
         if isinstance(rate_spin, QSpinBox) and isinstance(blink_toggle, QCheckBox):
             rate_spin.setEnabled(bool(blink_toggle.isChecked()))
 
     def _on_follow_system_theme_changed(self) -> None:
-        """Internal helper for `_on_follow_system_theme_changed`."""
+        """Handle on follow system theme changed."""
         self._sync_theme_controls_enabled()
         self._apply_dialog_theme()
 
     def _sync_theme_controls_enabled(self) -> None:
-        """Internal helper for `_sync_theme_controls_enabled`."""
+        """Sync theme controls enabled."""
         follow = bool(getattr(self, "follow_system_theme_checkbox", None).isChecked())
         self.dark_checkbox.setEnabled(not follow)
 
@@ -970,6 +974,12 @@ class SettingsDialog(QDialog):
         self._register_route_aliases(idx, "accessibility", "a11y")
         self.accessibility_keyboard_only_checkbox = self._add_check(accessibility_layout, idx, "Enable keyboard-only mode")
         self.accessibility_reduce_motion_checkbox = self._add_check(accessibility_layout, idx, "Reduce UI motion and animations")
+        self.accessibility_preset_combo = self._add_combo(
+            accessibility_layout,
+            idx,
+            "Accessibility preset",
+            ["none", "high_contrast", "dyslexic_font", "large_text", "low_stimulation"],
+        )
         self.accessibility_cursor_blink_checkbox = self._add_check(accessibility_layout, idx, "Enable cursor blink")
         self.accessibility_cursor_blink_rate_spin = self._add_spin(
             accessibility_layout,
@@ -979,6 +989,10 @@ class SettingsDialog(QDialog):
             2500,
         )
         self.accessibility_cursor_blink_checkbox.toggled.connect(self._sync_accessibility_controls_enabled)
+        self.accessibility_preset_combo.setAccessibleName("Accessibility preset")
+        self.accessibility_preset_combo.setAccessibleDescription(
+            "Choose a preset to quickly apply a group of accessibility-friendly settings."
+        )
 
         # AI & Updates
         ai = QWidget(self)
@@ -1147,6 +1161,53 @@ class SettingsDialog(QDialog):
         self.recovery_discard_days_spin = self._add_spin(privacy_layout, idx, "Discard recovery after days", 1, 90)
         self.local_history_persist_checkbox = self._add_check(privacy_layout, idx, "Persist local history across restarts")
         self.crash_snapshot_checkbox = self._add_check(privacy_layout, idx, "Capture crash-safe session snapshots")
+        self.security_profile_combo = self._add_combo(
+            privacy_layout,
+            idx,
+            "Security profile",
+            ["beginner", "balanced", "power_user", "custom"],
+        )
+        self.security_profile_description_label = QLabel(privacy)
+        self.security_profile_description_label.setWordWrap(True)
+        privacy_layout.addRow("Profile summary", self.security_profile_description_label)
+        self.trust_known_workspace_files_checkbox = self._add_check(privacy_layout, idx, "Trust workspace files automatically")
+        self.file_trust_prompt_checkbox = self._add_check(privacy_layout, idx, "Prompt before editing untrusted notes")
+        self.safe_save_atomic_replace_checkbox = self._add_check(privacy_layout, idx, "Use atomic safe save for text files")
+        self.safe_save_backup_checkbox = self._add_check(privacy_layout, idx, "Create .bak before overwrite")
+        self.safe_save_warn_scripts_checkbox = self._add_check(privacy_layout, idx, "Warn when saving script-like extensions")
+        self.custom_security_box = QGroupBox("Custom Profile Overrides", privacy)
+        self.custom_security_box.setObjectName("settingsSectionGroup")
+        custom_security_layout = QFormLayout(self.custom_security_box)
+        self.custom_plugin_policy_combo = self._add_combo(
+            custom_security_layout,
+            idx,
+            "Plugin policy",
+            ["built_in_only", "signed_only", "unsigned_local_allowed"],
+        )
+        self.custom_ai_policy_combo = self._add_combo(
+            custom_security_layout,
+            idx,
+            "AI policy",
+            ["redacted_only", "full_with_warning"],
+        )
+        self.custom_update_policy_combo = self._add_combo(
+            custom_security_layout,
+            idx,
+            "Update policy",
+            ["official_only", "custom_feed_allowed"],
+        )
+        self.custom_save_policy_combo = self._add_combo(
+            custom_security_layout,
+            idx,
+            "Save policy",
+            ["safe_strict", "safe_default", "power_flexible"],
+        )
+        self.custom_persist_trust_checkbox = self._add_check(custom_security_layout, idx, "Persist trust decisions")
+        self.custom_allow_persistent_trust_checkbox = self._add_check(custom_security_layout, idx, "Allow persistent trust")
+        self.custom_allow_custom_feed_checkbox = self._add_check(custom_security_layout, idx, "Allow custom update feed")
+        self.custom_allow_unsigned_plugins_checkbox = self._add_check(custom_security_layout, idx, "Allow unsigned plugins")
+        privacy_layout.addRow(self.custom_security_box)
+        self.security_profile_combo.currentTextChanged.connect(self._on_security_profile_changed)
 
         # Backup
         backup = QWidget(self)
@@ -1283,6 +1344,8 @@ class SettingsDialog(QDialog):
     def _apply_search_filter(self, text: str) -> None:
         """Filter the navigation list and highlight matching controls based on the search query."""
         query = text.strip().lower()
+        preview_settings = self._theme_probe_preview_settings()
+        tokens = build_tokens_from_settings(preview_settings)
         for widget in self._highlighted_widgets:
             widget.setStyleSheet("")
         self._highlighted_widgets.clear()
@@ -1291,7 +1354,7 @@ class SettingsDialog(QDialog):
             for idx, label, widget in self._search_entries:
                 if query in label:
                     counts[idx] += 1
-                    widget.setStyleSheet("border: 1px solid #4a90e2;")
+                    widget.setStyleSheet(f"border: 1px solid {tokens.accent};")
                     self._highlighted_widgets.append(widget)
             matching = [i for i, c in enumerate(counts) if c > 0]
             if len(matching) == 1:
@@ -1308,10 +1371,11 @@ class SettingsDialog(QDialog):
         self._ensure_visible_nav_selection()
 
     def _set_color_label(self, label: QLabel, value: str) -> None:
-        """Internal helper for `_set_color_label`."""
+        """Set color label."""
         if value:
+            tokens = build_tokens_from_settings(self._theme_probe_preview_settings())
             label.setText(value)
-            label.setStyleSheet(f"background-color: {value}; border: 1px solid #888; padding: 2px;")
+            label.setStyleSheet(build_color_swatch_style(tokens, value))
         else:
             label.setText("(auto)")
             label.setStyleSheet("")
@@ -1345,7 +1409,7 @@ class SettingsDialog(QDialog):
         self._apply_settings_stack_palette(tokens.surface_bg, tokens.text)
 
     def _apply_settings_stack_direct_style(self, surface_bg: str, text: str, text_muted: str) -> None:
-        """Internal helper for `_apply_settings_stack_direct_style`."""
+        """Apply settings stack direct style."""
         if not hasattr(self, "settings_pages"):
             return
         host_style = (
@@ -1376,14 +1440,14 @@ class SettingsDialog(QDialog):
             scroll.viewport().setStyleSheet(scroll_style)
 
     def _apply_settings_stack_palette(self, surface_bg: str, text: str) -> None:
-        """Internal helper for `_apply_settings_stack_palette`."""
+        """Apply settings stack palette."""
         bg = QColor(surface_bg)
         fg = QColor(text)
         if not bg.isValid() or not fg.isValid():
             return
 
         def _apply_palette(widget: QWidget | None) -> None:
-            """Internal helper for `_apply_palette`."""
+            """Apply palette."""
             if not isinstance(widget, QWidget):
                 return
             pal = widget.palette()
@@ -1430,7 +1494,7 @@ class SettingsDialog(QDialog):
         return preview_settings
 
     def _log_theme_probe(self, stage: str) -> None:
-        """Internal helper for `_log_theme_probe`."""
+        """Handle log theme probe."""
         try:
             tokens = build_tokens_from_settings(self._theme_probe_preview_settings())
             host = self.settings_pages.currentWidget() if hasattr(self, "settings_pages") else None
@@ -1439,7 +1503,7 @@ class SettingsDialog(QDialog):
             body = host.findChild(QWidget, "settingsPageBody") if isinstance(host, QWidget) else None
 
             def _palette_snapshot(widget: QWidget | None) -> str:
-                """Internal helper for `_palette_snapshot`."""
+                """Handle palette snapshot."""
                 if not isinstance(widget, QWidget):
                     return "n/a"
                 pal = widget.palette()
@@ -1465,7 +1529,7 @@ class SettingsDialog(QDialog):
             _LOGGER.warning("[SettingsThemeProbe] stage=%s failed: %s", stage, exc)
 
     def showEvent(self, event: QShowEvent) -> None:
-        """Execute the `showEvent` workflow."""
+        """Refresh state when the widget becomes visible."""
         super().showEvent(event)
         if not self._theme_probe_logged_open:
             self._theme_probe_logged_open = True
@@ -1474,14 +1538,14 @@ class SettingsDialog(QDialog):
             QTimer.singleShot(600, lambda: self._log_theme_probe("post_600ms"))
 
     def paintEvent(self, event: QPaintEvent) -> None:
-        """Execute the `paintEvent` workflow."""
+        """Paint the widget using the current theme and state."""
         super().paintEvent(event)
         if not self._theme_probe_logged_first_paint:
             self._theme_probe_logged_first_paint = True
             self._log_theme_probe("first_paint")
 
     def _npp_dark_mode_preference_combo(self) -> QComboBox | None:
-        """Internal helper for `_npp_dark_mode_preference_combo`."""
+        """Handle npp dark mode preference combo."""
         controls = getattr(self, "_npp_pref_controls", {})
         if not isinstance(controls, dict):
             return None
@@ -1492,7 +1556,7 @@ class SettingsDialog(QDialog):
         return widget if isinstance(widget, QComboBox) else None
 
     def _sync_dark_checkbox_from_npp_preference(self) -> None:
-        """Internal helper for `_sync_dark_checkbox_from_npp_preference`."""
+        """Sync dark checkbox from npp preference."""
         combo = self._npp_dark_mode_preference_combo()
         if combo is None:
             return
@@ -1508,12 +1572,12 @@ class SettingsDialog(QDialog):
         self._apply_dialog_theme()
 
     def _label_color_value(self, label: QLabel) -> str:
-        """Internal helper for `_label_color_value`."""
+        """Handle label color value."""
         text = label.text().strip()
         return "" if text == "(auto)" else text
 
     def _style_token_label(self, token: str) -> QLabel:
-        """Internal helper for `_style_token_label`."""
+        """Handle style token label."""
         mapping = {
             "keyword": self.scintilla_style_keyword_label,
             "string": self.scintilla_style_string_label,
@@ -1523,7 +1587,7 @@ class SettingsDialog(QDialog):
         return mapping[token]
 
     def _effective_scintilla_style_color(self, token: str, language: str) -> str:
-        """Internal helper for `_effective_scintilla_style_color`."""
+        """Handle effective scintilla style color."""
         theme_name = str(self.scintilla_style_theme_combo.currentText() or "default").strip().lower()
         theme = SYNTAX_THEME_PRESETS.get(theme_name, SYNTAX_THEME_PRESETS.get("default", {}))
         fallback = str(theme.get(token, "#000000"))
@@ -1540,7 +1604,7 @@ class SettingsDialog(QDialog):
         return fallback
 
     def _refresh_scintilla_style_preview(self) -> None:
-        """Internal helper for `_refresh_scintilla_style_preview`."""
+        """Refresh scintilla style preview."""
         preview = getattr(self, "scintilla_style_preview", None)
         if not isinstance(preview, QTextEdit):
             return
@@ -1601,7 +1665,7 @@ class SettingsDialog(QDialog):
         )
 
     def _load_scintilla_style_language_controls(self, language: str) -> None:
-        """Internal helper for `_load_scintilla_style_language_controls`."""
+        """Load scintilla style language controls."""
         lang = str(language or "python").strip().lower() or "python"
         token_map = self._scintilla_style_overrides_working.get(lang, {})
         for token in ("keyword", "string", "comment", "number"):
@@ -1609,7 +1673,7 @@ class SettingsDialog(QDialog):
         self._refresh_scintilla_style_preview()
 
     def _capture_current_scintilla_style_language_controls(self) -> None:
-        """Internal helper for `_capture_current_scintilla_style_language_controls`."""
+        """Capture current scintilla style language controls."""
         lang = str(getattr(self, "_scintilla_style_current_language", "python") or "python").strip().lower() or "python"
         token_map: dict[str, str] = {}
         for token in ("keyword", "string", "comment", "number"):
@@ -1622,13 +1686,13 @@ class SettingsDialog(QDialog):
             self._scintilla_style_overrides_working.pop(lang, None)
 
     def _on_scintilla_style_language_changed(self, language: str) -> None:
-        """Internal helper for `_on_scintilla_style_language_changed`."""
+        """Handle on scintilla style language changed."""
         self._capture_current_scintilla_style_language_controls()
         self._scintilla_style_current_language = str(language or "python").strip().lower() or "python"
         self._load_scintilla_style_language_controls(self._scintilla_style_current_language)
 
     def _reset_scintilla_style_language_overrides(self) -> None:
-        """Internal helper for `_reset_scintilla_style_language_overrides`."""
+        """Handle reset scintilla style language overrides."""
         self._capture_current_scintilla_style_language_controls()
         lang = str(self.scintilla_style_language_combo.currentText() or "python").strip().lower() or "python"
         self._scintilla_style_overrides_working.pop(lang, None)
@@ -1636,7 +1700,7 @@ class SettingsDialog(QDialog):
         self._load_scintilla_style_language_controls(lang)
 
     def _clear_scintilla_style_overrides(self) -> None:
-        """Internal helper for `_clear_scintilla_style_overrides`."""
+        """Clear scintilla style overrides."""
         self._scintilla_style_overrides_working = {}
         lang = str(self.scintilla_style_language_combo.currentText() or "python").strip().lower() or "python"
         self._scintilla_style_current_language = lang
@@ -1849,6 +1913,13 @@ class SettingsDialog(QDialog):
         self.recovery_discard_days_spin.setValue(int(s.get("recovery_discard_after_days", 14)))
         self.local_history_persist_checkbox.setChecked(bool(s.get("local_history_persist_enabled", True)))
         self.crash_snapshot_checkbox.setChecked(bool(s.get("crash_snapshot_enabled", True)))
+        self._profile_state_store = get_profile_state_store(s)
+        self._loaded_security_profile_id = str(s.get("security_profile_id", "balanced") or "balanced")
+        self.security_profile_combo.blockSignals(True)
+        self.security_profile_combo.setCurrentText(self._loaded_security_profile_id)
+        self.security_profile_combo.blockSignals(False)
+        self._apply_security_profile_controls(self._loaded_security_profile_id, s)
+        self._sync_security_profile_summary()
         self.backup_output_dir_edit.setText(str(s.get("backup_output_dir", "")))
 
         self.experimental_checkbox.setChecked(bool(s.get("experimental_features", False)))
@@ -1868,6 +1939,7 @@ class SettingsDialog(QDialog):
         self.autosave_include_pdf_checkbox.setChecked(bool(s.get("autosave_include_pdf", False)))
         self.accessibility_keyboard_only_checkbox.setChecked(bool(s.get("keyboard_only_mode", False)))
         self.accessibility_reduce_motion_checkbox.setChecked(bool(s.get("accessibility_reduce_motion", False)))
+        self.accessibility_preset_combo.setCurrentText(str(s.get("accessibility_preset", "none") or "none"))
         self.accessibility_cursor_blink_checkbox.setChecked(bool(s.get("accessibility_cursor_blink", True)))
         self.accessibility_cursor_blink_rate_spin.setValue(int(s.get("accessibility_cursor_blink_rate_ms", 1000)))
         self._sync_accessibility_controls_enabled()
@@ -1988,6 +2060,26 @@ class SettingsDialog(QDialog):
         s["recovery_discard_after_days"] = int(self.recovery_discard_days_spin.value())
         s["local_history_persist_enabled"] = self.local_history_persist_checkbox.isChecked()
         s["crash_snapshot_enabled"] = self.crash_snapshot_checkbox.isChecked()
+        active_profile_id = self.security_profile_combo.currentText()
+        state_store = dict(getattr(self, "_profile_state_store", {}) or {})
+        state_store[str(getattr(self, "_loaded_security_profile_id", active_profile_id) or active_profile_id)] = (
+            self._capture_security_profile_controls()
+        )
+        self._profile_state_store = state_store
+        s["security_profile_id"] = active_profile_id
+        s["security_profile_states"] = state_store
+        active_state = dict(state_store.get(active_profile_id, {}) or {})
+        s["trust_known_workspace_files"] = bool(active_state.get("trust_known_workspace_files", True))
+        s["file_trust_prompt_on_external_open"] = bool(active_state.get("file_trust_prompt_on_external_open", True))
+        s["safe_save_atomic_replace"] = bool(active_state.get("safe_save_atomic_replace", True))
+        s["safe_save_backup_on_overwrite"] = bool(active_state.get("safe_save_backup_on_overwrite", True))
+        s["safe_save_warn_script_extensions"] = bool(active_state.get("safe_save_warn_script_extensions", True))
+        s["ai_send_redact_emails"] = bool(active_state.get("ai_send_redact_emails", True))
+        s["ai_send_redact_paths"] = bool(active_state.get("ai_send_redact_paths", True))
+        s["ai_send_redact_tokens"] = bool(active_state.get("ai_send_redact_tokens", True))
+        s["ai_key_storage_mode"] = str(active_state.get("ai_key_storage_mode", "env_only"))
+        s["update_require_signed_metadata"] = bool(active_state.get("update_require_signed_metadata", True))
+        s["security_profile_custom_overrides"] = dict(active_state.get("security_profile_custom_overrides", {}) or {})
         s["backup_output_dir"] = self.backup_output_dir_edit.text().strip()
 
         s["experimental_features"] = self.experimental_checkbox.isChecked()
@@ -2006,11 +2098,104 @@ class SettingsDialog(QDialog):
         s["autosave_include_pdf"] = self.autosave_include_pdf_checkbox.isChecked()
         s["keyboard_only_mode"] = self.accessibility_keyboard_only_checkbox.isChecked()
         s["accessibility_reduce_motion"] = self.accessibility_reduce_motion_checkbox.isChecked()
+        s["accessibility_preset"] = self.accessibility_preset_combo.currentText()
         s["accessibility_cursor_blink"] = self.accessibility_cursor_blink_checkbox.isChecked()
+        preset = str(s.get("accessibility_preset", "none") or "none").strip().lower()
+        if preset == "high_contrast":
+            s["theme"] = "High Contrast"
+            s["dark_mode"] = True
+        elif preset == "dyslexic_font":
+            s["font_family"] = "OpenDyslexic"
+            s["font_size"] = max(13, int(s.get("font_size", 11)))
+        elif preset == "large_text":
+            s["font_size"] = max(15, int(s.get("font_size", 11)))
+            s["keyboard_only_mode"] = True
+        elif preset == "low_stimulation":
+            s["accessibility_reduce_motion"] = True
+            s["accessibility_cursor_blink"] = False
+            s["ui_density"] = "comfortable"
         s["accessibility_cursor_blink_rate_ms"] = int(self.accessibility_cursor_blink_rate_spin.value())
         s["settings_schema_version"] = 3
         collect_notepadpp_like_page_settings(self, s)
         return migrate_settings(s)
+
+    def _sync_security_profile_summary(self, *_args) -> None:
+        """Refresh the security-profile summary and immutable-control states."""
+        profile_id = str(self.security_profile_combo.currentText() or "balanced")
+        profile = BUILTIN_SECURITY_PROFILES.get(profile_id, BUILTIN_SECURITY_PROFILES["balanced"])
+        self.security_profile_description_label.setText(profile.description)
+        editable = profile_id == "custom"
+        self.custom_security_box.setVisible(editable)
+        for widget in (
+            self.trust_known_workspace_files_checkbox,
+            self.file_trust_prompt_checkbox,
+            self.safe_save_atomic_replace_checkbox,
+            self.safe_save_backup_checkbox,
+            self.safe_save_warn_scripts_checkbox,
+        ):
+            widget.setEnabled(editable)
+
+    def _capture_security_profile_controls(self) -> dict[str, object]:
+        """Capture profile-scoped controls from the dialog."""
+        return {
+            "trust_known_workspace_files": self.trust_known_workspace_files_checkbox.isChecked(),
+            "file_trust_prompt_on_external_open": self.file_trust_prompt_checkbox.isChecked(),
+            "safe_save_atomic_replace": self.safe_save_atomic_replace_checkbox.isChecked(),
+            "safe_save_backup_on_overwrite": self.safe_save_backup_checkbox.isChecked(),
+            "safe_save_warn_script_extensions": self.safe_save_warn_scripts_checkbox.isChecked(),
+            "ai_send_redact_emails": self.ai_send_redact_emails_checkbox.isChecked(),
+            "ai_send_redact_paths": self.ai_send_redact_paths_checkbox.isChecked(),
+            "ai_send_redact_tokens": self.ai_send_redact_tokens_checkbox.isChecked(),
+            "ai_key_storage_mode": self.ai_key_storage_mode_combo.currentText(),
+            "update_require_signed_metadata": self.update_require_signed_checkbox.isChecked(),
+            "security_profile_custom_overrides": {
+                "plugin_policy": self.custom_plugin_policy_combo.currentText(),
+                "ai_policy": self.custom_ai_policy_combo.currentText(),
+                "update_policy": self.custom_update_policy_combo.currentText(),
+                "save_policy": self.custom_save_policy_combo.currentText(),
+                "persist_trust_decisions": self.custom_persist_trust_checkbox.isChecked(),
+                "allow_persistent_trust": self.custom_allow_persistent_trust_checkbox.isChecked(),
+                "allow_custom_update_feed": self.custom_allow_custom_feed_checkbox.isChecked(),
+                "allow_unsigned_plugins": self.custom_allow_unsigned_plugins_checkbox.isChecked(),
+            },
+        }
+
+    def _apply_security_profile_controls(self, profile_id: str, settings: dict) -> None:
+        """Load profile-scoped controls for one profile."""
+        state_store = dict(getattr(self, "_profile_state_store", {}) or {})
+        merged = dict(settings)
+        merged.update(dict(state_store.get(profile_id, {}) or {}))
+        self.trust_known_workspace_files_checkbox.setChecked(bool(merged.get("trust_known_workspace_files", True)))
+        self.file_trust_prompt_checkbox.setChecked(bool(merged.get("file_trust_prompt_on_external_open", True)))
+        self.safe_save_atomic_replace_checkbox.setChecked(bool(merged.get("safe_save_atomic_replace", True)))
+        self.safe_save_backup_checkbox.setChecked(bool(merged.get("safe_save_backup_on_overwrite", True)))
+        self.safe_save_warn_scripts_checkbox.setChecked(bool(merged.get("safe_save_warn_script_extensions", True)))
+        self.ai_send_redact_emails_checkbox.setChecked(bool(merged.get("ai_send_redact_emails", True)))
+        self.ai_send_redact_paths_checkbox.setChecked(bool(merged.get("ai_send_redact_paths", True)))
+        self.ai_send_redact_tokens_checkbox.setChecked(bool(merged.get("ai_send_redact_tokens", True)))
+        self.ai_key_storage_mode_combo.setCurrentText(str(merged.get("ai_key_storage_mode", "env_only")))
+        self.update_require_signed_checkbox.setChecked(bool(merged.get("update_require_signed_metadata", True)))
+        overrides = dict(merged.get("security_profile_custom_overrides", {}) or {})
+        self.custom_plugin_policy_combo.setCurrentText(str(overrides.get("plugin_policy", "signed_only")))
+        self.custom_ai_policy_combo.setCurrentText(str(overrides.get("ai_policy", "redacted_only")))
+        self.custom_update_policy_combo.setCurrentText(str(overrides.get("update_policy", "official_only")))
+        self.custom_save_policy_combo.setCurrentText(str(overrides.get("save_policy", "safe_default")))
+        self.custom_persist_trust_checkbox.setChecked(bool(overrides.get("persist_trust_decisions", True)))
+        self.custom_allow_persistent_trust_checkbox.setChecked(bool(overrides.get("allow_persistent_trust", True)))
+        self.custom_allow_custom_feed_checkbox.setChecked(bool(overrides.get("allow_custom_update_feed", False)))
+        self.custom_allow_unsigned_plugins_checkbox.setChecked(bool(overrides.get("allow_unsigned_plugins", False)))
+
+    def _on_security_profile_changed(self, *_args) -> None:
+        """Store current profile controls, then load the newly selected profile state."""
+        selected = str(self.security_profile_combo.currentText() or "balanced")
+        current = str(getattr(self, "_loaded_security_profile_id", selected) or selected)
+        state_store = dict(getattr(self, "_profile_state_store", {}) or {})
+        if hasattr(self, "trust_known_workspace_files_checkbox"):
+            state_store[current] = self._capture_security_profile_controls()
+        self._profile_state_store = state_store
+        self._loaded_security_profile_id = selected
+        self._apply_security_profile_controls(selected, dict(self._settings))
+        self._sync_security_profile_summary()
 
     def _apply_to_memory(self) -> bool:
         """Validate page inputs and commit the current dialog state into in-memory settings."""
@@ -2044,7 +2229,7 @@ class SettingsDialog(QDialog):
         self._load_controls_from_settings(defaults)
 
     def _reset_onboarding_tips_history(self) -> None:
-        """Internal helper for `_reset_onboarding_tips_history`."""
+        """Handle reset onboarding tips history."""
         state = self._settings.get("onboarding_state")
         if not isinstance(state, dict):
             state = {}
@@ -2058,7 +2243,7 @@ class SettingsDialog(QDialog):
         )
 
     def _reset_onboarding_progress(self) -> None:
-        """Internal helper for `_reset_onboarding_progress`."""
+        """Handle reset onboarding progress."""
         confirm = QMessageBox.question(
             self,
             "Reset Onboarding Progress",
@@ -2116,11 +2301,11 @@ class SettingsDialog(QDialog):
         self._load_controls_from_settings(self._settings)
 
     def backup_settings(self) -> None:
-        """Execute the `backup_settings` workflow."""
+        """Back up settings."""
         self._export_profile()
 
     def restore_settings(self) -> None:
-        """Execute the `restore_settings` workflow."""
+        """Restore settings."""
         self._import_profile()
 
     def _export_scintilla_profile(self) -> None:
@@ -2162,7 +2347,7 @@ class SettingsDialog(QDialog):
         self._load_scintilla_profile_controls(profile)
 
     def _reset_scintilla_profile_defaults(self) -> None:
-        """Internal helper for `_reset_scintilla_profile_defaults`."""
+        """Handle reset scintilla profile defaults."""
         defaults = self._parent_window._build_default_settings()
         self._load_scintilla_profile_controls(ScintillaProfile.from_settings(defaults))
 
@@ -2185,7 +2370,7 @@ class SettingsDialog(QDialog):
         self._load_controls_from_settings(self._settings)
 
     def _pick_backup_output_dir(self) -> None:
-        """Internal helper for `_pick_backup_output_dir`."""
+        """Handle pick backup output dir."""
         start_dir = self.backup_output_dir_edit.text().strip() or ""
         picked = themed_file_dialog_get_existing_directory(self, "Choose Backup Output Folder", start_dir)
         if picked:
@@ -2206,7 +2391,7 @@ class SettingsDialog(QDialog):
         self.accept()
 
     def _clear_translation_cache(self) -> None:
-        """Internal helper for `_clear_translation_cache`."""
+        """Clear translation cache."""
         if hasattr(self._parent_window, "clear_translation_cache"):
             self._parent_window.clear_translation_cache()
             QMessageBox.information(self, "Translation Cache", "Translation cache cleared.")

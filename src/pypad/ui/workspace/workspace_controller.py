@@ -158,7 +158,7 @@ class WorkspaceController:
         self.window.show_status_message("Indexing workspace in background...", 2000)
 
         def worker() -> None:
-            """Execute the `worker` workflow."""
+            """Handle worker."""
             try:
                 files = collect_workspace_files(
                     root=root,
@@ -199,9 +199,9 @@ class WorkspaceController:
         from PySide6.QtWidgets import QCheckBox, QDialogButtonBox, QGridLayout, QLabel, QLineEdit
 
         class FindInFilesDialog(QDialog):
-            """Dialog class that implements the `FindInFilesDialog` workflow."""
+            """Dialog for collecting workspace search options."""
             def __init__(self, parent=None) -> None:
-                """Initialize the `workspace_controller` state for this instance."""
+                """Build the find-in-files dialog and initialize its search controls."""
                 super().__init__(parent)
                 self.setWindowTitle("Find in Files")
                 self.find_edit = QLineEdit(self)
@@ -234,7 +234,7 @@ class WorkspaceController:
                 layout.addWidget(buttons, 6, 0, 1, 2)
 
             def values(self) -> tuple[str, bool, bool, bool, list[str], list[str], int]:
-                """Execute the `values` workflow."""
+                """Handle values."""
                 max_results = 800
                 try:
                     max_results = max(50, min(5000, int(self.max_results_edit.text().strip() or "800")))
@@ -328,9 +328,9 @@ class WorkspaceController:
         )
 
         class ReplaceDialog(QDialog):
-            """Dialog class that implements the `ReplaceDialog` workflow."""
+            """Dialog for collecting workspace replace options."""
             def __init__(self, parent=None) -> None:
-                """Initialize the `workspace_controller` state for this instance."""
+                """Build the replace-in-files dialog and initialize its replacement controls."""
                 super().__init__(parent)
                 self.setWindowTitle("Replace in Files")
                 self.find_edit = QLineEdit(self)
@@ -369,7 +369,7 @@ class WorkspaceController:
                 layout.addWidget(buttons, 6, 0, 1, 2)
 
             def values(self) -> tuple[str, str, bool, bool, bool, list[str], list[str]]:
-                """Execute the `values` workflow."""
+                """Handle values."""
                 return (
                     self.find_edit.text(),
                     self.replace_edit.text(),
@@ -381,9 +381,9 @@ class WorkspaceController:
                 )
 
         class PreviewDialog(QDialog):
-            """Dialog class that implements the `PreviewDialog` workflow."""
+            """Dialog for previewing workspace replacements before applying them."""
             def __init__(self, parent, changes: list[dict]) -> None:
-                """Initialize the `workspace_controller` state for this instance."""
+                """Build the replace preview dialog and initialize its diff preview widgets."""
                 super().__init__(parent)
                 self.setWindowTitle("Replace Preview")
                 self.resize(980, 680)
@@ -410,7 +410,7 @@ class WorkspaceController:
                     self.file_list.setCurrentRow(0)
 
             def _show_diff(self, row: int) -> None:
-                """Internal helper for `_show_diff`."""
+                """Show diff."""
                 if row < 0 or row >= len(self._changes):
                     self.diff_view.clear()
                     return
@@ -621,7 +621,7 @@ class WorkspaceController:
         return restored
 
     def handle_dropped_urls(self, local_paths: list[str]) -> bool:
-        """Handle drag-and-drop paths by inserting media or opening files when appropriate."""
+        """Handle dropped file URLs and open or import the referenced files."""
         if not local_paths:
             return False
         media_ext = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".svg", ".pdf"}

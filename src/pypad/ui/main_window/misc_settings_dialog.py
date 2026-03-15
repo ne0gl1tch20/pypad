@@ -33,10 +33,11 @@ from PySide6.QtWidgets import (
 )
 
 from pypad.app_settings.defaults import DEFAULT_UPDATE_FEED_URL
+from pypad.ui.theme.theme_tokens import build_color_swatch_style, build_tokens_from_settings
 
 
 def _normalize_hex_color(value: str) -> str | None:
-    """Internal helper for `_normalize_hex_color`."""
+    """Normalize hex color."""
     text = str(value or "").strip()
     if not text:
         return None
@@ -50,9 +51,9 @@ def _normalize_hex_color(value: str) -> str | None:
 
 
 class SettingsDialog(QDialog):
-    """Dialog class that implements the `SettingsDialog` workflow."""
+    """settings dialog."""
     def __init__(self, parent: Notepad, settings: dict) -> None:
-        """Initialize the `misc_settings_dialog` state for this instance."""
+        """Build the settings dialog and initialize its controls from the current settings."""
         super().__init__(parent)
         self.setWindowTitle("Settings")
         self.resize(500, 500)
@@ -333,14 +334,14 @@ class SettingsDialog(QDialog):
 
     @staticmethod
     def _normalized_or_default(value: str, fallback: str) -> str:
-        """Internal helper for `_normalized_or_default`."""
+        """Handle normalized or default."""
         normalized = _normalize_hex_color(value)
         if normalized is not None:
             return normalized
         return fallback
 
     def _build_color_picker_row(self, button_text: str, initial_hex: str, allow_empty: bool) -> tuple[QLabel, QWidget]:
-        """Internal helper for `_build_color_picker_row`."""
+        """Build color picker row."""
         holder = QWidget(self)
         row_layout = QHBoxLayout(holder)
         row_layout.setContentsMargins(0, 0, 0, 0)
@@ -351,16 +352,18 @@ class SettingsDialog(QDialog):
         clear_button.setVisible(allow_empty)
 
         def apply_value(hex_value: str) -> None:
-            """Apply the changes or settings handled by `apply_value`."""
+            """Apply value."""
             if hex_value:
                 value_label.setText(hex_value)
-                value_label.setStyleSheet(f"background-color: {hex_value}; border: 1px solid #888; padding: 2px;")
+                from pypad.ui.theme.theme_tokens import build_tokens_from_settings, build_color_swatch_style
+                tokens = build_tokens_from_settings(getattr(self, "_settings", {}))
+                value_label.setStyleSheet(build_color_swatch_style(tokens, hex_value))
             else:
                 value_label.setText("(auto)")
                 value_label.setStyleSheet("")
 
         def pick_color() -> None:
-            """Execute the `pick_color` workflow."""
+            """Open a picker for color."""
             initial = value_label.text() if value_label.text() != "(auto)" else "#ffffff"
             color = QColorDialog.getColor(QColor(initial), self, "Select Color")
             if color.isValid():
@@ -377,14 +380,14 @@ class SettingsDialog(QDialog):
 
     @staticmethod
     def _label_color_value(label: QLabel) -> str:
-        """Internal helper for `_label_color_value`."""
+        """Handle label color value."""
         value = label.text().strip()
         if value == "(auto)":
             return ""
         return value
 
     def get_settings(self) -> dict:
-        """Return the value produced by `get_settings`."""
+        """Return settings."""
         s = dict(self._settings)
         s["app_style"] = self.app_style_combo.currentText()
         s["dark_mode"] = self.dark_checkbox.isChecked()
@@ -426,7 +429,7 @@ class SettingsDialog(QDialog):
         return s
 
     def backup_settings(self) -> None:
-        """Execute the `backup_settings` workflow."""
+        """Back up settings."""
         import json
 
         path, _ = QFileDialog.getSaveFileName(
@@ -444,7 +447,7 @@ class SettingsDialog(QDialog):
             QMessageBox.critical(self, "Backup Failed", f"Could not save settings:\n{e}")
 
     def restore_settings(self) -> None:
-        """Execute the `restore_settings` workflow."""
+        """Restore settings."""
         import json
 
         path, _ = QFileDialog.getOpenFileName(
@@ -474,27 +477,26 @@ class SettingsDialog(QDialog):
         if idx >= 0:
             self.theme_combo.setCurrentIndex(idx)
         restored_accent = self._normalized_or_default(self._settings.get("accent_color", "#4a90e2"), "#4a90e2")
+        tokens = build_tokens_from_settings(self._settings)
         self.accent_color_label.setText(restored_accent)
-        self.accent_color_label.setStyleSheet(
-            f"background-color: {restored_accent}; border: 1px solid #888; padding: 2px;"
-        )
+        self.accent_color_label.setStyleSheet(build_color_swatch_style(tokens, restored_accent))
         self.use_custom_colors_checkbox.setChecked(self._settings.get("use_custom_colors", False))
         restored_editor_bg = self._normalized_or_default(self._settings.get("custom_editor_bg", ""), "")
         restored_editor_fg = self._normalized_or_default(self._settings.get("custom_editor_fg", ""), "")
         restored_chrome_bg = self._normalized_or_default(self._settings.get("custom_chrome_bg", ""), "")
         self.custom_editor_bg_label.setText(restored_editor_bg if restored_editor_bg else "(auto)")
         self.custom_editor_bg_label.setStyleSheet(
-            f"background-color: {restored_editor_bg}; border: 1px solid #888; padding: 2px;"
+            build_color_swatch_style(tokens, restored_editor_bg)
             if restored_editor_bg else ""
         )
         self.custom_editor_fg_label.setText(restored_editor_fg if restored_editor_fg else "(auto)")
         self.custom_editor_fg_label.setStyleSheet(
-            f"background-color: {restored_editor_fg}; border: 1px solid #888; padding: 2px;"
+            build_color_swatch_style(tokens, restored_editor_fg)
             if restored_editor_fg else ""
         )
         self.custom_chrome_bg_label.setText(restored_chrome_bg if restored_chrome_bg else "(auto)")
         self.custom_chrome_bg_label.setStyleSheet(
-            f"background-color: {restored_chrome_bg}; border: 1px solid #888; padding: 2px;"
+            build_color_swatch_style(tokens, restored_chrome_bg)
             if restored_chrome_bg else ""
         )
         self.font_family_edit.setText(self._settings.get("font_family", ""))
@@ -535,7 +537,7 @@ class SettingsDialog(QDialog):
         self.auto_check_updates_checkbox.setChecked(self._settings.get("auto_check_updates", True))
 
     def reset_to_defaults_and_close(self) -> None:
-        """Execute the `reset_to_defaults_and_close` workflow."""
+        """Reset to defaults and close."""
         confirm = QMessageBox.question(
             self,
             "Reset Settings",
@@ -547,6 +549,7 @@ class SettingsDialog(QDialog):
             return
         self.reset_to_defaults_requested = True
         self.accept()
+
 
 
 

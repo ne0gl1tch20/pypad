@@ -11,60 +11,60 @@ from pathlib import Path
 
 
 def _app_roaming_dir() -> Path:
-    """Internal helper for `_app_roaming_dir`."""
+    """Handle app roaming dir."""
     appdata = os.environ.get("APPDATA")
     base_dir = Path(appdata) if appdata else (Path.home() / "AppData" / "Roaming")
     return base_dir / "notepadclone"
 
 def _app_roaming_pypad_dir() -> Path:
-    """Internal helper for `_app_roaming_pypad_dir`."""
+    """Handle app roaming pypad dir."""
     appdata = os.environ.get("APPDATA")
     base_dir = Path(appdata) if appdata else (Path.home() / "AppData" / "Roaming")
     return base_dir / "pypad"
 
 
 def get_settings_file_path() -> Path:
-    """Return the value produced by `get_settings_file_path`."""
+    """Return the path to the main settings file."""
     return _app_roaming_dir() / "settings.json"
 
 
 def get_themes_file_path() -> Path:
-    """Return the value produced by `get_themes_file_path`."""
+    """Return the path to the saved themes file."""
     return _app_roaming_dir() / "themes.json"
 
 
 def get_legacy_settings_file_path() -> Path:
-    """Return the value produced by `get_legacy_settings_file_path`."""
+    """Return the path to the legacy settings file."""
     return _app_roaming_dir() / "save.bin"
 
 
 def get_password_file_path() -> Path:
-    """Return the value produced by `get_password_file_path`."""
+    """Return the path to the encrypted password store."""
     return _app_roaming_dir() / "password.bin"
 
 
 def get_ai_chats_dir_path() -> Path:
-    """Return the value produced by `get_ai_chats_dir_path`."""
+    """Return the directory used to store AI chat sessions."""
     return _app_roaming_dir() / "ai_chats"
 
 
 def get_reminders_file_path() -> Path:
-    """Return the value produced by `get_reminders_file_path`."""
+    """Return the path to the reminders data file."""
     return _app_roaming_dir() / "reminders.json"
 
 
 def get_autosave_dir_path() -> Path:
-    """Return the value produced by `get_autosave_dir_path`."""
+    """Return the directory used for autosave snapshots."""
     return _app_roaming_dir() / "autosave"
 
 
 def get_translation_cache_path() -> Path:
-    """Return the value produced by `get_translation_cache_path`."""
+    """Return the path to the translation cache file."""
     return _app_roaming_dir() / "translation_cache.json"
 
 
 def get_plugins_dir_path() -> Path:
-    """Return the value produced by `get_plugins_dir_path`."""
+    """Return the plugins directory path."""
     new_dir = _app_roaming_pypad_dir() / "plugins"
     legacy_dir = _app_roaming_dir() / "plugins"
     if not new_dir.exists() and legacy_dir.exists():
@@ -85,10 +85,10 @@ def get_plugins_dir_path() -> Path:
 
 
 def get_debug_logs_file_path() -> Path:
-    """Return the value produced by `get_debug_logs_file_path`."""
+    """Return the path to the debug logs file."""
     return _app_roaming_dir() / "debug_logs.log"
 
 
 def get_crash_logs_file_path() -> Path:
-    """Return the value produced by `get_crash_logs_file_path`."""
+    """Return the path to the crash logs file."""
     return _app_roaming_dir() / "crash_tracebacks.log"

@@ -21,7 +21,7 @@ _COMPAT_CUSTOM_ID_PATTERN = re.compile(
 
 @dataclass(frozen=True)
 class ScintillaCompatAuditReport:
-    """Class that implements the `ScintillaCompatAuditReport` runtime behavior."""
+    """scintilla compat audit report."""
     compat_symbols: frozenset[str]
     repo_symbols: frozenset[str]
     repo_missing: tuple[str, ...]
@@ -31,18 +31,18 @@ class ScintillaCompatAuditReport:
 
     @property
     def repo_complete(self) -> bool:
-        """Execute the `repo_complete` workflow."""
+        """Handle repo complete."""
         return not self.repo_missing
 
     @property
     def native_complete(self) -> bool:
-        """Execute the `native_complete` workflow."""
+        """Handle native complete."""
         return bool(self.native_symbols) and not self.native_missing
 
 
 @dataclass(frozen=True)
 class NativeQsciBaseline:
-    """Class that implements the `NativeQsciBaseline` runtime behavior."""
+    """native qsci baseline."""
     generated_at: str
     symbol_count: int
     symbols: tuple[str, ...]
@@ -50,7 +50,7 @@ class NativeQsciBaseline:
 
 @dataclass(frozen=True)
 class ScintillaCompatContractBaseline:
-    """Class that implements the `ScintillaCompatContractBaseline` runtime behavior."""
+    """scintilla compat contract baseline."""
     generated_at: str
     compat_symbol_count: int
     compat_symbols: tuple[str, ...]
@@ -58,12 +58,12 @@ class ScintillaCompatContractBaseline:
 
 
 def _repo_root() -> Path:
-    """Internal helper for `_repo_root`."""
+    """Handle repo root."""
     return Path(__file__).resolve().parents[5]
 
 
 def _iter_python_files(paths: Iterable[Path]) -> Iterable[Path]:
-    """Internal helper for `_iter_python_files`."""
+    """Handle iter python files."""
     for root in paths:
         if not root.exists():
             continue
@@ -71,18 +71,18 @@ def _iter_python_files(paths: Iterable[Path]) -> Iterable[Path]:
 
 
 def _extract_symbols(text: str) -> frozenset[str]:
-    """Internal helper for `_extract_symbols`."""
+    """Extract symbols."""
     return frozenset(_SYMBOL_PATTERN.findall(text))
 
 
 def load_compat_symbols() -> frozenset[str]:
-    """Load data required by `load_compat_symbols`."""
+    """Load the Scintilla compatibility symbol list from its baseline file."""
     editor_path = Path(__file__).resolve().parent / "editor.py"
     return _extract_symbols(editor_path.read_text(encoding="utf-8"))
 
 
 def load_repo_symbols(root: Path | None = None) -> frozenset[str]:
-    """Load data required by `load_repo_symbols`."""
+    """Load the repository symbol list used by the audit tool."""
     root = root or _repo_root()
     found: set[str] = set()
     for path in _iter_python_files((root / "src", root / "tests")):
@@ -96,7 +96,7 @@ def load_repo_symbols(root: Path | None = None) -> frozenset[str]:
 
 
 def load_app_exclusive_symbols() -> tuple[str, ...]:
-    """Load data required by `load_app_exclusive_symbols`."""
+    """Load the symbol list that exists only in the application compatibility layer."""
     editor_path = Path(__file__).resolve().parent / "editor.py"
     text = editor_path.read_text(encoding="utf-8")
     names = sorted({name for name, _value in _COMPAT_CUSTOM_ID_PATTERN.findall(text)})
@@ -104,7 +104,7 @@ def load_app_exclusive_symbols() -> tuple[str, ...]:
 
 
 def load_native_qsci_symbols() -> frozenset[str]:
-    """Load data required by `load_native_qsci_symbols`."""
+    """Load the native QScintilla symbol list used for comparison."""
     try:
         from PySide6.Qsci import QsciScintilla  # type: ignore
     except Exception:
@@ -117,7 +117,7 @@ def load_native_qsci_symbols() -> frozenset[str]:
 
 
 def build_audit_report(root: Path | None = None) -> ScintillaCompatAuditReport:
-    """Build and return the value produced by `build_audit_report`."""
+    """Build audit report."""
     compat_symbols = load_compat_symbols()
     repo_symbols = load_repo_symbols(root)
     native_symbols = load_native_qsci_symbols()
@@ -134,19 +134,19 @@ def build_audit_report(root: Path | None = None) -> ScintillaCompatAuditReport:
 
 
 def native_baseline_path(root: Path | None = None) -> Path:
-    """Execute the `native_baseline_path` workflow."""
+    """Handle native baseline path."""
     root = root or _repo_root()
     return root / "docs" / "scintilla_native_qsci_baseline.json"
 
 
 def contract_baseline_path(root: Path | None = None) -> Path:
-    """Execute the `contract_baseline_path` workflow."""
+    """Handle contract baseline path."""
     root = root or _repo_root()
     return root / "docs" / "scintilla_compat_contract_baseline.json"
 
 
 def save_native_baseline(root: Path | None = None) -> Path:
-    """Save data handled by `save_native_baseline`."""
+    """Save the native QScintilla symbol baseline to disk."""
     from datetime import datetime, UTC
 
     root = root or _repo_root()
@@ -165,7 +165,7 @@ def save_native_baseline(root: Path | None = None) -> Path:
 
 
 def load_native_baseline(root: Path | None = None) -> NativeQsciBaseline | None:
-    """Load data required by `load_native_baseline`."""
+    """Load the saved native QScintilla symbol baseline from disk."""
     path = native_baseline_path(root)
     if not path.exists():
         return None
@@ -179,7 +179,7 @@ def load_native_baseline(root: Path | None = None) -> NativeQsciBaseline | None:
 
 
 def save_contract_baseline(root: Path | None = None) -> Path:
-    """Save data handled by `save_contract_baseline`."""
+    """Save the compatibility contract baseline to disk."""
     from datetime import UTC, datetime
 
     root = root or _repo_root()
@@ -198,7 +198,7 @@ def save_contract_baseline(root: Path | None = None) -> Path:
 
 
 def load_contract_baseline(root: Path | None = None) -> ScintillaCompatContractBaseline | None:
-    """Load data required by `load_contract_baseline`."""
+    """Load the saved compatibility contract baseline from disk."""
     path = contract_baseline_path(root)
     if not path.exists():
         return None

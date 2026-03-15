@@ -29,11 +29,17 @@ class WorkspaceFilesDialog(QDialog):
         self.setWindowTitle(f"Workspace Files - {workspace_root}")
         self.resize(760, 460)
         self._selected_path: str | None = None
+        self.setAccessibleName("Workspace files dialog")
+        self.setAccessibleDescription("Browse indexed workspace files and open the selected file.")
 
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel("Files", self))
+        header = QLabel("Files", self)
+        header.setAccessibleName("Workspace files heading")
+        layout.addWidget(header)
 
         self.list_widget = QListWidget(self)
+        self.list_widget.setAccessibleName("Workspace files list")
+        self.list_widget.setAccessibleDescription("Lists the files available in the current workspace.")
         for path in files:
             item = QListWidgetItem(path, self.list_widget)
             item.setData(Qt.UserRole, path)
@@ -42,9 +48,13 @@ class WorkspaceFilesDialog(QDialog):
         button_row = QHBoxLayout()
         self.open_btn = QPushButton("Open Selected", self)
         self.close_btn = QPushButton("Close", self)
+        self.open_btn.setAccessibleName("Open selected workspace file")
+        self.close_btn.setAccessibleName("Close workspace files dialog")
         button_row.addWidget(self.open_btn)
         button_row.addWidget(self.close_btn)
         layout.addLayout(button_row)
+        self.setTabOrder(self.list_widget, self.open_btn)
+        self.setTabOrder(self.open_btn, self.close_btn)
 
         self.open_btn.clicked.connect(self._open_selected)
         self.close_btn.clicked.connect(self.reject)
@@ -87,27 +97,42 @@ class WorkspaceSearchDialog(QDialog):
         self.resize(900, 520)
         self._selected_path: str | None = None
         self._selected_line: int = 1
+        self.setAccessibleName("Workspace search results dialog")
+        self.setAccessibleDescription("Review workspace search matches, preview a result, and open the selected file.")
 
         layout = QHBoxLayout(self)
 
         left = QVBoxLayout()
-        left.addWidget(QLabel("Matches", self))
+        matches_label = QLabel("Matches", self)
+        matches_label.setAccessibleName("Matches heading")
+        left.addWidget(matches_label)
         self.list_widget = QListWidget(self)
+        self.list_widget.setAccessibleName("Workspace search results list")
+        self.list_widget.setAccessibleDescription("Lists search results for the current workspace query.")
         left.addWidget(self.list_widget)
         layout.addLayout(left, 2)
 
         right = QVBoxLayout()
-        right.addWidget(QLabel("Preview", self))
+        preview_label = QLabel("Preview", self)
+        preview_label.setAccessibleName("Preview heading")
+        right.addWidget(preview_label)
         self.preview = QTextEdit(self)
         self.preview.setReadOnly(True)
+        self.preview.setAccessibleName("Workspace search preview")
+        self.preview.setAccessibleDescription("Shows the text preview for the currently selected search result.")
         right.addWidget(self.preview)
         button_row = QHBoxLayout()
         self.open_btn = QPushButton("Open File", self)
         self.close_btn = QPushButton("Close", self)
+        self.open_btn.setAccessibleName("Open selected search result")
+        self.close_btn.setAccessibleName("Close workspace search dialog")
         button_row.addWidget(self.open_btn)
         button_row.addWidget(self.close_btn)
         right.addLayout(button_row)
         layout.addLayout(right, 3)
+        self.setTabOrder(self.list_widget, self.preview)
+        self.setTabOrder(self.preview, self.open_btn)
+        self.setTabOrder(self.open_btn, self.close_btn)
 
         for result in results:
             label = f"{result.path}:{result.line_no} - {result.line_text.strip()}"

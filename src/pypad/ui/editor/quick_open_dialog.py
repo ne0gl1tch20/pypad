@@ -27,7 +27,7 @@ from pypad.ui.theme.theme_tokens import build_quick_open_qss, build_tokens_from_
 
 @dataclass(frozen=True)
 class QuickOpenEntry:
-    """Class that implements the `QuickOpenEntry` runtime behavior."""
+    """quick open entry."""
     kind: str  # file | open_tab | symbol
     label: str
     subtitle: str
@@ -39,7 +39,7 @@ class QuickOpenEntry:
 
 @dataclass(frozen=True)
 class QuickOpenQuery:
-    """Class that implements the `QuickOpenQuery` runtime behavior."""
+    """quick open query."""
     needle: str
     line: int | None = None  # 1-based
     col: int | None = None   # 1-based
@@ -52,7 +52,7 @@ class QuickOpenQuery:
 
 
 def parse_quick_open_query(text: str) -> QuickOpenQuery:
-    """Execute the `parse_quick_open_query` workflow."""
+    """Parse quick open query."""
     raw = str(text or "").strip()
     if not raw:
         return QuickOpenQuery(needle="")
@@ -114,7 +114,7 @@ def parse_quick_open_query(text: str) -> QuickOpenQuery:
 
 
 def extract_symbol_rows(language: str, text: str) -> list[tuple[int, str]]:
-    """Execute the `extract_symbol_rows` workflow."""
+    """Extract symbol rows."""
     rows: list[tuple[int, str]] = []
     lang = str(language or "").lower().strip()
     src = str(text or "")
@@ -146,7 +146,7 @@ def extract_symbol_rows(language: str, text: str) -> list[tuple[int, str]]:
 
 
 def score_quick_open_match(query: str, candidate: str) -> int:
-    """Execute the `score_quick_open_match` workflow."""
+    """Handle score quick open match."""
     q = str(query or "").strip().lower()
     c = str(candidate or "").lower()
     if not q:
@@ -180,7 +180,7 @@ def score_quick_open_match(query: str, candidate: str) -> int:
 
 
 def split_workspace_symbol_scope(raw_query: str) -> tuple[str | None, str]:
-    """Execute the `split_workspace_symbol_scope` workflow."""
+    """Split workspace symbol scope."""
     q = str(raw_query or "").strip()
     if not q:
         return None, ""
@@ -191,7 +191,7 @@ def split_workspace_symbol_scope(raw_query: str) -> tuple[str | None, str]:
 
 
 class QuickOpenDialog(QDialog):
-    """Dialog class that implements the `QuickOpenDialog` workflow."""
+    """quick open dialog."""
     def __init__(
         self,
         parent,
@@ -205,7 +205,7 @@ class QuickOpenDialog(QDialog):
         current_symbols_provider: Callable[[], list[QuickOpenEntry]] | None = None,
         workspace_symbols_provider: Callable[[], list[QuickOpenEntry]] | None = None,
     ) -> None:
-        """Initialize the `quick_open_dialog` state for this instance."""
+        """Build the quick open dialog and initialize its search and result state."""
         super().__init__(parent)
         self.setWindowTitle("Quick Open / Go to Anything")
         self.resize(760, 560)
@@ -286,7 +286,7 @@ class QuickOpenDialog(QDialog):
         self.search_edit.setFocus()
 
     def _refresh_status(self) -> None:
-        """Internal helper for `_refresh_status`."""
+        """Refresh status."""
         self._poll_providers_and_refresh()
         if not callable(self._status_provider):
             self.status_label.setVisible(False)
@@ -298,7 +298,7 @@ class QuickOpenDialog(QDialog):
     @staticmethod
     def _entries_signature(entries: list[QuickOpenEntry]) -> int:
         # Lightweight content hash to detect updates even when counts are unchanged.
-        """Internal helper for `_entries_signature`."""
+        """Handle entries signature."""
         acc = 1469598103934665603  # FNV offset basis (64-bit)
         for i, e in enumerate(entries[:5120]):
             token = (
@@ -322,7 +322,7 @@ class QuickOpenDialog(QDialog):
         return acc & 0xFFFFFFFFFFFFFFFF
 
     def _poll_providers_and_refresh(self) -> None:
-        """Internal helper for `_poll_providers_and_refresh`."""
+        """Handle poll providers and refresh."""
         changed = False
         if callable(self._items_provider):
             try:
@@ -358,7 +358,7 @@ class QuickOpenDialog(QDialog):
             self._refresh_list()
 
     def _add_header_row(self, text: str) -> None:
-        """Internal helper for `_add_header_row`."""
+        """Add header row."""
         item = QListWidgetItem(text)
         item.setFlags(Qt.ItemFlag.NoItemFlags)
         item.setData(Qt.ItemDataRole.UserRole, ("header",))
@@ -366,7 +366,7 @@ class QuickOpenDialog(QDialog):
         self.list_widget.addItem(item)
 
     def _entry_row_text(self, entry: QuickOpenEntry, *, line_suffix: str = "") -> str:
-        """Internal helper for `_entry_row_text`."""
+        """Handle entry row text."""
         prefix = f"[{entry.source}] " if entry.source else ""
         text = f"{prefix}{entry.label}"
         if entry.subtitle:
@@ -376,7 +376,7 @@ class QuickOpenDialog(QDialog):
         return text
 
     def _set_mode_prefix(self, mode: str) -> None:
-        """Internal helper for `_set_mode_prefix`."""
+        """Set mode prefix."""
         text = self.search_edit.text()
         # Remove existing explicit mode prefixes first.
         stripped = text
@@ -399,7 +399,7 @@ class QuickOpenDialog(QDialog):
         self.search_edit.setFocus()
 
     def _current_mode(self) -> str:
-        """Internal helper for `_current_mode`."""
+        """Handle current mode."""
         parsed = parse_quick_open_query(self.search_edit.text())
         if parsed.command_query is not None:
             return "command"
@@ -410,7 +410,7 @@ class QuickOpenDialog(QDialog):
         return "file"
 
     def _toggle_mode(self, *, reverse: bool = False) -> bool:
-        """Internal helper for `_toggle_mode`."""
+        """Handle toggle mode."""
         cur = self._current_mode()
         try:
             idx = self._mode_cycle.index(cur)
@@ -421,7 +421,7 @@ class QuickOpenDialog(QDialog):
         return True
 
     def eventFilter(self, obj, event):  # type: ignore[override]
-        """Execute the `eventFilter` workflow."""
+        """Intercept Qt events that need custom handling before default processing."""
         if event.type() == QEvent.Type.KeyPress and obj in {self.search_edit, self.list_widget}:
             key = event.key()
             if key == Qt.Key.Key_Tab:
@@ -431,7 +431,7 @@ class QuickOpenDialog(QDialog):
         return super().eventFilter(obj, event)
 
     def _refresh_list(self) -> None:
-        """Internal helper for `_refresh_list`."""
+        """Refresh list."""
         self.list_widget.clear()
         parsed = parse_quick_open_query(self.search_edit.text())
 
@@ -546,7 +546,7 @@ class QuickOpenDialog(QDialog):
                     break
 
     def _accept_current(self) -> None:
-        """Internal helper for `_accept_current`."""
+        """Handle accept current."""
         item = self.list_widget.currentItem()
         if item is None:
             self.reject()

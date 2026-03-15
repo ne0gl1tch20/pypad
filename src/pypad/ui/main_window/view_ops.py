@@ -82,7 +82,14 @@ from pypad.ui.editor.syntax_highlighter import CodeSyntaxHighlighter
 from pypad.ui.system.updater_controller import UpdaterController
 from pypad.ui.system.version_history import VersionHistoryDialog
 from pypad.ui.workspace.workspace_controller import WorkspaceController
-from pypad.ui.theme.theme_tokens import build_dialog_theme_qss_from_tokens, build_tokens_from_settings, build_tool_dialog_qss
+from pypad.ui.theme.theme_tokens import (
+    _contrast_fg,
+    _mix,
+    _relative_luma,
+    build_dialog_theme_qss_from_tokens,
+    build_tokens_from_settings,
+    build_tool_dialog_qss,
+)
 from pypad.ui.document.document_authoring import (
     PageLayoutConfig,
     PageLayoutDialog,
@@ -276,7 +283,7 @@ class ViewOpsMixin:
         self.show_status_message("Post-it mode disabled.", 2500)
 
     def toggle_distraction_free_mode(self, checked: bool) -> None:
-        """Toggle the state controlled by `toggle_distraction_free_mode`."""
+        """Enable or disable distraction-free mode."""
         if hasattr(self, "focus_mode_action"):
             self.focus_mode_action.blockSignals(True)
             self.focus_mode_action.setChecked(checked)
@@ -289,10 +296,15 @@ class ViewOpsMixin:
             self.toggle_full_screen(checked)
 
     def _set_editor_print_view_styles(self, enabled: bool) -> None:
-        """Internal helper for `_set_editor_print_view_styles`."""
+        """Set editor print view styles."""
         styles = getattr(self, "_print_view_editor_styles", {})
         if not isinstance(styles, dict):
             styles = {}
+        tokens = build_tokens_from_settings(getattr(self, "settings", {}) if isinstance(getattr(self, "settings", {}), dict) else {})
+        print_bg = _mix(tokens.window_bg, "#ffffff", 0.9 if tokens.dark_mode else 0.02)
+        print_text = "#111111" if _relative_luma(print_bg) >= 0.55 else "#f3f6fb"
+        print_selection_bg = _mix(tokens.accent, print_bg, 0.78 if not tokens.dark_mode else 0.34)
+        print_selection_fg = _contrast_fg(print_selection_bg)
         markdown_widget = getattr(self, "markdown_preview_pane", None)
         for idx in range(self.tab_widget.count()):
             tab = self.tab_widget.widget(idx)
@@ -307,10 +319,10 @@ class ViewOpsMixin:
                     }
                 editor_widget.setStyleSheet(
                     "QTextEdit, QPlainTextEdit {"
-                    "background-color: #ffffff;"
-                    "color: #111111;"
-                    "selection-background-color: #cfe8ff;"
-                    "selection-color: #111111;"
+                    f"background-color: {print_bg};"
+                    f"color: {print_text};"
+                    f"selection-background-color: {print_selection_bg};"
+                    f"selection-color: {print_selection_fg};"
                     "}"
                 )
             else:
@@ -323,8 +335,8 @@ class ViewOpsMixin:
                     styles["_preview"] = {"preview": markdown_widget.styleSheet()}
                 markdown_widget.setStyleSheet(
                     "QTextEdit {"
-                    "background-color: #ffffff;"
-                    "color: #111111;"
+                    f"background-color: {print_bg};"
+                    f"color: {print_text};"
                     "}"
                 )
             else:
@@ -392,7 +404,7 @@ class ViewOpsMixin:
             self.print_view_action.blockSignals(False)
 
     def focus_on_another_view(self) -> None:
-        """Execute the `focus_on_another_view` workflow."""
+        """Move focus to on another view."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -429,7 +441,7 @@ class ViewOpsMixin:
         self._apply_scintilla_visuals(tab)
 
     def _apply_scintilla_visuals(self, tab: EditorTab) -> None:
-        """Internal helper for `_apply_scintilla_visuals`."""
+        """Apply scintilla visuals."""
         if not tab.text_edit.is_scintilla:
             return
         show_space_tab = bool(tab.show_space_tab or tab.show_non_printing or tab.show_all_chars)
@@ -442,7 +454,7 @@ class ViewOpsMixin:
         tab.text_edit.set_show_wrap_symbol(bool(tab.show_wrap_symbol))
 
     def _sync_symbol_actions(self, tab: EditorTab | None) -> None:
-        """Internal helper for `_sync_symbol_actions`."""
+        """Sync symbol actions."""
         for attr, checked in (
             ("show_space_tab_action", bool(tab and tab.show_space_tab)),
             ("show_end_of_line_action", bool(tab and tab.show_eol)),
@@ -477,7 +489,7 @@ class ViewOpsMixin:
         return False
 
     def view_current_file_in_explorer(self) -> None:
-        """Execute the `view_current_file_in_explorer` workflow."""
+        """Open current file in explorer."""
         tab = self.active_tab()
         if tab is None or not tab.current_file:
             return
@@ -487,7 +499,7 @@ class ViewOpsMixin:
             QMessageBox.warning(self, "View Current File in", f"Could not open folder:\n{exc}")
 
     def view_current_file_in_default_viewer(self) -> None:
-        """Execute the `view_current_file_in_default_viewer` workflow."""
+        """Open current file in default viewer."""
         tab = self.active_tab()
         if tab is None or not tab.current_file:
             return
@@ -497,7 +509,7 @@ class ViewOpsMixin:
             QMessageBox.warning(self, "View Current File in", f"Could not open file:\n{exc}")
 
     def view_current_file_in_cmd(self) -> None:
-        """Execute the `view_current_file_in_cmd` workflow."""
+        """Open current file in Command Prompt."""
         tab = self.active_tab()
         if tab is None or not tab.current_file:
             return
@@ -561,35 +573,35 @@ class ViewOpsMixin:
         self._sync_symbol_actions(tab)
 
     def toggle_show_space_tab(self, checked: bool) -> None:
-        """Toggle the state controlled by `toggle_show_space_tab`."""
+        """Show or hide visible space and tab markers in the editor."""
         self._toggle_symbol_state("show_space_tab", checked)
 
     def toggle_show_end_of_line(self, checked: bool) -> None:
-        """Toggle the state controlled by `toggle_show_end_of_line`."""
+        """Show or hide end-of-line markers in the editor."""
         self._toggle_symbol_state("show_eol", checked)
 
     def toggle_show_non_printing(self, checked: bool) -> None:
-        """Toggle the state controlled by `toggle_show_non_printing`."""
+        """Show or hide non-printing characters in the editor."""
         self._toggle_symbol_state("show_non_printing", checked)
 
     def toggle_show_control_unicode_eol(self, checked: bool) -> None:
-        """Toggle the state controlled by `toggle_show_control_unicode_eol`."""
+        """Show or hide control characters and Unicode EOL markers."""
         self._toggle_symbol_state("show_control_chars", checked)
 
     def toggle_show_all_chars(self, checked: bool) -> None:
-        """Toggle the state controlled by `toggle_show_all_chars`."""
+        """Show or hide all normally hidden character markers."""
         self._toggle_symbol_state("show_all_chars", checked)
 
     def toggle_show_indent_guide(self, checked: bool) -> None:
-        """Toggle the state controlled by `toggle_show_indent_guide`."""
+        """Show or hide indentation guides in the editor."""
         self._toggle_symbol_state("show_indent_guides", checked)
 
     def toggle_show_wrap_symbol(self, checked: bool) -> None:
-        """Toggle the state controlled by `toggle_show_wrap_symbol`."""
+        """Show or hide wrap symbols for wrapped lines."""
         self._toggle_symbol_state("show_wrap_symbol", checked)
 
     def fold_all(self) -> None:
-        """Execute the `fold_all` workflow."""
+        """Fold all."""
         if not self._require_scintilla_feature():
             return
         tab = self.active_tab()
@@ -598,7 +610,7 @@ class ViewOpsMixin:
         tab.text_edit.fold_all(expand=False)
 
     def unfold_all(self) -> None:
-        """Execute the `unfold_all` workflow."""
+        """Unfold all."""
         if not self._require_scintilla_feature():
             return
         tab = self.active_tab()
@@ -607,7 +619,7 @@ class ViewOpsMixin:
         tab.text_edit.fold_all(expand=True)
 
     def fold_current_level(self) -> None:
-        """Execute the `fold_current_level` workflow."""
+        """Fold current level."""
         if not self._require_scintilla_feature():
             return
         tab = self.active_tab()
@@ -616,7 +628,7 @@ class ViewOpsMixin:
         tab.text_edit.fold_current(expand=False)
 
     def unfold_current_level(self) -> None:
-        """Execute the `unfold_current_level` workflow."""
+        """Unfold current level."""
         if not self._require_scintilla_feature():
             return
         tab = self.active_tab()
@@ -625,7 +637,7 @@ class ViewOpsMixin:
         tab.text_edit.fold_current(expand=True)
 
     def fold_level(self, level: int) -> None:
-        """Execute the `fold_level` workflow."""
+        """Fold level."""
         if not self._require_scintilla_feature():
             return
         tab = self.active_tab()
@@ -634,7 +646,7 @@ class ViewOpsMixin:
         tab.text_edit.fold_level(level=level, expand=False)
 
     def unfold_level(self, level: int) -> None:
-        """Execute the `unfold_level` workflow."""
+        """Unfold level."""
         if not self._require_scintilla_feature():
             return
         tab = self.active_tab()
@@ -643,7 +655,7 @@ class ViewOpsMixin:
         tab.text_edit.fold_level(level=level, expand=True)
 
     def hide_lines(self) -> None:
-        """Execute the `hide_lines` workflow."""
+        """Hide lines."""
         if not self._require_scintilla_feature():
             return
         tab = self.active_tab()
@@ -678,7 +690,7 @@ class ViewOpsMixin:
             )
 
     def show_hidden_lines(self) -> None:
-        """Execute the `show_hidden_lines` workflow."""
+        """Show hidden lines."""
         if not self._require_scintilla_feature():
             return
         tab = self.active_tab()
@@ -694,7 +706,7 @@ class ViewOpsMixin:
             )
 
     def set_text_direction_rtl(self) -> None:
-        """Update state handled by `set_text_direction_rtl`."""
+        """Set right-to-left text direction for the active editor."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -702,7 +714,7 @@ class ViewOpsMixin:
         self.markdown_preview.setLayoutDirection(Qt.RightToLeft)
 
     def set_text_direction_ltr(self) -> None:
-        """Update state handled by `set_text_direction_ltr`."""
+        """Set left-to-right text direction for the active editor."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -710,22 +722,22 @@ class ViewOpsMixin:
         self.markdown_preview.setLayoutDirection(Qt.LeftToRight)
 
     def open_document_map(self) -> None:
-        """Open the UI or resource handled by `open_document_map`."""
+        """Open or reveal the document map panel."""
         if hasattr(self, "minimap_action"):
             self.minimap_action.trigger()
 
     def open_document_list(self) -> None:
-        """Open the UI or resource handled by `open_document_list`."""
+        """Open or reveal the document list panel."""
         if hasattr(self, "workspace_files_action"):
             self.workspace_files_action.trigger()
 
     def open_function_list(self) -> None:
-        """Open the UI or resource handled by `open_function_list`."""
+        """Open or reveal the function or symbol list panel."""
         if hasattr(self, "symbol_outline_action"):
             self.symbol_outline_action.trigger()
 
     def _disconnect_split_scroll_sync(self, tab: EditorTab) -> None:
-        """Internal helper for `_disconnect_split_scroll_sync`."""
+        """Disconnect scroll-sync signal wiring for the current split views."""
         pairs = getattr(tab, "_split_scroll_pairs", [])
         for scrollbar, handler in pairs:
             try:
@@ -749,9 +761,9 @@ class ViewOpsMixin:
         tab._split_scroll_syncing = False
 
         def _bind_pair(primary_bar, secondary_bar) -> tuple[Any, Any]:
-            """Internal helper for `_bind_pair`."""
+            """Bind one scrollable widget to mirror another."""
             def _forward(value: int) -> None:
-                """Internal helper for `_forward`."""
+                """Forward scroll changes to the paired view without causing recursion."""
                 if getattr(tab, "_split_scroll_syncing", False):
                     return
                 tab._split_scroll_syncing = True
@@ -778,14 +790,14 @@ class ViewOpsMixin:
             clone_h.setValue(main_h.value())
 
     def toggle_sync_vertical_scrolling(self, checked: bool) -> None:
-        """Toggle the state controlled by `toggle_sync_vertical_scrolling`."""
+        """Enable or disable vertical scroll synchronization across split views."""
         self.settings["sync_vertical_scrolling"] = bool(checked)
         if hasattr(self, "save_settings_to_disk"):
             self.save_settings_to_disk()
         self._apply_split_scroll_sync(self.active_tab())
 
     def toggle_sync_horizontal_scrolling(self, checked: bool) -> None:
-        """Toggle the state controlled by `toggle_sync_horizontal_scrolling`."""
+        """Enable or disable horizontal scroll synchronization across split views."""
         self.settings["sync_horizontal_scrolling"] = bool(checked)
         if hasattr(self, "save_settings_to_disk"):
             self.save_settings_to_disk()
@@ -804,7 +816,7 @@ class ViewOpsMixin:
             tab._split_syncing = False
 
         def _sync(source: EditorWidget, target: EditorWidget | None) -> None:
-            """Internal helper for `_sync`."""
+            """Sync the paired preview or editor view to the current scroll state."""
             if target is None:
                 return
             if getattr(tab, "_split_syncing", False):
@@ -821,15 +833,15 @@ class ViewOpsMixin:
         clone_editor.textChanged.connect(split_clone_handler)  # type: ignore[arg-type]
 
     def clone_to_other_view(self) -> None:
-        """Execute the `clone_to_other_view` workflow."""
+        """Clone to other view."""
         self._enable_split_view(Qt.Horizontal)
 
     def split_view_vertical(self) -> None:
-        """Execute the `split_view_vertical` workflow."""
+        """Split view vertical."""
         self._enable_split_view(Qt.Horizontal)
 
     def split_view_horizontal(self) -> None:
-        """Execute the `split_view_horizontal` workflow."""
+        """Split view horizontal."""
         self._enable_split_view(Qt.Vertical)
 
     def _enable_split_view(self, orientation: Qt.Orientation) -> None:
@@ -875,7 +887,7 @@ class ViewOpsMixin:
             self._sync_markdown_preview_for_active_tab()
 
     def toggle_column_mode(self, checked: bool) -> None:
-        """Toggle the state controlled by `toggle_column_mode`."""
+        """Enable or disable column selection mode."""
         if not self._require_scintilla_feature("Column mode"):
             if hasattr(self, "column_mode_action"):
                 self.column_mode_action.blockSignals(True)
@@ -890,7 +902,7 @@ class ViewOpsMixin:
         self.show_status_message("Column mode enabled." if checked else "Column mode disabled.", 1800)
 
     def toggle_multi_caret(self, checked: bool) -> None:
-        """Toggle the state controlled by `toggle_multi_caret`."""
+        """Enable or disable multi-caret editing."""
         if not self._require_scintilla_feature("Multi-caret"):
             if hasattr(self, "multi_caret_action"):
                 self.multi_caret_action.blockSignals(True)
@@ -905,7 +917,7 @@ class ViewOpsMixin:
         self.show_status_message("Multi-caret enabled." if checked else "Multi-caret disabled.", 1800)
 
     def toggle_code_folding(self, checked: bool) -> None:
-        """Toggle the state controlled by `toggle_code_folding`."""
+        """Enable or disable code folding support in the editor."""
         if not self._require_scintilla_feature():
             return
         tab = self.active_tab()
@@ -960,7 +972,7 @@ class ViewOpsMixin:
         return sorted(words)
 
     def toggle_word_wrap(self, checked: bool) -> None:
-        """Toggle the state controlled by `toggle_word_wrap`."""
+        """Enable or disable word wrap in the active editor."""
         self.word_wrap_enabled = checked
         for index in range(self.tab_widget.count()):
             tab = self.tab_widget.widget(index)
@@ -968,7 +980,7 @@ class ViewOpsMixin:
                 tab.text_edit.set_wrap_enabled(checked)
 
     def toggle_show_line_numbers(self, checked: bool) -> None:
-        """Toggle the state controlled by `toggle_show_line_numbers`."""
+        """Show or hide line numbers in the editor margin."""
         self.line_numbers_enabled = bool(checked)
         self.settings["npp_margin_line_numbers_enabled"] = bool(checked)
         for index in range(self.tab_widget.count()):
@@ -1076,7 +1088,7 @@ class ViewOpsMixin:
         root.addWidget(buttons)
 
         def _open_styler_dialog() -> None:
-            """Internal helper for `_open_styler_dialog`."""
+            """Open styler dialog."""
             styler = QDialog(dlg)
             styler.setWindowTitle("Styler Dialog")
             styler.resize(520, 460)
@@ -1173,7 +1185,7 @@ class ViewOpsMixin:
         timer.setInterval(int(interval_spin.value()))
 
         def _read_tail() -> None:
-            """Internal helper for `_read_tail`."""
+            """Read the newest lines from the tailed file without reloading everything."""
             try:
                 text = file_path.read_text(encoding="utf-8", errors="replace")
             except Exception as exc:
@@ -1188,14 +1200,14 @@ class ViewOpsMixin:
             status_label.setText(f"Updated {datetime.now().strftime('%H:%M:%S')}")
 
         def _start() -> None:
-            """Internal helper for `_start`."""
+            """Start polling the file tail on the selected interval."""
             timer.setInterval(int(interval_spin.value()))
             _read_tail()
             timer.start()
             status_label.setText("Running")
 
         def _stop() -> None:
-            """Internal helper for `_stop`."""
+            """Stop polling the file tail."""
             timer.stop()
             status_label.setText("Stopped")
 
@@ -1209,14 +1221,14 @@ class ViewOpsMixin:
         dlg.exec()
 
     def choose_font(self) -> None:
-        """Execute the `choose_font` workflow."""
+        """Open a chooser for font."""
         current_font: QFont = self.text_edit.current_font()
         font, ok = QFontDialog.getFont(current_font, self, "Choose Font")
         if ok:
             self.text_edit.set_font(font)
 
     def format_selection_text_size(self) -> None:
-        """Execute the `format_selection_text_size` workflow."""
+        """Format selection text size."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -1265,23 +1277,23 @@ class ViewOpsMixin:
         self.insert_markdown_wrapper(*marker)
 
     def format_bold(self) -> None:
-        """Execute the `format_bold` workflow."""
+        """Format bold."""
         self._toggle_char_format(bold=True)
 
     def format_italic(self) -> None:
-        """Execute the `format_italic` workflow."""
+        """Format italic."""
         self._toggle_char_format(italic=True)
 
     def format_underline(self) -> None:
-        """Execute the `format_underline` workflow."""
+        """Format underline."""
         self._toggle_char_format(underline=True)
 
     def format_strikethrough(self) -> None:
-        """Execute the `format_strikethrough` workflow."""
+        """Format strikethrough."""
         self._toggle_char_format(strike=True)
 
     def apply_document_style(self, style_name: str) -> None:
-        """Apply the changes or settings handled by `apply_document_style`."""
+        """Apply document style."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -1298,13 +1310,13 @@ class ViewOpsMixin:
         self.show_status_message(f"Applied style: {style_name}", 2000)
 
     def _selected_or_placeholder(self, placeholder: str) -> str:
-        """Internal helper for `_selected_or_placeholder`."""
+        """Return the current selection or a placeholder string when nothing is selected."""
         if self.text_edit.has_selection():
             return self.text_edit.selected_text()
         return placeholder
 
     def insert_markdown_wrapper(self, prefix: str, suffix: str, placeholder: str) -> None:
-        """Execute the `insert_markdown_wrapper` workflow."""
+        """Insert markdown wrapper."""
         content = self._selected_or_placeholder(placeholder)
         if self.text_edit.has_selection():
             self.text_edit.replace_selection(f"{prefix}{content}{suffix}")
@@ -1312,7 +1324,7 @@ class ViewOpsMixin:
             self.text_edit.insert_text(f"{prefix}{content}{suffix}")
 
     def _apply_markdown_prefix(self, prefix: str) -> None:
-        """Internal helper for `_apply_markdown_prefix`."""
+        """Apply markdown prefix."""
         text = self.text_edit.get_text()
         lines = text.splitlines(keepends=True)
         sel = self.text_edit.selection_range()
@@ -1330,23 +1342,23 @@ class ViewOpsMixin:
         self.text_edit.set_text("".join(lines))
 
     def markdown_heading(self, level: int) -> None:
-        """Execute the `markdown_heading` workflow."""
+        """Insert or prefix the selection with a Markdown heading marker."""
         self._apply_markdown_prefix("#" * max(1, min(level, 6)) + " ")
 
     def markdown_bullet_list(self) -> None:
-        """Execute the `markdown_bullet_list` workflow."""
+        """Insert or prefix the selection with Markdown bullet markers."""
         self._apply_markdown_prefix("- ")
 
     def markdown_task_list(self) -> None:
-        """Execute the `markdown_task_list` workflow."""
+        """Insert or prefix the selection with Markdown task-list markers."""
         self._apply_markdown_prefix("- [ ] ")
 
     def markdown_blockquote(self) -> None:
-        """Execute the `markdown_blockquote` workflow."""
+        """Insert or prefix the selection with Markdown blockquote markers."""
         self._apply_markdown_prefix("> ")
 
     def markdown_numbered_list(self) -> None:
-        """Execute the `markdown_numbered_list` workflow."""
+        """Insert or prefix the selection with Markdown numbered-list markers."""
         text = self.text_edit.get_text()
         lines = text.splitlines(keepends=True)
         sel = self.text_edit.selection_range()
@@ -1365,7 +1377,7 @@ class ViewOpsMixin:
         self.text_edit.set_text("".join(lines))
 
     def markdown_code_block(self) -> None:
-        """Execute the `markdown_code_block` workflow."""
+        """Wrap the selection in a fenced Markdown code block."""
         if self.text_edit.has_selection():
             selected = self.text_edit.selected_text()
             self.text_edit.replace_selection(f"```\n{selected}\n```")
@@ -1373,29 +1385,29 @@ class ViewOpsMixin:
         self.text_edit.insert_text("```\ncode\n```")
 
     def markdown_link(self) -> None:
-        """Execute the `markdown_link` workflow."""
+        """Insert a Markdown link using the selection as link text when available."""
         text = self._selected_or_placeholder("link text")
         self.text_edit.insert_text(f"[{text}](https://example.com)")
 
     def markdown_image(self) -> None:
-        """Execute the `markdown_image` workflow."""
+        """Insert Markdown image syntax using the selection as alt text when available."""
         text = self._selected_or_placeholder("alt text")
         self.text_edit.insert_text(f"![{text}](https://example.com/image.png)")
 
     def markdown_horizontal_rule(self) -> None:
-        """Execute the `markdown_horizontal_rule` workflow."""
+        """Insert a Markdown horizontal rule at the cursor."""
         self.text_edit.insert_text("\n---\n")
 
     def markdown_table(self) -> None:
-        """Execute the `markdown_table` workflow."""
+        """Insert a starter Markdown table at the cursor."""
         self.text_edit.insert_text("| Column 1 | Column 2 |\n| --- | --- |\n| Value 1 | Value 2 |\n")
 
     def markdown_latex_inline(self) -> None:
-        """Execute the `markdown_latex_inline` workflow."""
+        """Insert inline LaTeX delimiters around a math expression."""
         self.insert_markdown_wrapper("$", "$", "x^2 + y^2 = z^2")
 
     def markdown_latex_block(self) -> None:
-        """Execute the `markdown_latex_block` workflow."""
+        """Insert a block LaTeX wrapper around the current selection or placeholder text."""
         if self.text_edit.has_selection():
             selected = self.text_edit.selected_text()
             self.text_edit.replace_selection(f"$$\n{selected}\n$$")
@@ -1403,11 +1415,11 @@ class ViewOpsMixin:
         self.text_edit.insert_text("$$\nE = mc^2\n$$")
 
     def markdown_latex_align(self) -> None:
-        """Execute the `markdown_latex_align` workflow."""
+        """Insert a LaTeX aligned-equations block."""
         self.text_edit.insert_text("$$\n\\\\begin{aligned}\na &= b + c \\\\\nE &= mc^2\n\\\\end{aligned}\n$$")
 
     def insert_page_break_marker(self) -> None:
-        """Execute the `insert_page_break_marker` workflow."""
+        """Insert page break marker."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -1485,7 +1497,7 @@ class ViewOpsMixin:
         self.show_status_message("TOC inserted.", 2500)
 
     def _review_author_label(self) -> str:
-        """Internal helper for `_review_author_label`."""
+        """Return the author label used for review comments and tracked changes."""
         return (getpass.getuser() or "").strip() or "author"
 
     def toggle_track_changes(self, checked: bool) -> None:
@@ -1503,7 +1515,7 @@ class ViewOpsMixin:
         )
 
     def insert_tracked_text(self) -> None:
-        """Execute the `insert_tracked_text` workflow."""
+        """Insert tracked text."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -1530,7 +1542,7 @@ class ViewOpsMixin:
         self.show_status_message("Tracked insertion added.", 2000)
 
     def mark_selection_as_deletion(self) -> None:
-        """Execute the `mark_selection_as_deletion` workflow."""
+        """Mark selection as deletion."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -1557,7 +1569,7 @@ class ViewOpsMixin:
         self.show_status_message("Tracked deletion added.", 2000)
 
     def jump_to_next_change(self) -> None:
-        """Execute the `jump_to_next_change` workflow."""
+        """Jump to to next change."""
         tab = self.active_tab()
         if tab is None:
             return
@@ -1577,15 +1589,15 @@ class ViewOpsMixin:
         )
 
     def accept_change_at_cursor(self) -> None:
-        """Execute the `accept_change_at_cursor` workflow."""
+        """Accept change at cursor."""
         self._apply_change_decision(accept=True)
 
     def reject_change_at_cursor(self) -> None:
-        """Execute the `reject_change_at_cursor` workflow."""
+        """Reject change at cursor."""
         self._apply_change_decision(accept=False)
 
     def _apply_change_decision(self, *, accept: bool) -> None:
-        """Internal helper for `_apply_change_decision`."""
+        """Apply change decision."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -1605,7 +1617,7 @@ class ViewOpsMixin:
         self.show_status_message(f"{action} tracked {target}.", 2000)
 
     def accept_all_tracked_changes(self) -> None:
-        """Execute the `accept_all_tracked_changes` workflow."""
+        """Accept all tracked changes."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -1619,7 +1631,7 @@ class ViewOpsMixin:
         self.show_status_message(f"Accepted {count} tracked change(s).", 2200)
 
     def reject_all_tracked_changes(self) -> None:
-        """Execute the `reject_all_tracked_changes` workflow."""
+        """Reject all tracked changes."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -1633,7 +1645,7 @@ class ViewOpsMixin:
         self.show_status_message(f"Rejected {count} tracked change(s).", 2200)
 
     def add_review_comment(self) -> None:
-        """Execute the `add_review_comment` workflow."""
+        """Add review comment."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -1693,15 +1705,15 @@ class ViewOpsMixin:
         self.show_status_message(f"Removed comment {chosen.comment_id}.", 2000)
 
     def insert_footnote(self) -> None:
-        """Execute the `insert_footnote` workflow."""
+        """Insert footnote."""
         self._insert_note_reference(endnote=False)
 
     def insert_endnote(self) -> None:
-        """Execute the `insert_endnote` workflow."""
+        """Insert endnote."""
         self._insert_note_reference(endnote=True)
 
     def _insert_note_reference(self, *, endnote: bool) -> None:
-        """Internal helper for `_insert_note_reference`."""
+        """Insert a formatted footnote or endnote reference marker."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -1722,7 +1734,7 @@ class ViewOpsMixin:
         self.show_status_message(f"Inserted {marker}.", 2200)
 
     def insert_cross_reference(self) -> None:
-        """Execute the `insert_cross_reference` workflow."""
+        """Insert cross reference."""
         tab = self.active_tab()
         if tab is None or tab.text_edit.is_read_only():
             return
@@ -1751,7 +1763,7 @@ class ViewOpsMixin:
 
     @staticmethod
     def _is_markdown_path(path: str | None) -> bool:
-        """Internal helper for `_is_markdown_path`."""
+        """Return whether markdown path."""
         if not path:
             return False
         return Path(path).suffix.lower() in {".md", ".markdown", ".mdown"}
@@ -1780,7 +1792,7 @@ class ViewOpsMixin:
             self.show_status_message("Markdown preview disabled", 2000)
 
     def toggle_markdown_math_preview(self, checked: bool) -> None:
-        """Toggle the state controlled by `toggle_markdown_math_preview`."""
+        """Enable or disable Markdown math preview rendering."""
         self.settings["markdown_math_preview_enabled"] = bool(checked)
         if hasattr(self, "save_settings_to_disk"):
             self.save_settings_to_disk()
@@ -1822,11 +1834,11 @@ class ViewOpsMixin:
         self.markdown_preview.setMarkdown(source_markdown)
 
     def toggle_status_bar(self, checked: bool) -> None:
-        """Toggle the state controlled by `toggle_status_bar`."""
+        """Show or hide the status bar."""
         self.status.setVisible(checked)
 
     def view_zoom_in(self) -> None:
-        """Execute the `view_zoom_in` workflow."""
+        """Open zoom in."""
         self.text_edit.zoom_in(1)
         self.zoom_steps += 1
         self.zoom_label.setText(f"{max(10, 100 + (self.zoom_steps * 10))}%")
@@ -1834,7 +1846,7 @@ class ViewOpsMixin:
             self.status_panel_zoom_label.setText(self.zoom_label.text())
 
     def view_zoom_out(self) -> None:
-        """Execute the `view_zoom_out` workflow."""
+        """Open zoom out."""
         self.text_edit.zoom_in(-1)
         self.zoom_steps -= 1
         self.zoom_label.setText(f"{max(10, 100 + (self.zoom_steps * 10))}%")
@@ -1842,7 +1854,7 @@ class ViewOpsMixin:
             self.status_panel_zoom_label.setText(self.zoom_label.text())
 
     def view_zoom_reset(self) -> None:
-        """Execute the `view_zoom_reset` workflow."""
+        """Open zoom reset."""
         if self.zoom_steps != 0:
             self.text_edit.zoom_in(-self.zoom_steps)
             self.zoom_steps = 0

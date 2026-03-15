@@ -13,7 +13,7 @@ from pypad.ui.theme.theme_tokens import build_dialog_theme_qss_from_tokens, buil
 
 
 def _normalize_hex(value: object, fallback: str) -> str:
-    """Internal helper for `_normalize_hex`."""
+    """Normalize a hex color string and fall back when the value is invalid."""
     text = str(value or "").strip()
     if not text:
         return fallback
@@ -27,13 +27,13 @@ def _normalize_hex(value: object, fallback: str) -> str:
 
 
 def build_dialog_theme_qss(settings: dict[str, Any]) -> str:
-    """Build and return the value produced by `build_dialog_theme_qss`."""
+    """Build dialog QSS from the current theme settings."""
     tokens = build_tokens_from_settings(settings if isinstance(settings, dict) else {})
     return build_dialog_theme_qss_from_tokens(tokens)
 
 
 def apply_dialog_theme_from_window(window: QWidget | None, dialog: QDialog) -> None:
-    """Apply the changes or settings handled by `apply_dialog_theme_from_window`."""
+    """Apply the parent window theme settings to a dialog widget."""
     settings = getattr(window, "settings", {}) if window is not None else {}
     if not isinstance(settings, dict):
         settings = {}
@@ -41,7 +41,7 @@ def apply_dialog_theme_from_window(window: QWidget | None, dialog: QDialog) -> N
 
 
 def create_themed_message_box(window: QWidget | None, *, title: str, icon: QMessageBox.Icon, text: str) -> QMessageBox:
-    """Create the objects or state required by `create_themed_message_box`."""
+    """Create a message box with the current dialog theme applied."""
     box = QMessageBox(window)
     box.setWindowTitle(title)
     box.setIcon(icon)
@@ -60,7 +60,7 @@ def themed_message_box_exec(
     detailed: str = "",
     buttons: QMessageBox.StandardButton | QMessageBox.StandardButtons = QMessageBox.StandardButton.Ok,
 ) -> int:
-    """Execute the `themed_message_box_exec` workflow."""
+    """Create a themed message box, configure its content, and execute it."""
     box = create_themed_message_box(window, title=title, icon=icon, text=text)
     if informative:
         box.setInformativeText(informative)
@@ -71,7 +71,7 @@ def themed_message_box_exec(
 
 
 def create_themed_progress_dialog(window: QWidget | None, *, title: str) -> QProgressDialog:
-    """Create the objects or state required by `create_themed_progress_dialog`."""
+    """Create a progress dialog with the current dialog theme applied."""
     dlg = QProgressDialog(window)
     dlg.setWindowTitle(title)
     apply_dialog_theme_from_window(window, dlg)
@@ -79,9 +79,9 @@ def create_themed_progress_dialog(window: QWidget | None, *, title: str) -> QPro
 
 
 class _DialogThemeEventFilter(QObject):
-    """Class that implements the `_DialogThemeEventFilter` runtime behavior."""
+    """Qt event filter that reapplies themed styling when dialogs are shown."""
     def eventFilter(self, obj: QObject, event: QEvent) -> bool:  # type: ignore[override]
-        """Execute the `eventFilter` workflow."""
+        """Intercept Qt events that need custom handling before default processing."""
         if event.type() == QEvent.Type.Show and isinstance(obj, QDialog):
             if obj.property("pypad_dialog_theme_skip"):
                 return False
@@ -100,7 +100,7 @@ _dialog_theme_filter: _DialogThemeEventFilter | None = None
 
 
 def ensure_dialog_theme_filter_installed() -> None:
-    """Execute the `ensure_dialog_theme_filter_installed` workflow."""
+    """Install the global dialog theme event filter once per application."""
     from PySide6.QtWidgets import QApplication
 
     global _dialog_theme_filter
@@ -118,7 +118,7 @@ def themed_file_dialog_get_save_file_name(
     directory: str = "",
     filter_text: str = "",
 ) -> tuple[str, str]:
-    """Execute the `themed_file_dialog_get_save_file_name` workflow."""
+    """Open a themed save-file dialog and return the selected file and filter."""
     dlg = QFileDialog(parent, title, directory, filter_text)
     dlg.setAcceptMode(QFileDialog.AcceptSave)
     dlg.setOption(QFileDialog.Option.DontUseNativeDialog, True)
@@ -135,7 +135,7 @@ def themed_file_dialog_get_open_file_name(
     directory: str = "",
     filter_text: str = "",
 ) -> tuple[str, str]:
-    """Execute the `themed_file_dialog_get_open_file_name` workflow."""
+    """Open a themed open-file dialog and return the selected file and filter."""
     dlg = QFileDialog(parent, title, directory, filter_text)
     dlg.setAcceptMode(QFileDialog.AcceptOpen)
     dlg.setFileMode(QFileDialog.FileMode.ExistingFile)
@@ -148,7 +148,7 @@ def themed_file_dialog_get_open_file_name(
 
 
 def themed_file_dialog_get_existing_directory(parent: QWidget, title: str, directory: str = "") -> str:
-    """Execute the `themed_file_dialog_get_existing_directory` workflow."""
+    """Open a themed directory picker and return the selected folder."""
     dlg = QFileDialog(parent, title, directory)
     dlg.setFileMode(QFileDialog.FileMode.Directory)
     dlg.setOption(QFileDialog.Option.ShowDirsOnly, True)

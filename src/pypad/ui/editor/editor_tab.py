@@ -145,6 +145,13 @@ class EditorTab(QWidget):
         self.tags: list[str] = []
         self.encryption_enabled = False
         self.encryption_password: str | None = None
+        self.trust_state = "trusted"
+        self.trust_source = "unknown"
+        self.trust_persisted = False
+        self.trust_reason: str | None = None
+        self.trust_banner_dismissed = False
+        self.save_restrictions: set[str] = set()
+        self.opened_via_startup_arg = False
         self.quiz_mode_enabled = False
         self.quiz_items: list[dict[str, Any]] = []
         self.quiz_user_answers: dict[int, str] = {}

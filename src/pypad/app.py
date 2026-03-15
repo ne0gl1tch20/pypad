@@ -17,7 +17,7 @@ LOGGER = get_logger(__name__)
 
 def main(existing_app: Optional[QApplication] = None) -> Notepad:
     # Use existing QApplication if passed (from run.py), otherwise create one
-    """Execute the `main` workflow."""
+    """Create the application window, configure runtime hooks, and return the main UI."""
     owns_app = existing_app is None
     app = existing_app or QApplication(sys.argv)
     configure_app_logging(resolve_persisted_log_level(get_settings_file_path(), default="INFO"))
@@ -28,7 +28,7 @@ def main(existing_app: Optional[QApplication] = None) -> Notepad:
     LOGGER.info("Main window instance created")
 
     def _global_exception_hook(exc_type, exc_value, exc_tb) -> None:
-        """Internal helper for `_global_exception_hook`."""
+        """Handle global exception hook."""
         error_text = "".join(traceback.format_exception(exc_type, exc_value, exc_tb)).strip()
         LOGGER.exception("Unhandled exception routed to global hook", exc_info=(exc_type, exc_value, exc_tb))
         window.log_event("Error", error_text)

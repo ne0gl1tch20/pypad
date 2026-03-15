@@ -1,7 +1,7 @@
 # Context Summary
 
 ## Docs Updated
-- Last docs sync: 2026-03-14
+- Last docs sync: 2026-03-15
 - Synced files:
   - `CONTEXT_SUMMARY.md`
   - `APP_SUMMARY.md`
@@ -14,11 +14,14 @@
   - `templates/demo_pack/01_welcome_quick_tour.md`
 
 ## Current Release Metadata
-- Version: `1.8.1-prerelease`
-- App version files intentionally unchanged in this docs sync
-- Latest release notes already live in `CHANGELOG.md` and `update.xml`
+- Version: `1.8.2`
+- App version files and release notes are aligned in this sync
+- Latest release notes are live in `CHANGELOG.md` and `update.xml`
 
 ## Current Focus (Completed)
+- theme release parity:
+  - Soft Light, High Contrast, Solarized Light, and Ocean Blue now have dedicated light/dark token sets
+  - AI chat code cards, terminal/tasks output, print view, and settings-search highlighting now respect active theme tokens
 - plugin documentation coverage:
   - plugin setup guide retained in `docs/plugins.md`
   - runtime architecture and event flow documented in `docs/plugin_runtime.md`

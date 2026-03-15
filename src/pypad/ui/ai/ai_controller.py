@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
 from pypad.ui.ai.ai_edit_preview_dialog import AIEditPreviewDialog, AIRewritePromptDialog
 from pypad.ai_app_knowledge import resolve_ai_app_knowledge
 from pypad.logging_utils import get_logger
+from pypad.ui.security.security_profile import profile_setting, resolve_security_policy
 from pypad.ui.theme.asset_paths import resolve_asset_path
 
 MISSING_API_KEY_MESSAGE = (
@@ -54,19 +55,19 @@ def sanitize_prompt_text(prompt: str, settings: dict) -> tuple[str, list[str]]:
     """Apply configurable redaction rules to a prompt before it is sent to the model."""
     redacted = prompt
     changes: list[str] = []
-    if bool(settings.get("ai_send_redact_emails", False)):
+    if bool(profile_setting(settings, "ai_send_redact_emails", True)):
         updated, count = EMAIL_RE.subn("[REDACTED_EMAIL]", redacted)
         if count:
             redacted = updated
             changes.append(f"emails({count})")
-    if bool(settings.get("ai_send_redact_paths", False)):
+    if bool(profile_setting(settings, "ai_send_redact_paths", True)):
         updated, count_win = WINDOWS_PATH_RE.subn("[REDACTED_PATH]", redacted)
         updated, count_posix = POSIX_PATH_RE.subn("[REDACTED_PATH]", updated)
         total = count_win + count_posix
         if total:
             redacted = updated
             changes.append(f"paths({total})")
-    if bool(settings.get("ai_send_redact_tokens", True)):
+    if bool(profile_setting(settings, "ai_send_redact_tokens", True)):
         updated, count_assign = ASSIGNMENT_SECRET_RE.subn(r"\1=[REDACTED_TOKEN]", redacted)
         updated, count_bearer = BEARER_TOKEN_RE.subn("Bearer [REDACTED_TOKEN]", updated)
         updated, count_jwt = JWT_RE.subn("[REDACTED_TOKEN]", updated)
@@ -83,7 +84,7 @@ class _AIWorker(QObject):
     failed = Signal(str)
 
     def __init__(self, prompt: str, api_key: str, model: str) -> None:
-        """Initialize the `ai_controller` state for this instance."""
+        """Create the background AI worker used for non-streaming requests."""
         super().__init__()
         self.prompt = prompt
         self.api_key = api_key
@@ -107,7 +108,7 @@ class _AIStreamWorker(QObject):
     failed = Signal(str)
 
     def __init__(self, prompt: str, api_key: str, model: str) -> None:
-        """Initialize the `ai_controller` state for this instance."""
+        """Create the background AI worker used for streaming responses."""
         super().__init__()
         self.prompt = prompt
         self.api_key = api_key
@@ -240,7 +241,7 @@ def _generate_stream(prompt: str, api_key: str, model: str) -> Iterator[str]:
 class AIResultDialog(QDialog):
     """Modal dialog for inspecting, copying, or inserting generated AI output."""
     def __init__(self, parent, title: str, text: str) -> None:
-        """Initialize the `ai_controller` state for this instance."""
+        """Build the AI result dialog used to review generated output."""
         super().__init__(parent)
         self.setWindowTitle(title)
         self.resize(760, 520)
@@ -271,11 +272,11 @@ class AIResultDialog(QDialog):
         self.replace_btn.clicked.connect(self._replace_selection)
 
     def _copy_text(self) -> None:
-        """Internal helper for `_copy_text`."""
+        """Handle copy text."""
         QApplication.clipboard().setText(self.output.toPlainText())
 
     def _insert_text(self) -> None:
-        """Internal helper for `_insert_text`."""
+        """Handle insert text."""
         parent = self.parent()
         tab = parent.active_tab() if parent else None
         if tab is None:
@@ -283,7 +284,7 @@ class AIResultDialog(QDialog):
         tab.text_edit.insert_text(self.output.toPlainText())
 
     def _replace_selection(self) -> None:
-        """Internal helper for `_replace_selection`."""
+        """Handle replace selection."""
         parent = self.parent()
         tab = parent.active_tab() if parent else None
         if tab is None:
@@ -294,7 +295,7 @@ class AIResultDialog(QDialog):
 class AIRedactionPreviewDialog(QDialog):
     """Preview prompt redactions so the user can confirm what will be sent to AI."""
     def __init__(self, parent, action_title: str, changes: list[str], original: str, redacted: str) -> None:
-        """Initialize the `ai_controller` state for this instance."""
+        """Build the redaction preview dialog used before sensitive text is removed."""
         super().__init__(parent)
         self.setWindowTitle("AI Prompt Redaction Preview")
         self.resize(920, 620)
@@ -444,7 +445,9 @@ class AIController:
 
     def _api_key(self) -> str:
         """Resolve the API key from settings or the environment based on storage policy."""
-        storage_mode = str(self.window.settings.get("ai_key_storage_mode", "settings") or "settings").strip().lower()
+        resolved = resolve_security_policy(self.window.settings)
+        default_storage_mode = "env_only" if resolved.profile_id in {"beginner", "balanced"} else "settings"
+        storage_mode = str(profile_setting(self.window.settings, "ai_key_storage_mode", default_storage_mode) or default_storage_mode).strip().lower()
         configured = str(self.window.settings.get("gemini_api_key", "") or "").strip()
         if storage_mode != "env_only" and configured:
             return configured
@@ -455,7 +458,7 @@ class AIController:
         return str(self.window.settings.get("ai_model", "gemini-3-flash-preview") or "gemini-3-flash-preview")
 
     def _ai_private_mode_enabled(self) -> bool:
-        """Internal helper for `_ai_private_mode_enabled`."""
+        """Handle AI private mode enabled."""
         return bool(self.window.settings.get("ai_private_mode", False))
 
     def _guard_ai_private_mode(self, title: str) -> bool:
@@ -469,9 +472,25 @@ class AIController:
         )
         return True
 
+    def _guard_untrusted_tab_ai(self, title: str) -> bool:
+        """Block AI actions for untrusted notes when policy requires it."""
+        tab = self.window.active_tab() if hasattr(self.window, "active_tab") else None
+        if tab is None:
+            return False
+        if not bool(profile_setting(self.window.settings, "untrusted_note_block_ai", True)):
+            return False
+        if str(getattr(tab, "trust_state", "") or "") != "untrusted":
+            return False
+        QMessageBox.information(
+            self.window,
+            title,
+            "AI actions are blocked for untrusted notes. Trust the note first in File > More > Security.",
+        )
+        return True
+
     @staticmethod
     def _estimate_tokens(text: str) -> int:
-        """Internal helper for `_estimate_tokens`."""
+        """Handle estimate tokens."""
         return max(1, int(len(text) / 4)) if text else 0
 
     def _record_ai_metrics(self, *, action: str, prompt: str, response: str, model: str) -> None:
@@ -615,13 +634,13 @@ class AIController:
         def _run_ui(action: Callable[[], None]) -> None:
             # Stream worker signals are connected to Python callables; without an explicit
             # receiver object Qt may invoke them on the worker thread. Marshal to UI thread.
-            """Internal helper for `_run_ui`."""
+            """Handle run UI."""
             QTimer.singleShot(0, self.window, action)
 
         def _dispatch_chunk(piece: str) -> None:
-            """Internal helper for `_dispatch_chunk`."""
+            """Handle dispatch chunk."""
             def _apply() -> None:
-                """Internal helper for `_apply`."""
+                """Handle apply."""
                 _LOGGER.debug(
                     "AIController stream callback on_chunk action=%r id=%d chars=%d",
                     action_name,
@@ -635,9 +654,9 @@ class AIController:
             _run_ui(_apply)
 
         def _dispatch_done(text: str) -> None:
-            """Internal helper for `_dispatch_done`."""
+            """Handle dispatch done."""
             def _apply() -> None:
-                """Internal helper for `_apply`."""
+                """Handle apply."""
                 _LOGGER.debug(
                     "AIController stream callback on_done action=%r id=%d cid=%r chars=%d",
                     action_name,
@@ -650,9 +669,9 @@ class AIController:
             _run_ui(_apply)
 
         def _dispatch_error(message: str) -> None:
-            """Internal helper for `_dispatch_error`."""
+            """Handle dispatch error."""
             def _apply() -> None:
-                """Internal helper for `_apply`."""
+                """Handle apply."""
                 _LOGGER.debug(
                     "AIController stream callback on_error action=%r id=%d cid=%r message_len=%d",
                     action_name,
@@ -695,9 +714,9 @@ class AIController:
         worker.failed.connect(_dispatch_error)
         if on_cancel is not None:
             def _dispatch_cancel(text: str) -> None:
-                """Internal helper for `_dispatch_cancel`."""
+                """Handle dispatch cancel."""
                 def _apply() -> None:
-                    """Internal helper for `_apply`."""
+                    """Handle apply."""
                     _LOGGER.debug(
                         "AIController stream callback on_cancel action=%r id=%d cid=%r chars=%d",
                         action_name,
@@ -858,6 +877,8 @@ class AIController:
         """Open the main AI entry point, preferring the chat dock when available."""
         if self._guard_ai_private_mode("Ask AI"):
             return
+        if self._guard_untrusted_tab_ai("Ask AI"):
+            return
         if hasattr(self.window, "toggle_ai_chat_panel"):
             self.window.toggle_ai_chat_panel(True)
             return
@@ -869,6 +890,8 @@ class AIController:
     def explain_selection(self) -> None:
         """Ask the model to explain the current text selection."""
         if self._guard_ai_private_mode("Explain Selection"):
+            return
+        if self._guard_untrusted_tab_ai("Explain Selection"):
             return
         tab = self.window.active_tab()
         if tab is None:
@@ -884,6 +907,8 @@ class AIController:
         """Prompt for free-form generation and insert the result into the current tab."""
         if self._guard_ai_private_mode("Generate Text"):
             return
+        if self._guard_untrusted_tab_ai("Generate Text"):
+            return
         tab = self.window.active_tab()
         if tab is None:
             QMessageBox.information(self.window, "Generate Text", "Open a tab first.")
@@ -896,6 +921,8 @@ class AIController:
     def rewrite_selection(self, mode: str) -> None:
         """Stream an AI rewrite for the current selection, with preview/approval support."""
         if self._guard_ai_private_mode("AI Rewrite"):
+            return
+        if self._guard_untrusted_tab_ai("AI Rewrite"):
             return
         tab = self.window.active_tab()
         if tab is None:
@@ -929,11 +956,11 @@ class AIController:
         progress.canceled.connect(self.cancel_active_chat_request)
 
         def _run_ui(action: Callable[[], None]) -> None:
-            """Internal helper for `_run_ui`."""
+            """Run UI."""
             QTimer.singleShot(0, self.window, action)
 
         def on_rewrite_result(result: str) -> None:
-            """Execute the `on_rewrite_result` workflow."""
+            """Handle on rewrite result."""
             progress.close()
             progress.deleteLater()
             requires_approval = bool(self.window.settings.get("ai_rewrite_require_approval", True))
@@ -949,9 +976,9 @@ class AIController:
             self.window.show_status_message("AI rewrite applied (copied to clipboard).", 3000)
 
         def on_rewrite_error(message: str) -> None:
-            """Execute the `on_rewrite_error` workflow."""
+            """Handle on rewrite error."""
             def _apply() -> None:
-                """Internal helper for `_apply`."""
+                """Handle apply."""
                 progress.close()
                 progress.deleteLater()
                 model = self._model()
@@ -962,14 +989,14 @@ class AIController:
         chunks: list[str] = []
 
         def on_chunk(piece: str) -> None:
-            """Execute the `on_chunk` workflow."""
+            """Handle on chunk."""
             if piece:
                 chunks.append(piece)
 
         def on_cancel(partial: str) -> None:
-            """Execute the `on_cancel` workflow."""
+            """Handle on cancel."""
             def _apply() -> None:
-                """Internal helper for `_apply`."""
+                """Handle apply."""
                 progress.close()
                 progress.deleteLater()
                 self.window.show_status_message("AI rewrite canceled.", 3000)
@@ -977,7 +1004,7 @@ class AIController:
             _run_ui(_apply)
 
         def on_done(text: str) -> None:
-            """Execute the `on_done` workflow."""
+            """Handle on done."""
             if not text and chunks:
                 text = "".join(chunks).strip()
             _run_ui(lambda: on_rewrite_result(text))
@@ -994,6 +1021,8 @@ class AIController:
     def ask_about_context(self) -> None:
         """Ask a question about the active file using its current contents as context."""
         if self._guard_ai_private_mode("Ask About File"):
+            return
+        if self._guard_untrusted_tab_ai("Ask About File"):
             return
         tab = self.window.active_tab()
         if tab is None:
@@ -1025,6 +1054,8 @@ class AIController:
     ) -> None:
         """Submit a chat-style AI request whose output is consumed incrementally by the caller."""
         if self._guard_ai_private_mode("AI Chat"):
+            return
+        if self._guard_untrusted_tab_ai("AI Chat"):
             return
         _LOGGER.debug(
             "AIController.ask_ai_chat prompt_chars=%d on_cancel=%s cid=%r",

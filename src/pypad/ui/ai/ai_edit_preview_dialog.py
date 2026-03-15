@@ -29,7 +29,7 @@ from pypad.ui.theme.theme_tokens import build_ai_edit_preview_dialog_qss, build_
 
 @dataclass
 class _Hunk:
-    """Class that implements the `_Hunk` runtime behavior."""
+    """hunk."""
     start_a: int
     end_a: int
     start_b: int
@@ -39,9 +39,9 @@ class _Hunk:
 
 
 class AIEditPreviewDialog(QDialog):
-    """Dialog class that implements the `AIEditPreviewDialog` workflow."""
+    """a i edit preview dialog."""
     def __init__(self, parent, original_text: str, proposed_text: str, title: str = "AI Edit Preview") -> None:
-        """Initialize the `ai_edit_preview_dialog` state for this instance."""
+        """Build the AI edit preview dialog and wire its controls."""
         super().__init__(parent)
         self.setWindowTitle(title)
         self.resize(1000, 620)
@@ -95,14 +95,14 @@ class AIEditPreviewDialog(QDialog):
         self._apply_theme_from_parent()
 
     def _apply_theme_from_parent(self) -> None:
-        """Internal helper for `_apply_theme_from_parent`."""
+        """Apply theme from parent."""
         settings = getattr(self.parent(), "settings", {}) if self.parent() is not None else {}
         tokens = build_tokens_from_settings(settings if isinstance(settings, dict) else {})
         self.setStyleSheet(build_dialog_theme_qss_from_tokens(tokens) + "\n" + build_ai_edit_preview_dialog_qss(tokens))
 
     @staticmethod
     def _build_hunks(old_lines: list[str], new_lines: list[str]) -> list[_Hunk]:
-        """Internal helper for `_build_hunks`."""
+        """Build hunks."""
         sm = difflib.SequenceMatcher(a=old_lines, b=new_lines)
         hunks: list[_Hunk] = []
         for tag, i1, i2, j1, j2 in sm.get_opcodes():
@@ -121,7 +121,7 @@ class AIEditPreviewDialog(QDialog):
         return hunks
 
     def _populate_hunks(self) -> None:
-        """Internal helper for `_populate_hunks`."""
+        """Handle populate hunks."""
         self.hunk_list.clear()
         if not self._hunks:
             item = QListWidgetItem("No textual changes detected")
@@ -141,7 +141,7 @@ class AIEditPreviewDialog(QDialog):
         self.hunk_list.setCurrentRow(0)
 
     def _refresh_hunk_diff(self) -> None:
-        """Internal helper for `_refresh_hunk_diff`."""
+        """Refresh hunk diff."""
         item = self.hunk_list.currentItem()
         if item is None:
             self.diff_preview.clear()
@@ -163,7 +163,7 @@ class AIEditPreviewDialog(QDialog):
         self.diff_preview.setPlainText("\n".join(diff_lines))
 
     def _is_hunk_enabled(self, index: int) -> bool:
-        """Internal helper for `_is_hunk_enabled`."""
+        """Return whether hunk enabled."""
         for row in range(self.hunk_list.count()):
             item = self.hunk_list.item(row)
             data = item.data(Qt.ItemDataRole.UserRole)
@@ -172,7 +172,7 @@ class AIEditPreviewDialog(QDialog):
         return False
 
     def _merged_text(self) -> str:
-        """Internal helper for `_merged_text`."""
+        """Handle merged text."""
         sm = difflib.SequenceMatcher(a=self._original_lines, b=self._proposed_lines)
         merged: list[str] = []
         hunk_idx = 0
@@ -188,19 +188,19 @@ class AIEditPreviewDialog(QDialog):
         return "".join(merged)
 
     def _refresh_result_preview(self) -> None:
-        """Internal helper for `_refresh_result_preview`."""
+        """Refresh result preview."""
         self.result_preview.setPlainText(self._merged_text())
 
     def _accept_with_merge(self) -> None:
-        """Internal helper for `_accept_with_merge`."""
+        """Handle accept with merge."""
         self.final_text = self._merged_text()
         self.accept()
 
 
 class AIRewritePromptDialog(QDialog):
-    """Dialog class that implements the `AIRewritePromptDialog` workflow."""
+    """a i rewrite prompt dialog."""
     def __init__(self, parent, selection_preview: str, mode_prompts: dict[str, str]) -> None:
-        """Initialize the `ai_edit_preview_dialog` state for this instance."""
+        """Build the rewrite prompt dialog used before sending an AI rewrite request."""
         super().__init__(parent)
         self.setWindowTitle("AI Rewrite")
         self.resize(720, 520)
@@ -243,19 +243,19 @@ class AIRewritePromptDialog(QDialog):
         self._apply_theme_from_parent()
 
     def _apply_theme_from_parent(self) -> None:
-        """Internal helper for `_apply_theme_from_parent`."""
+        """Apply theme from parent."""
         settings = getattr(self.parent(), "settings", {}) if self.parent() is not None else {}
         tokens = build_tokens_from_settings(settings if isinstance(settings, dict) else {})
         self.setStyleSheet(build_dialog_theme_qss_from_tokens(tokens) + "\n" + build_ai_edit_preview_dialog_qss(tokens))
 
     def _sync_instruction(self, mode: str) -> None:
-        """Internal helper for `_sync_instruction`."""
+        """Sync instruction."""
         text = self._mode_prompts.get(mode, "")
         if text:
             self.instruction_edit.setPlainText(text)
 
     def _accept_with_instruction(self) -> None:
-        """Internal helper for `_accept_with_instruction`."""
+        """Handle accept with instruction."""
         instruction = self.instruction_edit.toPlainText().strip()
         if self.force_plain_checkbox.isChecked():
             instruction = instruction + "\n\nReturn only the rewritten text with no preface or commentary."
@@ -263,6 +263,6 @@ class AIRewritePromptDialog(QDialog):
         self.accept()
 
     def instruction(self) -> str:
-        """Execute the `instruction` workflow."""
+        """Handle instruction."""
         return self._result_instruction
 

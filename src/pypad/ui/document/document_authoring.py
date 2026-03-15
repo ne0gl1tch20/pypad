@@ -174,7 +174,7 @@ def apply_style_to_text(
         return "".join(lines)
 
     def make_prefix(content: str) -> str:
-        """Execute the `make_prefix` workflow."""
+        """Handle make prefix."""
         if key == "heading1":
             return f"# {content}"
         if key == "heading2":
@@ -216,7 +216,7 @@ def extract_markdown_headings(text: str) -> list[tuple[int, str]]:
 def build_markdown_toc(headings: list[tuple[int, str]]) -> str:
     """Build a nested Markdown table of contents from heading tuples."""
     def slugify(s: str) -> str:
-        """Execute the `slugify` workflow."""
+        """Handle slugify."""
         slug = re.sub(r"[^a-zA-Z0-9\s-]", "", s).strip().lower()
         return re.sub(r"\s+", "-", slug)
 

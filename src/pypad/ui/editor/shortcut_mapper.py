@@ -73,19 +73,19 @@ PRESET_SHORTCUTS: dict[str, dict[str, str]] = {
 
 @dataclass
 class ShortcutActionRow:
-    """Class that implements the `ShortcutActionRow` runtime behavior."""
+    """shortcut action row."""
     action_id: str
     label: str
     action: QAction
 
 
 def sequence_to_string(seq: QKeySequence) -> str:
-    """Execute the `sequence_to_string` workflow."""
+    """Handle sequence to string."""
     return seq.toString(QKeySequence.SequenceFormat.NativeText)
 
 
 def _read_action_shortcuts(action: QAction) -> list[str]:
-    """Internal helper for `_read_action_shortcuts`."""
+    """Handle read action shortcuts."""
     seqs = [sequence_to_string(seq).strip() for seq in action.shortcuts() if not seq.isEmpty()]
     if not seqs:
         fallback = action.shortcut()
@@ -95,7 +95,7 @@ def _read_action_shortcuts(action: QAction) -> list[str]:
 
 
 def parse_shortcut_value(value: str | list[str]) -> list[QKeySequence]:
-    """Execute the `parse_shortcut_value` workflow."""
+    """Parse shortcut value."""
     if isinstance(value, list):
         texts = [str(v).strip() for v in value if str(v).strip()]
     else:
@@ -104,9 +104,9 @@ def parse_shortcut_value(value: str | list[str]) -> list[QKeySequence]:
 
 
 class KeyCaptureDialog(QDialog):
-    """Dialog class that implements the `KeyCaptureDialog` workflow."""
+    """key capture dialog."""
     def __init__(self, parent: QWidget | None = None) -> None:
-        """Initialize the `shortcut_mapper` state for this instance."""
+        """Build the key-capture dialog used to record shortcut input."""
         super().__init__(parent)
         self.setWindowTitle("Press Shortcut")
         self.resize(320, 120)
@@ -124,12 +124,12 @@ class KeyCaptureDialog(QDialog):
         self.cancel_btn.clicked.connect(self.reject)
 
     def _clear(self) -> None:
-        """Internal helper for `_clear`."""
+        """Handle clear."""
         self.captured = QKeySequence()
         self.accept()
 
     def keyPressEvent(self, event) -> None:  # type: ignore[override]
-        """Execute the `keyPressEvent` workflow."""
+        """Handle key press input for this widget."""
         key = int(event.key())
         mod = int(event.modifiers())
         if key in (Qt.Key.Key_Control, Qt.Key.Key_Shift, Qt.Key.Key_Alt, Qt.Key.Key_Meta):
@@ -141,7 +141,7 @@ class KeyCaptureDialog(QDialog):
 
 
 class ShortcutMapperDialog(QDialog):
-    """Dialog class that implements the `ShortcutMapperDialog` workflow."""
+    """shortcut mapper dialog."""
     def __init__(
         self,
         parent: "Notepad",
@@ -149,7 +149,7 @@ class ShortcutMapperDialog(QDialog):
         default_shortcuts: dict[str, list[str]],
         settings: dict,
     ) -> None:
-        """Initialize the `shortcut_mapper` state for this instance."""
+        """Build the shortcut mapper dialog and initialize its editable shortcut table."""
         super().__init__(parent)
         self.setWindowTitle("Shortcut Mapper")
         self.resize(860, 620)
@@ -215,7 +215,7 @@ class ShortcutMapperDialog(QDialog):
         self._refresh_table()
 
     def _effective_map(self) -> dict[str, list[str]]:
-        """Internal helper for `_effective_map`."""
+        """Handle effective map."""
         profile = self.preset_combo.currentText()
         combined: dict[str, list[str]] = dict(self._defaults)
         preset = PRESET_SHORTCUTS.get(profile, {})
@@ -227,14 +227,14 @@ class ShortcutMapperDialog(QDialog):
         return combined
 
     def _refresh_table(self) -> None:
-        """Internal helper for `_refresh_table`."""
+        """Refresh table."""
         mapping = self._effective_map()
         for row_idx, row in enumerate(self._actions):
             current = mapping.get(row.action_id, [])
             self.table.item(row_idx, 1).setText(", ".join(current))
 
     def _find_conflict(self, target_id: str, text: str) -> str | None:
-        """Internal helper for `_find_conflict`."""
+        """Handle find conflict."""
         mapping = self._effective_map()
         for aid, seqs in mapping.items():
             if aid == target_id:
@@ -244,7 +244,7 @@ class ShortcutMapperDialog(QDialog):
         return None
 
     def _set_shortcut_for(self, action_id: str) -> None:
-        """Internal helper for `_set_shortcut_for`."""
+        """Set shortcut for."""
         dlg = KeyCaptureDialog(self)
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
@@ -272,16 +272,16 @@ class ShortcutMapperDialog(QDialog):
         self._refresh_table()
 
     def _reset_shortcut_for(self, action_id: str) -> None:
-        """Internal helper for `_reset_shortcut_for`."""
+        """Handle reset shortcut for."""
         self._working_map.pop(action_id, None)
         self._refresh_table()
 
     def _apply_preset(self) -> None:
-        """Internal helper for `_apply_preset`."""
+        """Apply preset."""
         self._refresh_table()
 
     def _import_json(self) -> None:
-        """Internal helper for `_import_json`."""
+        """Handle import json."""
         path, _ = QFileDialog.getOpenFileName(self, "Import Shortcut Map", "", "JSON (*.json);;All Files (*.*)")
         if not path:
             return
@@ -307,7 +307,7 @@ class ShortcutMapperDialog(QDialog):
             QMessageBox.critical(self, "Import Failed", f"Could not import shortcut map:\n{exc}")
 
     def _export_json(self) -> None:
-        """Internal helper for `_export_json`."""
+        """Handle export json."""
         path, _ = QFileDialog.getSaveFileName(self, "Export Shortcut Map", "", "JSON (*.json);;All Files (*.*)")
         if not path:
             return
@@ -322,7 +322,7 @@ class ShortcutMapperDialog(QDialog):
             QMessageBox.critical(self, "Export Failed", f"Could not export shortcut map:\n{exc}")
 
     def apply_live(self) -> None:
-        """Apply the changes or settings handled by `apply_live`."""
+        """Apply live."""
         if self.conflict_combo.currentText() == "block":
             mapping = self._effective_map()
             reverse: dict[str, str] = {}
@@ -347,7 +347,7 @@ class ShortcutMapperDialog(QDialog):
         self._window.save_settings_to_disk()
 
     def _accept_with_apply(self) -> None:
-        """Internal helper for `_accept_with_apply`."""
+        """Handle accept with apply."""
         self.apply_live()
         self.accept()
 

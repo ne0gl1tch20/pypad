@@ -21,7 +21,7 @@ class MiscAiUsageMixin:
             ...
 
     def record_ai_usage(self, *, tokens: int, estimated_cost: float) -> None:
-        """Execute the `record_ai_usage` workflow."""
+        """Record AI usage."""
         usage = getattr(self, "ai_usage_session", None)
         if not isinstance(usage, dict):
             usage = {"requests": 0, "tokens": 0, "estimated_cost": 0.0}
@@ -32,7 +32,7 @@ class MiscAiUsageMixin:
         self._refresh_ai_usage_label()
 
     def _refresh_ai_usage_label(self) -> None:
-        """Internal helper for `_refresh_ai_usage_label`."""
+        """Refresh AI usage label."""
         label = getattr(self, "ai_usage_label", None)
         usage = getattr(self, "ai_usage_session", {})
         if label is None or not isinstance(usage, dict):
@@ -43,7 +43,7 @@ class MiscAiUsageMixin:
         label.setText(f"AI: {requests} req | ~{tokens} tok | ~${cost:.4f}")
 
     def show_ai_action_history(self) -> None:
-        """Execute the `show_ai_action_history` workflow."""
+        """Show AI action history."""
         history = self.settings.get("ai_action_history", [])
         if not isinstance(history, list):
             history = []
@@ -76,7 +76,7 @@ class MiscAiUsageMixin:
         dlg.exec()
 
     def show_ai_usage_summary(self) -> None:
-        """Execute the `show_ai_usage_summary` workflow."""
+        """Show AI usage summary."""
         usage = getattr(self, "ai_usage_session", {})
         requests = int(usage.get("requests", 0))
         tokens = int(usage.get("tokens", 0))

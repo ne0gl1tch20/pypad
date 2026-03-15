@@ -9,7 +9,7 @@ from PySide6.QtGui import QTextCursor
 
 
 def handle_selection_undo_command(editor, msg: int, args: tuple[int, ...]) -> int | None:
-    """Execute the `handle_selection_undo_command` workflow."""
+    """Apply selection, clipboard, and undo-style Scintilla commands."""
     if msg == int(editor.SCI_SETSEL):
         if len(args) < 2:
             return 0

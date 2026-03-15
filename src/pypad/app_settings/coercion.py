@@ -10,9 +10,14 @@ from urllib.parse import urlsplit
 from .defaults import build_default_settings
 from .notepadpp_prefs import coerce_notepadpp_prefs
 from .scintilla_profile import ScintillaProfile
+from pypad.ui.security.security_profile import (
+    BUILTIN_SECURITY_PROFILES,
+    PROFILE_SCOPED_SETTING_KEYS,
+    coerce_security_profile_overrides,
+)
 
 def coerce_bool(value, default: bool = False) -> bool:
-    """Execute the `coerce_bool` workflow."""
+    """Coerce bool."""
     if isinstance(value, bool):
         return value
     if isinstance(value, (int, float)):
@@ -27,7 +32,7 @@ def coerce_bool(value, default: bool = False) -> bool:
 
 
 def normalize_ui_visibility_settings(settings: dict) -> dict:
-    """Execute the `normalize_ui_visibility_settings` workflow."""
+    """Normalize UI visibility settings."""
     settings["show_markdown_toolbar"] = coerce_bool(
         settings.get("show_markdown_toolbar", False),
         default=False,
@@ -44,13 +49,13 @@ def normalize_ui_visibility_settings(settings: dict) -> dict:
 
 
 def _coerce_enum(value: object, allowed: set[str], default: str) -> str:
-    """Internal helper for `_coerce_enum`."""
+    """Handle coerce enum."""
     text = str(value or "").strip().lower()
     return text if text in allowed else default
 
 
 def _coerce_int_clamped(value: object, default: int, min_value: int, max_value: int) -> int:
-    """Internal helper for `_coerce_int_clamped`."""
+    """Handle coerce int clamped."""
     try:
         num = int(value)  # type: ignore[arg-type]
     except Exception:
@@ -59,7 +64,7 @@ def _coerce_int_clamped(value: object, default: int, min_value: int, max_value: 
 
 
 def _coerce_hex(value: object, default: str) -> str:
-    """Internal helper for `_coerce_hex`."""
+    """Handle coerce hex."""
     text = str(value or "").strip()
     if not text:
         return default
@@ -73,14 +78,14 @@ def _coerce_hex(value: object, default: str) -> str:
 
 
 def _coerce_logging_level(value: object, default: str = "INFO") -> str:
-    """Internal helper for `_coerce_logging_level`."""
+    """Handle coerce logging level."""
     allowed = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
     text = str(value or "").strip().upper()
     return text if text in allowed else default
 
 
 def _coerce_float_clamped(value: object, default: float, min_value: float, max_value: float) -> float:
-    """Internal helper for `_coerce_float_clamped`."""
+    """Handle coerce float clamped."""
     try:
         num = float(value)  # type: ignore[arg-type]
     except Exception:
@@ -89,7 +94,7 @@ def _coerce_float_clamped(value: object, default: float, min_value: float, max_v
 
 
 def _coerce_cmd_list(value: object, default: list[str]) -> list[str]:
-    """Internal helper for `_coerce_cmd_list`."""
+    """Handle coerce cmd list."""
     if isinstance(value, str):
         items = [part.strip() for part in value.split(",")]
         cleaned = [item for item in items if item]
@@ -100,8 +105,15 @@ def _coerce_cmd_list(value: object, default: list[str]) -> list[str]:
     return list(default)
 
 
+def _coerce_str_list(value: object) -> list[str]:
+    """Handle coerce str list."""
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    return []
+
+
 def _sanitize_update_feed_url(value: object, default: str) -> str:
-    """Internal helper for `_sanitize_update_feed_url`."""
+    """Handle sanitize update feed url."""
     raw = str(value or "").strip() or default
     if "neogl1tch20server" in raw or raw.endswith("/updates/notepad.xml"):
         raw = default
@@ -115,7 +127,7 @@ def _sanitize_update_feed_url(value: object, default: str) -> str:
 
 
 def migrate_settings(settings: dict) -> dict:
-    """Execute the `migrate_settings` workflow."""
+    """Migrate settings."""
     current = dict(settings)
     defaults = build_default_settings(default_style="Windows", font_family="Segoe UI", font_size=11)
     schema = _coerce_int_clamped(current.get("settings_schema_version", 1), 1, 1, 999)
@@ -286,6 +298,62 @@ def migrate_settings(settings: dict) -> dict:
         False,
     )
     current["workspace_startup_last_profile"] = str(current.get("workspace_startup_last_profile", "") or "").strip()
+    profile_id = str(current.get("security_profile_id", "balanced") or "balanced").strip().lower()
+    current["security_profile_id"] = profile_id if profile_id in BUILTIN_SECURITY_PROFILES else "balanced"
+    current["security_profile_custom_overrides"] = coerce_security_profile_overrides(
+        current.get("security_profile_custom_overrides", {})
+    )
+    current["security_profile_first_run_acknowledged"] = coerce_bool(
+        current.get("security_profile_first_run_acknowledged", False),
+        False,
+    )
+    raw_profile_states = current.get("security_profile_states", {})
+    cleaned_profile_states: dict[str, dict[str, object]] = {}
+    if isinstance(raw_profile_states, dict):
+        for key, value in raw_profile_states.items():
+            profile_name = str(key or "").strip().lower()
+            if profile_name not in BUILTIN_SECURITY_PROFILES or not isinstance(value, dict):
+                continue
+            profile_state: dict[str, object] = {}
+            for state_key, state_value in value.items():
+                name = str(state_key or "").strip()
+                if name in PROFILE_SCOPED_SETTING_KEYS:
+                    profile_state[name] = state_value
+            if "security_profile_custom_overrides" in profile_state:
+                profile_state["security_profile_custom_overrides"] = coerce_security_profile_overrides(
+                    profile_state.get("security_profile_custom_overrides", {})
+                )
+            cleaned_profile_states[profile_name] = profile_state
+    current["security_profile_states"] = cleaned_profile_states
+    current["file_trust_prompt_on_external_open"] = coerce_bool(
+        current.get("file_trust_prompt_on_external_open", True),
+        True,
+    )
+    current["file_trust_persist_session_only_default"] = coerce_bool(
+        current.get("file_trust_persist_session_only_default", True),
+        True,
+    )
+    current["trust_known_workspace_files"] = coerce_bool(current.get("trust_known_workspace_files", True), True)
+    trust_store = current.get("file_trust_store", {})
+    if isinstance(trust_store, dict):
+        cleaned_trust_store: dict[str, dict[str, object]] = {}
+        for key, value in trust_store.items():
+            if not isinstance(value, dict):
+                continue
+            path = str(key or "").strip()
+            if not path:
+                continue
+            cleaned_trust_store[path] = {
+                "state": str(value.get("state", "") or ""),
+                "source": str(value.get("source", "") or ""),
+                "persisted_at": str(value.get("persisted_at", "") or ""),
+                "profile_id": str(value.get("profile_id", "") or ""),
+                "last_seen_mtime_ns": value.get("last_seen_mtime_ns"),
+                "last_seen_size": value.get("last_seen_size"),
+            }
+        current["file_trust_store"] = cleaned_trust_store
+    else:
+        current["file_trust_store"] = {}
 
     current["search_default_match_case"] = coerce_bool(current.get("search_default_match_case", False), False)
     current["search_default_whole_word"] = coerce_bool(current.get("search_default_whole_word", False), False)
@@ -340,6 +408,11 @@ def migrate_settings(settings: dict) -> dict:
         20,
     )
     current["plugin_allow_unsafe_ui_bridge"] = coerce_bool(current.get("plugin_allow_unsafe_ui_bridge", False), False)
+    current["plugin_runtime_policy"] = _coerce_enum(
+        current.get("plugin_runtime_policy"),
+        {"built_in_only", "signed_only", "unsigned_local_allowed"},
+        "signed_only",
+    )
     current["plugin_online_catalog_url"] = str(
         current.get(
             "plugin_online_catalog_url",
@@ -359,6 +432,7 @@ def migrate_settings(settings: dict) -> dict:
     current["status_show_autosave"] = coerce_bool(current.get("status_show_autosave", True), True)
     current["status_show_gamification"] = coerce_bool(current.get("status_show_gamification", False), False)
     current["status_show_momentum"] = coerce_bool(current.get("status_show_momentum", False), False)
+    current["accessibility_preset"] = coerce_str(current.get("accessibility_preset", "none"), "none").strip().lower() or "none"
     current["accessibility_reduce_motion"] = coerce_bool(current.get("accessibility_reduce_motion", False), False)
     current["accessibility_cursor_blink"] = coerce_bool(current.get("accessibility_cursor_blink", True), True)
     current["accessibility_cursor_blink_rate_ms"] = _coerce_int_clamped(
@@ -368,8 +442,13 @@ def migrate_settings(settings: dict) -> dict:
         2500,
     )
 
-    current["ai_send_redact_emails"] = coerce_bool(current.get("ai_send_redact_emails", False), False)
-    current["ai_send_redact_paths"] = coerce_bool(current.get("ai_send_redact_paths", False), False)
+    current["ai_redaction_profile_default"] = _coerce_enum(
+        current.get("ai_redaction_profile_default"),
+        {"strict", "standard", "off"},
+        "strict",
+    )
+    current["ai_send_redact_emails"] = coerce_bool(current.get("ai_send_redact_emails", True), True)
+    current["ai_send_redact_paths"] = coerce_bool(current.get("ai_send_redact_paths", True), True)
     current["ai_send_redact_tokens"] = coerce_bool(current.get("ai_send_redact_tokens", True), True)
     current["ai_app_knowledge_override"] = str(current.get("ai_app_knowledge_override", "") or "")
     current["ai_personality_advanced"] = str(current.get("ai_personality_advanced", "") or "")
@@ -426,10 +505,27 @@ def migrate_settings(settings: dict) -> dict:
         list(defaults.get("lsp_typescript_servers", [])),
     )
     current["ai_preview_redacted_prompt"] = coerce_bool(current.get("ai_preview_redacted_prompt", True), True)
-    current["ai_key_storage_mode"] = _coerce_enum(current.get("ai_key_storage_mode"), {"settings", "env_only"}, "settings")
+    current["ai_key_storage_mode"] = _coerce_enum(current.get("ai_key_storage_mode"), {"settings", "env_only"}, "env_only")
     current["update_feed_url"] = _sanitize_update_feed_url(current.get("update_feed_url"), defaults.get("update_feed_url", ""))
-    current["update_require_signed_metadata"] = coerce_bool(current.get("update_require_signed_metadata", False), False)
+    current["update_channel_policy"] = _coerce_enum(
+        current.get("update_channel_policy"),
+        {"official_only", "custom_feed_allowed"},
+        "official_only",
+    )
+    current["update_require_signed_metadata"] = coerce_bool(current.get("update_require_signed_metadata", True), True)
     current["update_signing_key"] = str(current.get("update_signing_key", "") or "").strip()
+    current["untrusted_note_read_only"] = coerce_bool(current.get("untrusted_note_read_only", True), True)
+    current["untrusted_note_block_ai"] = coerce_bool(current.get("untrusted_note_block_ai", True), True)
+    current["untrusted_note_block_plugins"] = coerce_bool(current.get("untrusted_note_block_plugins", True), True)
+    current["untrusted_note_block_export"] = coerce_bool(current.get("untrusted_note_block_export", True), True)
+    current["untrusted_note_require_save_as"] = coerce_bool(current.get("untrusted_note_require_save_as", True), True)
+    current["safe_save_atomic_replace"] = coerce_bool(current.get("safe_save_atomic_replace", True), True)
+    current["safe_save_backup_on_overwrite"] = coerce_bool(current.get("safe_save_backup_on_overwrite", True), True)
+    current["safe_save_warn_script_extensions"] = coerce_bool(current.get("safe_save_warn_script_extensions", True), True)
+    current["safe_save_block_untrusted_overwrite"] = coerce_bool(
+        current.get("safe_save_block_untrusted_overwrite", True),
+        True,
+    )
 
     current["recovery_mode"] = _coerce_enum(
         current.get("recovery_mode"),

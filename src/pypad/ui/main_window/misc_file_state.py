@@ -22,7 +22,7 @@ class MiscFileStateMixin:
             ...
 
     def _notify_large_file_mode(self, tab: EditorTab) -> None:
-        """Internal helper for `_notify_large_file_mode`."""
+        """Handle notify large file mode."""
         if not tab.large_file:
             tab.large_file_notice_shown = False
             return
@@ -41,7 +41,7 @@ class MiscFileStateMixin:
             )
 
     def reload_tab_from_disk(self, tab: EditorTab) -> None:
-        """Execute the `reload_tab_from_disk` workflow."""
+        """Handle reload tab from disk."""
         if not tab.current_file:
             return
         if tab.text_edit.is_modified():
@@ -83,7 +83,7 @@ class MiscFileStateMixin:
         self.update_window_title()
 
     def _set_file_read_only(self, path: str, read_only: bool) -> bool:
-        """Internal helper for `_set_file_read_only`."""
+        """Set file read only."""
         try:
             mode = os.stat(path).st_mode
             if read_only:
@@ -95,7 +95,7 @@ class MiscFileStateMixin:
             return False
 
     def toggle_tab_read_only(self, tab: EditorTab) -> None:
-        """Toggle the state controlled by `toggle_tab_read_only`."""
+        """Enable or disable read-only mode for the active tab."""
         if not tab.current_file:
             return
         new_state = not self._is_path_read_only(tab.current_file)
@@ -108,17 +108,17 @@ class MiscFileStateMixin:
         self.show_status_message("Read-only enabled" if tab.read_only else "Read-only disabled", 3000)
 
     def set_tab_color(self, tab: EditorTab, color_hex: str | None) -> None:
-        """Update state handled by `set_tab_color`."""
+        """Apply a new custom color to the active tab and refresh its visuals."""
         tab.tab_color = color_hex
         self._apply_tab_color(tab)
         self._persist_file_metadata_for_tab(tab)
 
     def _update_path_references(self, old: str, new: str) -> None:
-        """Internal helper for `_update_path_references`."""
+        """Update path references."""
         if old == new:
             return
         def _replace_in_list(values: list[str]) -> list[str]:
-            """Internal helper for `_replace_in_list`."""
+            """Handle replace in list."""
             return [new if p == old else p for p in values]
 
         self.settings["recent_files"] = _replace_in_list(self.settings.get("recent_files", []))

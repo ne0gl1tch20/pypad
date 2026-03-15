@@ -11,37 +11,37 @@ import hmac
 
 
 def b64encode_bytes(data: bytes) -> str:
-    """Execute the `b64encode_bytes` workflow."""
+    """Handle b64encode bytes."""
     return base64.urlsafe_b64encode(data).decode("ascii")
 
 
 def b64decode_text(data: str) -> bytes:
-    """Execute the `b64decode_text` workflow."""
+    """Handle b64decode text."""
     return base64.urlsafe_b64decode(data.encode("ascii"))
 
 
 def derive_key_pbkdf2(password: str, salt: bytes, rounds: int, dklen: int = 32) -> bytes:
-    """Execute the `derive_key_pbkdf2` workflow."""
+    """Derive key PBKDF2."""
     return hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, rounds, dklen=dklen)
 
 
 def hmac_digest(key: bytes, data: bytes) -> bytes:
-    """Execute the `hmac_digest` workflow."""
+    """Handle hmac digest."""
     return hmac.new(key, data, hashlib.sha256).digest()
 
 
 def compare_digest(a: bytes, b: bytes) -> bool:
-    """Execute the `compare_digest` workflow."""
+    """Compare digest."""
     return hmac.compare_digest(a, b)
 
 
 def xor_bytes(left: bytes, right: bytes) -> bytes:
-    """Execute the `xor_bytes` workflow."""
+    """Handle xor bytes."""
     return bytes(a ^ b for a, b in zip(left, right))
 
 
 def hmac_counter_keystream(key: bytes, nonce: bytes, length: int) -> bytes:
-    """Execute the `hmac_counter_keystream` workflow."""
+    """Handle hmac counter keystream."""
     out = bytearray()
     counter = 0
     while len(out) < length:

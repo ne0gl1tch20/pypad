@@ -12,7 +12,7 @@ import re
 
 @dataclass(frozen=True)
 class ScintillaCommandMetadata:
-    """Class that implements the `ScintillaCommandMetadata` runtime behavior."""
+    """scintilla command metadata."""
     symbol: str
     category: str
     status: str
@@ -20,7 +20,7 @@ class ScintillaCommandMetadata:
     notes: str = ""
 
     def to_dict(self) -> dict[str, object]:
-        """Execute the `to_dict` workflow."""
+        """Convert dict."""
         return asdict(self)
 
 
@@ -82,7 +82,7 @@ _NOTES_OVERRIDES: dict[str, str] = {
 
 
 def _infer_category(symbol: str) -> str:
-    """Internal helper for `_infer_category`."""
+    """Handle infer category."""
     if symbol.startswith("SCN_"):
         return "notification"
     if "MARKER" in symbol:
@@ -103,7 +103,7 @@ def _infer_category(symbol: str) -> str:
 
 
 def _infer_args(symbol: str) -> tuple[str, ...]:
-    """Internal helper for `_infer_args`."""
+    """Handle infer args."""
     if symbol in _ARG_OVERRIDES:
         return _ARG_OVERRIDES[symbol]
     if symbol.startswith("SCN_"):
@@ -116,7 +116,7 @@ def _infer_args(symbol: str) -> tuple[str, ...]:
 
 
 def load_command_metadata() -> dict[str, ScintillaCommandMetadata]:
-    """Load data required by `load_command_metadata`."""
+    """Load the command metadata table used by the compatibility layer."""
     editor_path = Path(__file__).resolve().parent / "editor.py"
     text = editor_path.read_text(encoding="utf-8")
     symbols = sorted(set(re.findall(r"\b(?:SCI|SCN)_[A-Z0-9_]+\b", text)))

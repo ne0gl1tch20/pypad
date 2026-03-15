@@ -11,7 +11,7 @@ from dataclasses import dataclass
 
 @dataclass
 class LineRef:
-    """Class that implements the `LineRef` runtime behavior."""
+    """line ref."""
     kind: str
     line_no: int
     style_id: int | None
@@ -20,7 +20,7 @@ class LineRef:
 
 @dataclass
 class RegexFilterResult:
-    """Class that implements the `RegexFilterResult` runtime behavior."""
+    """regex filter result."""
     total_matches: int
     filtered_matches: int
     preview_lines: list[str]
@@ -28,7 +28,7 @@ class RegexFilterResult:
 
 
 def _line_span(source: str, start: int, end: int) -> tuple[int, int, str]:
-    """Internal helper for `_line_span`."""
+    """Handle line span."""
     line_start = source.rfind("\n", 0, start)
     line_start = 0 if line_start < 0 else line_start + 1
     line_end = source.find("\n", end)
@@ -45,7 +45,7 @@ def build_line_refs(
     include_bookmarks: bool = True,
     include_marks: bool = True,
 ) -> list[LineRef]:
-    """Build and return the value produced by `build_line_refs`."""
+    """Build line refs."""
     lines = source_text.splitlines()
     out: list[LineRef] = []
     if include_bookmarks:
@@ -67,7 +67,7 @@ def build_line_refs(
 
 
 def export_line_refs_text(rows: list[LineRef]) -> str:
-    """Execute the `export_line_refs_text` workflow."""
+    """Export line refs text."""
     lines: list[str] = ["Line | Kind | Style | Text", "---- | ---- | ----- | ----"]
     for row in rows:
         style = "" if row.style_id is None else str(row.style_id)
@@ -85,7 +85,7 @@ def compute_regex_filtered_replacement(
     exclude_pattern: str = "",
     max_preview_rows: int = 200,
 ) -> RegexFilterResult:
-    """Execute the `compute_regex_filtered_replacement` workflow."""
+    """Compute replacement output for matches that satisfy the include and exclude filters."""
     rx = re.compile(pattern, flags)
     include_rx = re.compile(include_pattern, flags) if include_pattern.strip() else None
     exclude_rx = re.compile(exclude_pattern, flags) if exclude_pattern.strip() else None

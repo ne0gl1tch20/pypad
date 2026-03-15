@@ -33,7 +33,7 @@ class CompactGamificationWidget(QFrame):
     open_requested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
-        """Initialize the `gamification_widgets` state for this instance."""
+        """Build the compact gamification widget and initialize its progress display."""
         super().__init__(parent)
         self.setObjectName("pypadGamificationWidget")
         self.setFrameShape(QFrame.Shape.NoFrame)
@@ -68,14 +68,14 @@ class CompactGamificationWidget(QFrame):
         self.setToolTip(str(payload.get("tooltip", "") or self.quest_label.text()))
 
     def apply_theme(self, tokens: UIThemeTokens) -> None:
-        """Apply the changes or settings handled by `apply_theme`."""
+        """Apply theme."""
         self.setStyleSheet(build_gamification_widget_qss(tokens))
 
 
 class GamificationToast(QFrame):
-    """Class that implements the `GamificationToast` runtime behavior."""
+    """gamification toast."""
     def __init__(self, host: QWidget) -> None:
-        """Initialize the `gamification_widgets` state for this instance."""
+        """Build the gamification toast widget and initialize its transient message state."""
         super().__init__(host)
         self._host = host
         self._tokens: UIThemeTokens | None = None
@@ -113,12 +113,12 @@ class GamificationToast(QFrame):
         self._host.installEventFilter(self)
 
     def apply_theme(self, tokens: UIThemeTokens) -> None:
-        """Apply the changes or settings handled by `apply_theme`."""
+        """Apply theme."""
         self._tokens = tokens
         self.setStyleSheet(build_gamification_widget_qss(tokens))
 
     def show_reward(self, title: str, detail: str = "", timeout_ms: int = 2800) -> None:
-        """Execute the `show_reward` workflow."""
+        """Show reward."""
         self.title_label.setText(str(title or "Quest progress"))
         self.detail_label.setText(str(detail or ""))
         self.setMinimumWidth(280)
@@ -130,7 +130,7 @@ class GamificationToast(QFrame):
         self._timer.start(max(1200, int(timeout_ms or 0)))
 
     def _reposition(self) -> None:
-        """Internal helper for `_reposition`."""
+        """Handle reposition."""
         host_rect = self._host.rect()
         width = min(max(self.sizeHint().width(), 280), max(280, host_rect.width() // 3))
         self.resize(width, self.sizeHint().height())
@@ -139,7 +139,7 @@ class GamificationToast(QFrame):
         self.move(QPoint(x, y))
 
     def eventFilter(self, watched: object, event: QEvent) -> bool:
-        """Execute the `eventFilter` workflow."""
+        """Intercept Qt events that need custom handling before default processing."""
         if watched is self._host and event.type() in {QEvent.Type.Resize, QEvent.Type.Move, QEvent.Type.Show}:
             if self.isVisible():
                 self._reposition()
@@ -151,7 +151,7 @@ class MomentumBannerWidget(QFrame):
     recommended_action_requested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
-        """Initialize the `gamification_widgets` state for this instance."""
+        """Build the momentum banner widget and initialize its summary display."""
         super().__init__(parent)
         self.setObjectName("pypadMomentumBanner")
         self.setFrameShape(QFrame.Shape.NoFrame)
@@ -181,7 +181,7 @@ class MomentumBannerWidget(QFrame):
         self.setToolTip(text)
 
     def apply_theme(self, tokens: UIThemeTokens) -> None:
-        """Apply the changes or settings handled by `apply_theme`."""
+        """Apply theme."""
         self.setStyleSheet(build_gamification_widget_qss(tokens))
 
 
@@ -195,7 +195,7 @@ class ProductivityHubWidget(QFrame):
     recommended_action_requested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
-        """Initialize the `gamification_widgets` state for this instance."""
+        """Build the productivity hub widget and initialize its cards and action controls."""
         super().__init__(parent)
         self.setObjectName("pypadProductivityHub")
         self.setFrameShape(QFrame.Shape.NoFrame)
@@ -338,7 +338,7 @@ class ProductivityHubWidget(QFrame):
         self.activity_list = self._add_section(content_layout, 4, 1, "Recent Activity")
 
     def _add_section(self, layout: QGridLayout, row: int, column: int, title: str) -> QListWidget:
-        """Internal helper for `_add_section`."""
+        """Add section."""
         card = QFrame(self.scroll.widget())
         card.setObjectName("pypadProductivityHubCard")
         card_layout = QVBoxLayout(card)
@@ -357,7 +357,7 @@ class ProductivityHubWidget(QFrame):
         return items
 
     def apply_icons(self, icon_fn) -> None:
-        """Apply the changes or settings handled by `apply_icons`."""
+        """Apply icons."""
         if not callable(icon_fn):
             return
         icon_map = {
@@ -460,12 +460,12 @@ class ProductivityHubWidget(QFrame):
             self.activity_list.addItem("No recent activity yet.")
 
     def apply_theme(self, tokens: UIThemeTokens) -> None:
-        """Apply the changes or settings handled by `apply_theme`."""
+        """Apply theme."""
         self.setStyleSheet(build_gamification_widget_qss(tokens))
 
 
 class ProductivityHubDialog(QDialog):
-    """Dialog class that implements the `ProductivityHubDialog` workflow."""
+    """productivity hub dialog."""
     def __init__(
         self,
         window: QWidget,
@@ -474,7 +474,7 @@ class ProductivityHubDialog(QDialog):
         restore_geometry: Callable[[QDialog], None] | None = None,
         save_geometry: Callable[[QDialog], None] | None = None,
     ) -> None:
-        """Initialize the `gamification_widgets` state for this instance."""
+        """Build the productivity hub dialog and initialize its widgets and persistence hooks."""
         super().__init__(window)
         self._restore_geometry = restore_geometry
         self._save_geometry = save_geometry
@@ -513,7 +513,7 @@ class ProductivityHubDialog(QDialog):
         layout.addWidget(hub_widget, 1)
 
     def showEvent(self, event) -> None:  # type: ignore[override]
-        """Execute the `showEvent` workflow."""
+        """Refresh state when the widget becomes visible."""
         super().showEvent(event)
         if not self._geometry_restored and callable(self._restore_geometry):
             try:
@@ -523,28 +523,28 @@ class ProductivityHubDialog(QDialog):
             self._geometry_restored = True
 
     def moveEvent(self, event) -> None:  # type: ignore[override]
-        """Execute the `moveEvent` workflow."""
+        """Update cached position state when the widget moves."""
         super().moveEvent(event)
         self._schedule_geometry_save()
 
     def resizeEvent(self, event) -> None:  # type: ignore[override]
-        """Execute the `resizeEvent` workflow."""
+        """Update layout-dependent state when the widget is resized."""
         super().resizeEvent(event)
         self._schedule_geometry_save()
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
-        """Execute the `closeEvent` workflow."""
+        """Shut down widget-specific state before the widget closes."""
         self._flush_geometry_save()
         super().closeEvent(event)
 
     def _schedule_geometry_save(self) -> None:
-        """Internal helper for `_schedule_geometry_save`."""
+        """Handle schedule geometry save."""
         if not self.isVisible():
             return
         self._geometry_save_timer.start(350)
 
     def _flush_geometry_save(self) -> None:
-        """Internal helper for `_flush_geometry_save`."""
+        """Handle flush geometry save."""
         if callable(self._save_geometry):
             try:
                 self._save_geometry(self)

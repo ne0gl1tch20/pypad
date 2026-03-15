@@ -27,20 +27,20 @@ class _NullStream:
     encoding = "utf-8"
 
     def write(self, data) -> int:
-        """Execute the `write` workflow."""
+        """Write the value."""
         return len(str(data or ""))
 
     def flush(self) -> None:
-        """Execute the `flush` workflow."""
+        """Flush buffered output to the wrapped stream."""
         return
 
     def isatty(self) -> bool:
-        """Execute the `isatty` workflow."""
+        """Return whether the wrapped stream is interactive."""
         return False
 
 
 def _append_console_line(line: str) -> None:
-    """Internal helper for `_append_console_line`."""
+    """Append a rendered line to the in-memory console buffer."""
     text = str(line or "").rstrip("\r\n")
     if not text:
         return
@@ -49,28 +49,28 @@ def _append_console_line(line: str) -> None:
 
 
 def get_console_log_lines() -> list[str]:
-    """Return the value produced by `get_console_log_lines`."""
+    """Return the captured console log lines."""
     with _console_lock:
         return list(_console_lines)
 
 
 def clear_console_log_lines() -> None:
-    """Execute the `clear_console_log_lines` workflow."""
+    """Clear console log lines."""
     with _console_lock:
         _console_lines.clear()
 
 
 class _ConsoleCaptureTee:
-    """Class that implements the `_ConsoleCaptureTee` runtime behavior."""
+    """Stream wrapper that mirrors stdout and stderr into the in-app console log."""
     def __init__(self, stream, *, label: str) -> None:
-        """Initialize the `logging_utils` state for this instance."""
+        """Wrap a stream so writes are mirrored into the in-app console log buffer."""
         self._stream = stream
         self._label = label
         self._partial = ""
         self._pypad_console_capture_wrapper = True
 
     def write(self, data) -> int:
-        """Execute the `write` workflow."""
+        """Write the value."""
         text = str(data or "")
         if not text:
             return 0
@@ -92,7 +92,7 @@ class _ConsoleCaptureTee:
         return len(text)
 
     def flush(self) -> None:
-        """Execute the `flush` workflow."""
+        """Flush buffered output to the wrapped stream."""
         try:
             stream = self._stream
             if stream is not None:
@@ -103,7 +103,7 @@ class _ConsoleCaptureTee:
             self._partial = ""
 
     def __getattr__(self, name: str):
-        """Internal helper for `__getattr__`."""
+        """Delegate unknown attributes to the wrapped stream."""
         stream = self._stream
         if stream is None:
             raise AttributeError(name)
@@ -111,7 +111,7 @@ class _ConsoleCaptureTee:
 
     @staticmethod
     def _safe_stream_write(stream, text: str) -> None:
-        """Internal helper for `_safe_stream_write`."""
+        """Write text to a stream while repairing encoding failures."""
         try:
             stream.write(text)
             return
@@ -122,9 +122,9 @@ class _ConsoleCaptureTee:
 
 
 class _CapturingStreamHandler(logging.StreamHandler):
-    """Class that implements the `_CapturingStreamHandler` runtime behavior."""
+    """Logging handler that writes formatted records into the in-app console buffer."""
     def emit(self, record: logging.LogRecord) -> None:
-        """Execute the `emit` workflow."""
+        """Emit the value."""
         try:
             rendered = self.format(record)
         except Exception:
@@ -147,9 +147,9 @@ class _CapturingStreamHandler(logging.StreamHandler):
 
 
 class _PypadLogFormatter(logging.Formatter):
-    """Class that implements the `_PypadLogFormatter` runtime behavior."""
+    """Logging formatter that renders timestamps and source names in the app format."""
     def format(self, record: logging.LogRecord) -> str:
-        """Execute the `format` workflow."""
+        """Format the value."""
         timestamp = datetime.fromtimestamp(record.created)
         time_text = timestamp.strftime("%H:%M:%S.%f")[:-3]
         date_text = f"{timestamp.month}/{timestamp.day}/{timestamp.year}"
@@ -166,18 +166,18 @@ class _PypadLogFormatter(logging.Formatter):
 
 
 def normalize_log_level_name(value: object, default: str = DEFAULT_LOG_LEVEL) -> str:
-    """Execute the `normalize_log_level_name` workflow."""
+    """Normalize log level name."""
     text = str(value or "").strip().upper()
     return text if text in LOG_LEVEL_OPTIONS else str(default).strip().upper()
 
 
 def get_level_number(value: object, default: str = DEFAULT_LOG_LEVEL) -> int:
-    """Return the value produced by `get_level_number`."""
+    """Return the numeric logging level for the provided level name."""
     return int(getattr(logging, normalize_log_level_name(value, default), logging.INFO))
 
 
 def configure_app_logging(level: object = DEFAULT_LOG_LEVEL) -> str:
-    """Execute the `configure_app_logging` workflow."""
+    """Configure app logging."""
     _install_console_capture()
     level_name = normalize_log_level_name(level)
     root_logger = logging.getLogger()
@@ -202,7 +202,7 @@ def resolve_persisted_log_level(
     *,
     default: str = DEFAULT_LOG_LEVEL,
 ) -> str:
-    """Execute the `resolve_persisted_log_level` workflow."""
+    """Read the saved logging level from settings, falling back to the default."""
     path = Path(settings_path) if settings_path else None
     if path is None or not path.exists():
         return normalize_log_level_name(default)
@@ -216,12 +216,12 @@ def resolve_persisted_log_level(
 
 
 def get_logger(name: str) -> logging.Logger:
-    """Return the value produced by `get_logger`."""
+    """Return a logger for the requested module or component name."""
     return logging.getLogger(name)
 
 
 def _install_console_capture() -> None:
-    """Internal helper for `_install_console_capture`."""
+    """Install console capture."""
     global _console_capture_installed
     if _console_capture_installed:
         return

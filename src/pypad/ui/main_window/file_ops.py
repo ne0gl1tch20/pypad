@@ -94,6 +94,8 @@ from pypad.ui.document.document_authoring import PageLayoutConfig, build_layout_
 from pypad.ui.workspace.project_workflow import read_text_with_large_file_preview
 from pypad.ui.document.document_fidelity import DocumentFidelityError, export_document_text, import_document_text
 from pypad.ui.security.note_crypto import HEADER as ENCRYPTED_NOTE_HEADER
+from pypad.ui.security.note_trust import SESSION_TRUSTED, TRUSTED
+from pypad.ui.security.safe_save import SCRIPT_LIKE_SUFFIXES, build_effective_save_policy, safe_write_text
 from pypad.logging_utils import get_logger
 from .notepadpp_pref_runtime import apply_npp_print_preferences_to_page_layout
 
@@ -144,16 +146,16 @@ class FileOpsMixin:
             return
         _LOGGER.debug("file_open dialog selected path=%s", path)
         self.log_event("Info", f'Open requested: "{path}"')
-        if not self._open_file_path(path):
+        if not self._open_file_path(path, open_origin="file_dialog"):
             return
         self.log_event("Info", f'Open succeeded: "{path}"')
 
     def _prompt_password(self, title: str, label: str) -> str | None:
-        """Internal helper for `_prompt_password`."""
+        """Handle prompt password."""
         return self.security_controller.prompt_password(title, label)
 
     def _load_text_from_path(self, path: str, encoding: str = "utf-8") -> tuple[str, bool, str | None]:
-        """Internal helper for `_load_text_from_path`."""
+        """Load text from path."""
         return self.security_controller.load_text_from_path(path, encoding=encoding)
 
     def _confirm_open_non_text_file(self, path: str, encoding: str, suffix: str) -> bool:
@@ -310,18 +312,18 @@ class FileOpsMixin:
                         layout.addWidget(QLabel("Audio player", media_container), 1)
 
                     def _fmt(ms: int) -> str:
-                        """Internal helper for `_fmt`."""
+                        """Handle fmt."""
                         sec = max(0, int(ms // 1000))
                         return f"{sec // 60:02d}:{sec % 60:02d}"
 
                     def _on_pos(ms: int) -> None:
-                        """Internal helper for `_on_pos`."""
+                        """Handle on pos."""
                         if not slider.isSliderDown():
                             slider.setValue(int(ms))
                         elapsed_label.setText(_fmt(ms))
 
                     def _on_dur(ms: int) -> None:
-                        """Internal helper for `_on_dur`."""
+                        """Handle on dur."""
                         slider.setRange(0, max(0, int(ms)))
                         total_label.setText(_fmt(ms))
 
@@ -340,7 +342,7 @@ class FileOpsMixin:
                 return False
 
             def _open_raw() -> None:
-                """Internal helper for `_open_raw`."""
+                """Open raw."""
                 if hasattr(tab, "clear_media_mode"):
                     tab.clear_media_mode()
                 self._open_file_path(path, force_raw=True, preferred_tab=tab)
@@ -357,7 +359,7 @@ class FileOpsMixin:
             return True
         return False
 
-    def _open_file_path_raw(self, path: str) -> bool:
+    def _open_file_path_raw(self, path: str, *, open_origin: str = "raw_media_fallback") -> bool:
         """Force a file path through the raw-text opening path instead of richer viewers/importers."""
         suffix = Path(path).suffix.lower()
         encoding = self._encoding_for_path(path)
@@ -365,9 +367,16 @@ class FileOpsMixin:
         if not structured_import and suffix != ".encnote":
             if not self._confirm_open_non_text_file(path, encoding=encoding, suffix=suffix):
                 return False
-        return self._open_file_path(path, force_raw=True)
+        return self._open_file_path(path, force_raw=True, open_origin=open_origin)
 
-    def _open_file_path(self, path: str, force_raw: bool = False, preferred_tab: EditorTab | None = None) -> bool:
+    def _open_file_path(
+        self,
+        path: str,
+        force_raw: bool = False,
+        preferred_tab: EditorTab | None = None,
+        *,
+        open_origin: str = "local_open",
+    ) -> bool:
         """Open a file path into a tab, handling media, imports, encryption, and large-file preview."""
         suffix = Path(path).suffix.lower()
         if not force_raw and self._is_supported_media_suffix(suffix):
@@ -477,6 +486,7 @@ class FileOpsMixin:
         tab.zoom_steps = 0
         tab.encryption_enabled = encrypted
         tab.encryption_password = password
+        tab.opened_via_startup_arg = open_origin == "startup_arg"
         tab.partial_large_preview = bool(preview is not None and preview.is_partial)
         if preview is not None:
             tab.large_file_total_lines = int(preview.total_lines)
@@ -495,6 +505,12 @@ class FileOpsMixin:
         self._seed_version_history(tab, label="Opened")
         tab.pinned = path in set(self.settings.get("pinned_files", []))
         self._apply_file_metadata_to_tab(tab)
+        trust_state, trust_source, trust_persisted, trust_reason = self._classify_tab_trust(path=path, open_origin=open_origin)
+        tab.trust_state = trust_state
+        tab.trust_source = trust_source
+        tab.trust_persisted = trust_persisted
+        tab.trust_reason = trust_reason
+        self._apply_trust_state_to_tab(tab)
         if tab.pinned:
             self._sort_tabs_by_pinned()
         tab.text_edit.set_modified(False)
@@ -504,8 +520,7 @@ class FileOpsMixin:
         if hasattr(self, "_watch_file"):
             self._watch_file(path)
         if tab.partial_large_preview:
-            tab.read_only = True
-            tab.text_edit.set_read_only(True)
+            self._apply_trust_state_to_tab(tab)
             self.show_status_message(
                 "Large file preview mode loaded (partial). Use Tools > Load Full Large File to edit.",
                 7000,
@@ -515,6 +530,8 @@ class FileOpsMixin:
                 "PDF imported as extracted text. Save to .md/.txt/.docx/.odt to keep edits.",
                 7000,
             )
+        elif tab.trust_state == "untrusted":
+            self.show_status_message("Opened as untrusted read-only. Use File > More > Security to trust and edit.", 7000)
         _LOGGER.debug(
             "_open_file_path complete path=%s tab_large=%s partial_preview=%s markdown_mode=%s encrypted=%s",
             path,
@@ -547,6 +564,14 @@ class FileOpsMixin:
                 "This tab is in partial large-file preview mode.\nLoad full file first before saving.",
             )
             return False
+        save_policy = build_effective_save_policy(self, tab)
+        if bool(save_policy.get("is_untrusted")) and bool(save_policy.get("require_save_as_for_untrusted")) and tab.current_file:
+            QMessageBox.information(
+                self,
+                "Untrusted Note",
+                "This note is untrusted. Use Save As or trust the note before overwriting the original file.",
+            )
+            return self.file_save_as_tab(tab)
         if tab.current_file is None:
             return self.file_save_as_tab(tab)
         suffix = Path(tab.current_file).suffix.lower()
@@ -559,7 +584,11 @@ class FileOpsMixin:
             bool(getattr(tab, "encryption_enabled", False)),
             bool(tab.text_edit.is_modified()),
         )
-        payload = self.security_controller.build_payload_for_save(tab)
+        try:
+            payload = self.security_controller.build_payload_for_save(tab)
+        except ValueError as exc:
+            QMessageBox.information(self, "Encrypted Note", str(exc))
+            return False
         if payload is None:
             _LOGGER.debug("file_save_tab aborted by security_controller path=%s", tab.current_file)
             return False
@@ -590,8 +619,24 @@ class FileOpsMixin:
                 encoding = tab.encoding or self._encoding_for_path(tab.current_file)
                 if tab.encryption_enabled:
                     encoding = "utf-8"
-                with open(tab.current_file, "w", encoding=encoding, errors="replace") as f:
-                    f.write(payload)
+                suffix = Path(tab.current_file).suffix.lower()
+                if bool(save_policy.get("warn_script_extensions")) and suffix in SCRIPT_LIKE_SUFFIXES:
+                    answer = QMessageBox.question(
+                        self,
+                        "Confirm Save",
+                        f'Saving to "{suffix}" can produce executable or script content.\n\nSave anyway?',
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                        QMessageBox.StandardButton.No,
+                    )
+                    if answer != QMessageBox.StandardButton.Yes:
+                        return False
+                safe_write_text(
+                    tab.current_file,
+                    payload,
+                    encoding,
+                    atomic_replace=bool(save_policy.get("atomic_replace")),
+                    backup_on_overwrite=bool(save_policy.get("backup_on_overwrite")),
+                )
         except DocumentFidelityError as e:
             _LOGGER.debug("file_save_tab document fidelity error path=%s error=%s", tab.current_file, e)
             self.log_event("Error", f'Save failed: "{tab.current_file}" - {e}')
@@ -613,6 +658,8 @@ class FileOpsMixin:
             self._persist_encoding_for_path(tab.current_file, tab.encoding or "utf-8")
             self._persist_eol_for_path(tab.current_file, tab.eol_mode or "LF")
         self._persist_file_metadata_for_tab(tab)
+        if getattr(tab, "trust_state", "") == TRUSTED:
+            self._persist_file_trust_for_tab(tab)
         _LOGGER.debug("file_save_tab complete path=%s bytes=%d", tab.current_file, len(payload))
         self._add_recent_file(tab.current_file)
         self._clear_tab_autosave(tab)
@@ -648,8 +695,7 @@ class FileOpsMixin:
         tab.encoding = encoding if not encrypted else "utf-8"
         tab.encryption_enabled = encrypted
         tab.encryption_password = password
-        tab.read_only = self._is_path_read_only(tab.current_file) if hasattr(self, "_is_path_read_only") else False
-        tab.text_edit.set_read_only(bool(tab.read_only))
+        self._apply_trust_state_to_tab(tab)
         tab.markdown_mode_enabled = self._is_markdown_path(tab.current_file) and not tab.large_file
         if tab is self.active_tab() and hasattr(self, "_sync_markdown_preview_for_active_tab"):
             self._sync_markdown_preview_for_active_tab()
@@ -675,7 +721,7 @@ class FileOpsMixin:
         path, _ = QFileDialog.getSaveFileName(
             self,
             "Save As",
-            tab.current_file or "",
+            (tab.current_file or ""),
             (
                 "All Editable (*.md *.markdown *.mdown *.txt *.html *.htm *.docx *.odt *.encnote *.pypadquiz);;"
                 "Markdown Documents (*.md *.markdown *.mdown);;"
@@ -700,8 +746,8 @@ class FileOpsMixin:
 
         tab.current_file = path
         tab.encoding = tab.encoding or self._encoding_for_path(path)
-        if Path(path).suffix.lower() == ".encnote":
-            tab.encryption_enabled = True
+        if getattr(tab, "trust_state", "") in {"untrusted", SESSION_TRUSTED}:
+            tab.trust_state = SESSION_TRUSTED
         tab.markdown_mode_enabled = self._is_markdown_path(path)
         if tab is self.active_tab() and hasattr(self, "_sync_markdown_preview_for_active_tab"):
             self._sync_markdown_preview_for_active_tab()
@@ -710,8 +756,7 @@ class FileOpsMixin:
             tab.pinned = True
         self._apply_file_metadata_to_tab(tab)
         # "Save As" should not force read-only mode onto the new file unless the user chooses it.
-        tab.read_only = False
-        tab.text_edit.set_read_only(False)
+        self._apply_trust_state_to_tab(tab)
         if was_unsaved and previous_favorite:
             tab.favorite = True
         if was_unsaved and previous_tags:
@@ -757,7 +802,7 @@ class FileOpsMixin:
         dialog.setWindowTitle("Print Preview")
 
         def render_preview(preview_printer: QPrinter) -> None:
-            """Execute the `render_preview` workflow."""
+            """Handle render preview."""
             doc = self._build_print_document(tab)
             try:
                 doc.print_(preview_printer)

@@ -14,26 +14,26 @@ XP_PER_LEVEL = 120
 
 @dataclass(frozen=True)
 class XPResult:
-    """Class that implements the `XPResult` runtime behavior."""
+    """x p result."""
     xp_added: int
     level_before: int
     level_after: int
 
     @property
     def leveled_up(self) -> bool:
-        """Execute the `leveled_up` workflow."""
+        """Handle leveled up."""
         return self.level_after > self.level_before
 
 
 class GamificationSystem:
-    """Class that implements the `GamificationSystem` runtime behavior."""
+    """gamification system."""
     def __init__(self, settings: dict[str, Any]) -> None:
-        """Initialize the `gamification_system` state for this instance."""
+        """Set up gamification progress tracking, storage, and unlock state."""
         self.settings = settings
 
     @staticmethod
     def _safe_int(value: Any, default: int = 0, *, minimum: int | None = None) -> int:
-        """Internal helper for `_safe_int`."""
+        """Handle safe int."""
         try:
             number = int(value)
         except (TypeError, ValueError):
@@ -43,7 +43,7 @@ class GamificationSystem:
         return number
 
     def state(self) -> dict[str, Any]:
-        """Execute the `state` workflow."""
+        """Handle state."""
         state = self.settings.get("gamification_state")
         if not isinstance(state, dict):
             state = {}
@@ -52,7 +52,7 @@ class GamificationSystem:
         return state
 
     def _coerce_state(self, state: dict[str, Any]) -> None:
-        """Internal helper for `_coerce_state`."""
+        """Handle coerce state."""
         state["xp"] = self._safe_int(state.get("xp", 0), 0, minimum=0)
         state["level"] = self._safe_int(state.get("level", 1), 1, minimum=1)
         state["achievements"] = sorted({str(x) for x in state.get("achievements", []) if str(x).strip()})
@@ -128,11 +128,11 @@ class GamificationSystem:
             }
 
     def _level_from_xp(self, xp: int) -> int:
-        """Internal helper for `_level_from_xp`."""
+        """Handle level from xp."""
         return max(1, 1 + (max(0, xp) // XP_PER_LEVEL))
 
     def award_xp(self, amount: int, reason: str, *, skill_branch: str | None = None) -> XPResult:
-        """Execute the `award_xp` workflow."""
+        """Handle award xp."""
         state = self.state()
         xp_added = max(0, int(amount or 0))
         before = int(state["level"])
@@ -150,7 +150,7 @@ class GamificationSystem:
         return XPResult(xp_added=xp_added, level_before=before, level_after=int(state["level"]))
 
     def _sync_level_unlocks(self) -> None:
-        """Internal helper for `_sync_level_unlocks`."""
+        """Sync level unlocks."""
         state = self.state()
         lvl = int(state["level"])
         cosmetics = state["cosmetics"]
@@ -162,7 +162,7 @@ class GamificationSystem:
             cosmetics["sound_packs_unlocked"] = sorted(set(cosmetics["sound_packs_unlocked"]) | {"LoFi Keys"})
 
     def _sync_branch_unlocks(self, branch: str) -> None:
-        """Internal helper for `_sync_branch_unlocks`."""
+        """Sync branch unlocks."""
         state = self.state()
         node = state["skill_tree"][branch]
         tier = int(node.get("tier", 1))
@@ -178,7 +178,7 @@ class GamificationSystem:
         node["unlocks"] = sorted(unlocks)
 
     def _sync_companion(self) -> None:
-        """Internal helper for `_sync_companion`."""
+        """Sync companion."""
         state = self.state()
         lvl = int(state["level"])
         if lvl >= 8:
@@ -192,7 +192,7 @@ class GamificationSystem:
         state["companion"]["stage"] = stage
 
     def add_achievement(self, title: str) -> bool:
-        """Execute the `add_achievement` workflow."""
+        """Add achievement."""
         state = self.state()
         key = str(title or "").strip()
         if not key:
@@ -205,14 +205,14 @@ class GamificationSystem:
         return True
 
     def apply_stat_delta(self, key: str, delta: int = 1) -> int:
-        """Apply the changes or settings handled by `apply_stat_delta`."""
+        """Apply stat delta."""
         state = self.state()
         current = int(state["stats"].get(key, 0) or 0)
         state["stats"][key] = max(0, current + int(delta or 0))
         return int(state["stats"][key])
 
     def push_activity(self, title: str, detail: str = "") -> None:
-        """Execute the `push_activity` workflow."""
+        """Handle push activity."""
         state = self.state()
         rows = state.get("activity_timeline", [])
         if not isinstance(rows, list):
@@ -229,7 +229,7 @@ class GamificationSystem:
             del rows[:-20]
 
     def activity_timeline_lines(self) -> list[str]:
-        """Execute the `activity_timeline_lines` workflow."""
+        """Handle activity timeline lines."""
         rows = self.state().get("activity_timeline", [])
         if not isinstance(rows, list):
             return []
@@ -245,7 +245,7 @@ class GamificationSystem:
         return list(reversed(out))
 
     def quests_snapshot(self, now: datetime | None = None) -> dict[str, Any]:
-        """Execute the `quests_snapshot` workflow."""
+        """Handle quests snapshot."""
         stamp = now or datetime.now()
         day_key = stamp.date().isoformat()
         iso = stamp.isocalendar()
@@ -269,7 +269,7 @@ class GamificationSystem:
         return quests
 
     def _bump_quest(self, bucket: str, quest_id: str, amount: int = 1) -> bool:
-        """Internal helper for `_bump_quest`."""
+        """Handle bump quest."""
         quests = self.quests_snapshot()
         row = quests.get(bucket, {}).get(quest_id)
         if not isinstance(row, dict):
@@ -280,7 +280,7 @@ class GamificationSystem:
         return bool(row["done"] and not was_done)
 
     def mark_quiz_finished(self) -> tuple[XPResult, list[str]]:
-        """Execute the `mark_quiz_finished` workflow."""
+        """Mark quiz finished."""
         done: list[str] = []
         self.apply_stat_delta("quizzes_finished", 1)
         if self._bump_quest("daily", "complete_quiz", 1):
@@ -291,7 +291,7 @@ class GamificationSystem:
         return res, done
 
     def mark_workspace_review(self) -> tuple[XPResult, list[str]]:
-        """Execute the `mark_workspace_review` workflow."""
+        """Mark workspace review."""
         done: list[str] = []
         self.apply_stat_delta("workspace_reviews", 1)
         if self._bump_quest("weekly", "workspace_review", 1):
@@ -300,7 +300,7 @@ class GamificationSystem:
         return res, done
 
     def mark_focus_sprint_completed(self) -> tuple[XPResult, list[str]]:
-        """Execute the `mark_focus_sprint_completed` workflow."""
+        """Mark focus sprint completed."""
         done: list[str] = []
         self.apply_stat_delta("focus_sprints_completed", 1)
         if self._bump_quest("weekly", "focus_sprint", 1):
@@ -309,7 +309,7 @@ class GamificationSystem:
         return res, done
 
     def mark_plugin_used(self) -> tuple[XPResult, list[str]]:
-        """Execute the `mark_plugin_used` workflow."""
+        """Mark plugin used."""
         done: list[str] = []
         self.apply_stat_delta("plugin_uses", 1)
         if self._bump_quest("weekly", "plugin_use", 1):
@@ -318,7 +318,7 @@ class GamificationSystem:
         return res, done
 
     def add_written_words(self, words: int) -> tuple[XPResult | None, list[str]]:
-        """Execute the `add_written_words` workflow."""
+        """Add written words."""
         if words <= 0:
             return None, []
         done: list[str] = []
@@ -336,7 +336,7 @@ class GamificationSystem:
         return res, done
 
     def add_todo_fixed(self, count: int = 1) -> tuple[XPResult | None, list[str]]:
-        """Execute the `add_todo_fixed` workflow."""
+        """Add todo fixed."""
         if count <= 0:
             return None, []
         done: list[str] = []
@@ -347,7 +347,7 @@ class GamificationSystem:
         return res, done
 
     def set_challenge_state(self, challenge_id: str, active: bool, payload: dict[str, Any] | None = None) -> None:
-        """Update state handled by `set_challenge_state`."""
+        """Replace the saved state for a named challenge."""
         state = self.state()["challenge_modes"]
         row = state.get(challenge_id)
         if not isinstance(row, dict):
@@ -359,7 +359,7 @@ class GamificationSystem:
             row.update(payload)
 
     def record_activity_day(self, activity_key: str, now: datetime | None = None) -> int:
-        """Execute the `record_activity_day` workflow."""
+        """Record activity day."""
         stamp = now or datetime.now()
         day_key = stamp.date().isoformat()
         state = self.state()
@@ -383,7 +383,7 @@ class GamificationSystem:
         return current
 
     def active_events(self, now: date | None = None) -> list[dict[str, str]]:
-        """Execute the `active_events` workflow."""
+        """Handle active events."""
         today = now or date.today()
         custom = self.settings.get("gamification_custom_events", [])
         rows: list[dict[str, str]] = []
@@ -451,7 +451,7 @@ class GamificationSystem:
         return rows
 
     def sync_active_event_progress(self) -> list[str]:
-        """Execute the `sync_active_event_progress` workflow."""
+        """Sync active event progress."""
         state = self.state()
         stats = state.get("stats", {})
         events_state = state.get("events_state", {})
@@ -487,7 +487,7 @@ class GamificationSystem:
         return unlocked
 
     def active_event_snapshot(self) -> list[dict[str, str]]:
-        """Execute the `active_event_snapshot` workflow."""
+        """Handle active event snapshot."""
         state = self.state()
         events_state = state.get("events_state", {})
         out: list[dict[str, str]] = []
@@ -515,7 +515,7 @@ class GamificationSystem:
         return out
 
     def progress_snapshot(self) -> dict[str, str]:
-        """Execute the `progress_snapshot` workflow."""
+        """Handle progress snapshot."""
         state = self.state()
         quests = self.quests_snapshot()
         companion = state.get("companion", {}) if isinstance(state.get("companion"), dict) else {}
@@ -554,7 +554,7 @@ class GamificationSystem:
         }
 
     def sync_milestones(self) -> list[str]:
-        """Execute the `sync_milestones` workflow."""
+        """Sync milestones."""
         state = self.state()
         stats = state.get("stats", {})
         streaks = state.get("streaks", {})
@@ -584,7 +584,7 @@ class GamificationSystem:
         return unlocked
 
     def milestone_snapshot(self) -> list[str]:
-        """Execute the `milestone_snapshot` workflow."""
+        """Handle milestone snapshot."""
         state = self.state()
         stats = state.get("stats", {})
         streaks = state.get("streaks", {})
@@ -627,7 +627,7 @@ class GamificationSystem:
         ]
 
     def easter_egg_snapshot(self) -> list[dict[str, str]]:
-        """Execute the `easter_egg_snapshot` workflow."""
+        """Handle easter egg snapshot."""
         state = self.state()
         stats = state.get("stats", {})
         secret_progress = state.get("secret_progress", {})
@@ -691,7 +691,7 @@ class GamificationSystem:
         return rows
 
     def secret_trail_lines(self) -> list[str]:
-        """Execute the `secret_trail_lines` workflow."""
+        """Handle secret trail lines."""
         rows = self.easter_egg_snapshot()
         pending = [row for row in rows if row.get("status") != "Unlocked"]
         pending.sort(key=lambda row: int(row.get("target", "1")) - int(row.get("progress", "0")))
@@ -705,7 +705,7 @@ class GamificationSystem:
         ]
 
     def next_secret_hint(self) -> str:
-        """Execute the `next_secret_hint` workflow."""
+        """Handle next secret hint."""
         rows = self.easter_egg_snapshot()
         pending = [row for row in rows if row.get("status") != "Unlocked"]
         if not pending:
@@ -715,7 +715,7 @@ class GamificationSystem:
         return f"Secret trail: {row.get('title', 'Secret')} is {remaining} step(s) away."
 
     def next_milestone_hint(self) -> str:
-        """Execute the `next_milestone_hint` workflow."""
+        """Handle next milestone hint."""
         state = self.state()
         stats = state.get("stats", {})
         streaks = state.get("streaks", {})
@@ -733,7 +733,7 @@ class GamificationSystem:
         return f"Next milestone: {title} in {remaining} more {unit}"
 
     def productivity_snapshot(self) -> dict[str, Any]:
-        """Execute the `productivity_snapshot` workflow."""
+        """Handle productivity snapshot."""
         state = self.state()
         payload = self.progress_snapshot()
         quests = self.quests_snapshot()
@@ -781,7 +781,7 @@ class GamificationSystem:
         }
 
     def productivity_routines(self) -> list[dict[str, str]]:
-        """Execute the `productivity_routines` workflow."""
+        """Handle productivity routines."""
         stats = self.state().get("stats", {})
         quests = self.quests_snapshot()
         rows: list[dict[str, str]] = []
@@ -839,14 +839,14 @@ class GamificationSystem:
         return deduped
 
     def next_routine_hint(self) -> str:
-        """Execute the `next_routine_hint` workflow."""
+        """Handle next routine hint."""
         routines = self.productivity_routines()
         if not routines:
             return "Routine ready: no suggested workflow yet."
         return f"Routine ready: {str(routines[0].get('label', '') or 'Start your next workflow.')}"
 
     def record_routine_run(self, routine_id: str) -> dict[str, str]:
-        """Execute the `record_routine_run` workflow."""
+        """Record routine run."""
         state = self.state()
         key = str(routine_id or "").strip() or "daily_briefing"
         row = state["routine_stats"].get(key, {})
@@ -858,7 +858,7 @@ class GamificationSystem:
         return {"routine_id": key, "runs": str(row["runs"]), "last_run": str(row["last_run"])}
 
     def set_secret_progress_max(self, key: str, value: int) -> int:
-        """Update state handled by `set_secret_progress_max`."""
+        """Set the maximum progress value tracked for a secret objective."""
         state = self.state()
         secret_progress = state.get("secret_progress", {})
         if not isinstance(secret_progress, dict):
@@ -872,7 +872,7 @@ class GamificationSystem:
         return int(secret_progress[name])
 
     def routine_history_lines(self) -> list[str]:
-        """Execute the `routine_history_lines` workflow."""
+        """Handle routine history lines."""
         stats = self.state().get("routine_stats", {})
         if not isinstance(stats, dict):
             return []
@@ -898,7 +898,7 @@ class GamificationSystem:
         return [row for _, row in rows[:5]]
 
     def next_unlock_hint(self) -> str:
-        """Execute the `next_unlock_hint` workflow."""
+        """Handle next unlock hint."""
         state = self.state()
         stats = state.get("stats", {})
         level = int(state.get("level", 1) or 1)
@@ -919,7 +919,7 @@ class GamificationSystem:
         return "Next unlock: keep exploring for more hidden badges"
 
     def companion_hint(self) -> str:
-        """Execute the `companion_hint` workflow."""
+        """Handle companion hint."""
         state = self.state()
         stats = state.get("stats", {})
         streaks = state.get("streaks", {})
@@ -941,7 +941,7 @@ class GamificationSystem:
         return "Byte says: keep the streak alive and chase the next unlock."
 
     def daily_briefing(self) -> list[str]:
-        """Execute the `daily_briefing` workflow."""
+        """Handle daily briefing."""
         state = self.state()
         stats = state.get("stats", {})
         streaks = state.get("streaks", {})
@@ -959,7 +959,7 @@ class GamificationSystem:
         return rows
 
     def event_briefing(self) -> list[str]:
-        """Execute the `event_briefing` workflow."""
+        """Handle event briefing."""
         rows: list[str] = []
         for row in self.active_event_snapshot():
             rows.append(
@@ -971,7 +971,7 @@ class GamificationSystem:
         return rows
 
     def record_session_review(self, *, open_tabs: int = 0, saved_session: bool = False) -> dict[str, Any]:
-        """Execute the `record_session_review` workflow."""
+        """Record session review."""
         state = self.state()
         stats = state.get("stats", {})
         streaks = state.get("streaks", {})
@@ -993,7 +993,7 @@ class GamificationSystem:
         return review
 
     def session_review_lines(self) -> list[str]:
-        """Execute the `session_review_lines` workflow."""
+        """Handle session review lines."""
         review = self.state().get("session_review", {})
         if not isinstance(review, dict) or not review:
             return []
@@ -1015,7 +1015,7 @@ class GamificationSystem:
         return lines
 
     def recommended_action(self) -> dict[str, str]:
-        """Execute the `recommended_action` workflow."""
+        """Handle recommended action."""
         stats = self.state().get("stats", {})
         quests = self.quests_snapshot()
         daily = quests.get("daily", {})
