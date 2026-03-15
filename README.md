@@ -83,11 +83,11 @@ Workspace behavior is coordinated by `src/pypad/ui/workspace/workspace_controlle
 
 Pypad includes an AI chat dock that can work with the current file, selected text, or workspace snippets. The app also enforces privacy and trust rules so AI actions can be restricted for untrusted files or private-mode sessions.
 
-Main AI UI code lives in [`src/pypad/ui/ai/ai_chat_dock.py`](/c:/Users/user/Downloads/py/RawAPPS/test/notepadclone/src/pypad/ui/ai/ai_chat_dock.py).
+Main AI UI code lives in `src/pypad/ui/ai/ai_chat_dock.py`.
 
 ### Settings System
 
-Default settings are defined in [`src/pypad/app_settings/defaults.py`](/c:/Users/user/Downloads/py/RawAPPS/test/notepadclone/src/pypad/app_settings/defaults.py). They cover appearance, shortcuts, autosave, recovery, workspace limits, plugin policy, AI behavior, updates, privacy, and logging.
+Default settings are defined in `src/pypad/app_settings/defaults.py`. They cover appearance, shortcuts, autosave, recovery, workspace limits, plugin policy, AI behavior, updates, privacy, and logging.
 
 Saved settings are merged with these defaults so the app can add new options without breaking existing user configuration.
 
