@@ -4,12 +4,9 @@ how_to_push_updates.md
 .tmp_lsp_real/
 tests_tmp/
 APP_SUMMARY.md
-build_all.bat
-build_installer.bat
 compile.bat
 test.py
 run.spec
-build_release.bat
 build/
 dist/
 build/run/
