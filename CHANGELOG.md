@@ -760,3 +760,7 @@ The format is based on Keep a Changelog, and this project uses Semantic Versioni
 
 ### Removed
 - `Generate Text to Tab` action from AI menu/workflow.
+
+---
+
+And the older changelogs and versions were forgotten...
