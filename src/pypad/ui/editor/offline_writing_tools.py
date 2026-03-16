@@ -5,12 +5,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 import importlib
 import re
+import threading
 from typing import Any
 
 try:
     import language_tool_python
 except Exception:  # pragma: no cover - optional dependency
     language_tool_python = None
+
+
+_LANGUAGE_TOOL_LOCK = threading.Lock()
+_LANGUAGE_TOOL_CACHE: dict[str, Any] = {}
 
 
 _WEAK_PHRASES: dict[str, str] = {
@@ -90,6 +95,18 @@ def refresh_language_tool_support() -> bool:
     return language_tool_python is not None
 
 
+def get_or_create_language_tool(language: str):
+    """Return a cached local LanguageTool instance for the requested language."""
+    if language_tool_python is None:
+        raise RuntimeError("language_tool_python is unavailable.")
+    with _LANGUAGE_TOOL_LOCK:
+        tool = _LANGUAGE_TOOL_CACHE.get(language)
+        if tool is None:
+            tool = language_tool_python.LanguageTool(language)
+            _LANGUAGE_TOOL_CACHE[language] = tool
+    return tool
+
+
 def _stats(text: str) -> dict[str, int]:
     words = re.findall(r"\b[\w'-]+\b", text)
     sentences = [part for part in re.split(r"(?<=[.!?])\s+", text.strip()) if part]
@@ -166,7 +183,7 @@ def _language_tool_suggestions(text: str, language: str) -> list[WritingSuggesti
     if language_tool_python is None:
         return []
     try:
-        tool = language_tool_python.LanguageTool(language)
+        tool = get_or_create_language_tool(language)
     except Exception:
         return []
     try:

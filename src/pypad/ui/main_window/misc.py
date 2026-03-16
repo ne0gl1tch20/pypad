@@ -97,6 +97,39 @@ from pypad.logging_utils import get_logger
 
 _LOGGER = get_logger(__name__)
 
+
+class _OfflineWritingAnalysisWorker(QObject):
+    """Run Offline Writing Studio analysis work away from the UI thread."""
+
+    finished = Signal(object)
+    failed = Signal(str)
+    progress = Signal(str)
+
+    def __init__(self, text: str, settings: dict[str, Any], language: str) -> None:
+        super().__init__()
+        self._text = str(text or "")
+        self._settings = dict(settings or {})
+        self._language = str(language or "en")
+
+    def run(self) -> None:
+        """Analyze the current text and emit the result back to the UI thread."""
+        try:
+            if bool(self._settings.get("writing_tools_use_language_tool", True)) and supports_language_tool():
+                self.progress.emit("Initializing local LanguageTool server...")
+                get_or_create_language_tool(self._language)
+                self.progress.emit("Analyzing with local LanguageTool...")
+            else:
+                self.progress.emit("Analyzing writing...")
+            analysis = analyze_writing(
+                self._text,
+                settings=self._settings,
+                language=self._language,
+            )
+        except Exception as exc:
+            self.failed.emit(str(exc) or "Unknown writing analysis error.")
+            return
+        self.finished.emit(analysis)
+
 THEME_SETTINGS_KEYS: tuple[str, ...] = (
     "theme",
     "app_style",
@@ -230,6 +263,7 @@ from pypad.ui.editor.quick_open_dialog import QuickOpenDialog, QuickOpenEntry, e
 from pypad.ui.editor.offline_writing_tools import (
     analyze_writing,
     apply_suggestion,
+    get_or_create_language_tool,
     humanize_text,
     offline_writing_tools_available,
     paraphrase_text,
@@ -11953,6 +11987,14 @@ Pypad User Guide
             self._writing_tool_threads = threads
         return threads
 
+    def _writing_tool_workers(self) -> list[QObject]:
+        """Return retained worker references for writing-tool background jobs."""
+        workers = getattr(self, "_writing_tool_workers_ref", None)
+        if not isinstance(workers, list):
+            workers = []
+            self._writing_tool_workers_ref = workers
+        return workers
+
     def _cached_package_download_info(self) -> PackageDownloadInfo | None:
         """Return cached package download metadata when available."""
         info = package_info_from_cache(self.settings.get("writing_tools_package_download_cache", {}))
@@ -12011,6 +12053,12 @@ Pypad User Guide
         if thread in threads:
             threads.remove(thread)
         thread.deleteLater()
+
+    def _release_writing_tool_worker(self, worker: QObject) -> None:
+        """Release a retained worker reference after its thread finishes."""
+        workers = self._writing_tool_workers()
+        if worker in workers:
+            workers.remove(worker)
 
     def _start_language_tool_metadata_check(self) -> None:
         """Query the package registry for language-tool-python size before prompting the user."""
@@ -12396,6 +12444,18 @@ Pypad User Guide
         except RuntimeError:
             pass
 
+    def _close_writing_tool_analysis_dialog(self) -> None:
+        """Close the active Offline Writing Studio analysis dialog if present."""
+        dlg = getattr(self, "_writing_tool_analysis_dialog", None)
+        self._writing_tool_analysis_dialog = None
+        if dlg is None:
+            return
+        try:
+            dlg.close()
+            dlg.deleteLater()
+        except RuntimeError:
+            pass
+
     def _on_language_tool_install_progress(self, message: object) -> None:
         """Update the install dialog with pip output."""
         dlg = getattr(self, "_writing_tool_install_dialog", None)
@@ -12433,6 +12493,74 @@ Pypad User Guide
         )
         box.setInformativeText("Offline Writing Studio was not opened.")
         box.setDetailedText(str(message or "Unknown install error."))
+        box.exec()
+
+    def _start_offline_writing_analysis(self, source_text: str, target_is_selection: bool) -> None:
+        """Analyze writing on a worker thread so local LanguageTool startup cannot freeze the UI."""
+        settings = self._writing_tools_settings()
+        language = str(self.settings.get("spellcheck_language", "en") or "en")
+        progress = create_themed_progress_dialog(self, title="Offline Writing Studio")
+        progress.setCancelButton(None)
+        progress.setRange(0, 0)
+        progress.setMinimumDuration(0)
+        progress.setAutoClose(False)
+        progress.setAutoReset(False)
+        progress.setWindowModality(Qt.WindowModality.ApplicationModal)
+        if bool(settings.get("writing_tools_use_language_tool", True)) and supports_language_tool():
+            progress.setLabelText("Initializing local LanguageTool server...\nPlease wait.")
+        else:
+            progress.setLabelText("Analyzing writing...\nPlease wait.")
+        progress.show()
+        self._writing_tool_analysis_dialog = progress
+
+        worker = _OfflineWritingAnalysisWorker(source_text, settings, language)
+        thread = QThread(self)
+        self._writing_tool_worker_threads().append(thread)
+        self._writing_tool_workers().append(worker)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.finished.connect(thread.quit)
+        worker.failed.connect(thread.quit)
+        thread.finished.connect(worker.deleteLater)
+        thread.finished.connect(lambda _worker=worker: self._release_writing_tool_worker(_worker))
+        thread.finished.connect(lambda thr=thread: self._cleanup_writing_tool_thread(thr))
+        worker.progress.connect(self._on_offline_writing_analysis_progress)
+        worker.finished.connect(
+            lambda analysis, text=source_text, selected=target_is_selection: self._on_offline_writing_analysis_finished(
+                analysis,
+                text,
+                selected,
+            )
+        )
+        worker.failed.connect(self._on_offline_writing_analysis_failed)
+        self.show_status_message("Preparing Offline Writing Studio...", 2000)
+        thread.start()
+
+    def _on_offline_writing_analysis_progress(self, message: object) -> None:
+        """Refresh the analysis progress dialog text while the worker runs."""
+        dlg = getattr(self, "_writing_tool_analysis_dialog", None)
+        if dlg is None:
+            return
+        text = str(message or "").strip()
+        if text:
+            dlg.setLabelText(f"{text}\nPlease wait.")
+
+    def _on_offline_writing_analysis_finished(self, analysis: object, source_text: str, target_is_selection: bool) -> None:
+        """Open the studio dialog after background analysis completes."""
+        self._close_writing_tool_analysis_dialog()
+        self._show_offline_writing_studio_dialog(analysis, source_text, target_is_selection)
+
+    def _on_offline_writing_analysis_failed(self, message: str) -> None:
+        """Report a failed Offline Writing Studio analysis run."""
+        self._close_writing_tool_analysis_dialog()
+        box = create_themed_message_box(
+            self,
+            title="Offline Writing Studio",
+            icon=QMessageBox.Icon.Critical,
+            text="Offline Writing Studio could not analyze the current text.",
+        )
+        box.setInformativeText("The editor remains unchanged.")
+        box.setDetailedText(str(message or "Unknown analysis error."))
         box.exec()
 
     def open_offline_writing_studio(self) -> None:
@@ -12476,12 +12604,17 @@ Pypad User Guide
         target_is_selection = bool(source_text)
         if not source_text:
             source_text = tab.text_edit.get_text()
+        self._start_offline_writing_analysis(source_text, target_is_selection)
+
+    def _show_offline_writing_studio_dialog(self, analysis: object, source_text: str, target_is_selection: bool) -> None:
+        """Render the Offline Writing Studio dialog from a completed analysis payload."""
+        if not hasattr(analysis, "stats") or not hasattr(analysis, "suggestions") or not hasattr(analysis, "ai_score"):
+            raise ValueError("Offline Writing Studio received an invalid analysis payload.")
         settings = self._writing_tools_settings()
-        analysis = analyze_writing(
-            source_text,
-            settings=settings,
-            language=str(self.settings.get("spellcheck_language", "en") or "en"),
-        )
+        tab = self.active_tab()
+        if tab is None:
+            QMessageBox.information(self, "Offline Writing Studio", "No active document.")
+            return
         dlg = QDialog(self)
         dlg.setWindowTitle("Offline Writing Studio")
         dlg.resize(920, 680)
