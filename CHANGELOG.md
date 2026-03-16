@@ -6,6 +6,9 @@ The format is based on Keep a Changelog, and this project uses Semantic Versioni
 
 ## [1.8.2] - 2026-03-15
 
+### Please Note!
+- Because the team has any other responsibilities, please expect the app to be take longer to update as we're gonna test and find for more bugs, similar from any other production apps.
+
 ### Added
 - Security profiles now support profile-scoped saved security state, so `beginner`, `balanced`, `power_user`, and `custom` can each retain their own trust store, save/privacy preferences, and custom security overrides.
 - External notes now surface a persistent untrusted-note banner with explicit `Trust and Edit`, `Trust for This Session`, and `Keep Read-Only` actions.
