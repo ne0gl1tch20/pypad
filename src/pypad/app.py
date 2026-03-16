@@ -22,10 +22,10 @@ def main(existing_app: Optional[QApplication] = None) -> Notepad:
     app = existing_app or QApplication(sys.argv)
     configure_app_logging(resolve_persisted_log_level(get_settings_file_path(), default="INFO"))
     app.setApplicationName("Pypad")
-    LOGGER.info("App main() starting (owns_app=%s)", owns_app)
+    LOGGER.debug("App main() starting (owns_app=%s)", owns_app)
 
     window = Notepad()
-    LOGGER.info("Main window instance created")
+    LOGGER.debug("Main window instance created")
 
     def _global_exception_hook(exc_type, exc_value, exc_tb) -> None:
         """Process uncaught global exceptions."""
@@ -41,7 +41,7 @@ def main(existing_app: Optional[QApplication] = None) -> Notepad:
 
     if owns_app:
         window.show()
-        LOGGER.info("Window shown by app.main() (standalone mode)")
+        LOGGER.debug("Window shown by app.main() (standalone mode)")
         # Enforce lock screen (if enabled) once the window is visible
         QTimer.singleShot(0, window.enforce_privacy_lock)
 

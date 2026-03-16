@@ -229,7 +229,7 @@ def _save_startup_traceback(traceback_text: str) -> None:
 def _startup_log(message: str) -> None:
     # Small wrapper used for startup-focused messages so the call sites stay concise.
     """Write a startup-focused message to the application logger."""
-    LOGGER.info(message)
+    LOGGER.debug(message)
 
 
 def _install_startup_exception_hooks() -> None:
@@ -347,7 +347,7 @@ if __name__ == "__main__":
 
     # Install crash and warning hooks before any substantial GUI work begins.
     _install_startup_exception_hooks()
-    LOGGER.info("Startup exception hooks installed")
+    LOGGER.debug("Startup exception hooks installed")
     # Emit a final shutdown breadcrumb even for normal exits.
     atexit.register(lambda: _startup_log("Process exiting (atexit)."))
     # Track total startup duration for diagnostics.
@@ -356,7 +356,7 @@ if __name__ == "__main__":
     startup_reported = [False]
     # Pass Qt-only arguments to QApplication while keeping argv[0] as the process name.
     app = QApplication([sys.argv[0], *qt_args])
-    LOGGER.info("QApplication created")
+    LOGGER.debug("QApplication created")
     # Closing the main window should terminate the app process.
     app.setQuitOnLastWindowClosed(True)
 
@@ -385,7 +385,7 @@ if __name__ == "__main__":
     except FileNotFoundError:
         version = "v?.?.?"  # fallback
         LOGGER.warning("Version file not found: %s", version_file)
-    _startup_log(f"Pypad, Version: {version}")
+    LOGGER.info("Pypad app version: %s", version)
     _startup_log("Waiting for main_window to start...")
 
     font_started_at = perf_counter()
@@ -439,7 +439,7 @@ if __name__ == "__main__":
             splash.close()
         elapsed_ms = int((perf_counter() - startup_started_at) * 1000)
         elapsed_sec = elapsed_ms / 1000.0
-        _startup_log(f"Took {elapsed_ms}ms (or {elapsed_sec:.2f} seconds) to intialize!")
+        _startup_log(f"Took {elapsed_ms}ms (or {elapsed_sec:.2f} seconds) to initialize!")
         # Expose a simple readiness flag for other startup coordination code.
         app.setProperty("app_started", True)
 
@@ -450,7 +450,7 @@ if __name__ == "__main__":
     # Start main window after short delay
     def start_main():
         """Start the main window and enter the Qt event loop."""
-        LOGGER.info("Launching main window bootstrap")
+        LOGGER.debug("Launching main window bootstrap")
         try:
             # Reuse the existing QApplication instead of letting the app module create
             # a second instance.

@@ -1914,6 +1914,24 @@ class MiscMixin(
                 return tab
         return None
 
+    def _typing_test_completed_prompt(self, tab: EditorTab) -> bool:
+        """Return whether the user has matched the full prompt word list."""
+        if tab is None or not bool(getattr(tab, "typing_test_mode_enabled", False)):
+            return False
+        config = dict(getattr(tab, "typing_test_config", {}) or {})
+        prompt_words = self._typing_test_parse_words(getattr(tab, "typing_test_source_text", ""))
+        typed_words = self._typing_test_parse_words(
+            self._typing_test_extract_typed_text(tab.text_edit.get_text())
+        )
+        if not prompt_words or len(typed_words) != len(prompt_words):
+            return False
+        case_sensitive = bool(config.get("case_sensitive", False))
+        return all(
+            self._typing_test_word_token(typed_word, case_sensitive=case_sensitive)
+            == self._typing_test_word_token(expected_word, case_sensitive=case_sensitive)
+            for typed_word, expected_word in zip(typed_words, prompt_words)
+        )
+
     def _typing_test_ensure_timer(self) -> None:
         """Create the typing test timer when it has not been initialized."""
         timer = getattr(self, "_typing_test_timer", None)
@@ -1967,6 +1985,9 @@ class MiscMixin(
             self._typing_test_timer.start()
             self.log_event("Info", "Typing speed test timer started")
         self._refresh_typing_test_annotations(tab)
+        if self._typing_test_completed_prompt(tab):
+            self._finish_typing_speed_test(tab, timed_out=False)
+            return
         config = dict(getattr(tab, "typing_test_config", {}) or {})
         started_at = getattr(tab, "typing_test_started_at", None)
         if started_at is not None and (time.time() - float(started_at)) >= max(1, int(config.get("duration_sec", 60) or 60)):
@@ -2021,6 +2042,9 @@ class MiscMixin(
                 f"Mistakes: {stats['mistakes']}"
             ),
         )
+        tab_index = self.tab_widget.indexOf(tab)
+        if tab_index >= 0:
+            self.close_tab(tab_index)
 
     def quit_typing_speed_test(self) -> None:
         """Exit typing test mode in the active tab."""
@@ -6622,7 +6646,7 @@ class MiscMixin(
         """Mark close trace."""
         self._pending_close_reason = str(reason or "unknown")
         self._pending_close_stack = "".join(traceback.format_stack(limit=12))
-        _LOGGER.info("[CloseTrace] requested reason=%s", self._pending_close_reason)
+        _LOGGER.debug("[CloseTrace] requested reason=%s", self._pending_close_reason)
 
     def _request_app_quit(self, reason: str) -> None:
         """Request application shutdown while recording the reason for later diagnostics."""
@@ -6766,9 +6790,9 @@ class MiscMixin(
         if close_trace_debug:
             if not close_stack:
                 close_stack = "".join(traceback.format_stack(limit=12))
-            _LOGGER.info("[CloseTrace] closeEvent reason=%s\n%s", close_reason, close_stack)
+            _LOGGER.debug("[CloseTrace] closeEvent reason=%s\n%s", close_reason, close_stack)
         else:
-            _LOGGER.info("[CloseTrace] closeEvent reason=%s", close_reason)
+            _LOGGER.debug("[CloseTrace] closeEvent reason=%s", close_reason)
         self._pending_close_reason = ""
         self._pending_close_stack = ""
         tabs: list[EditorTab] = []
@@ -11999,9 +12023,9 @@ Pypad User Guide
         """Return cached package download metadata when available."""
         info = package_info_from_cache(self.settings.get("writing_tools_package_download_cache", {}))
         if info is None:
-            _LOGGER.info("Offline Writing Studio package size cache miss.")
+            _LOGGER.debug("Offline Writing Studio package size cache miss.")
         else:
-            _LOGGER.info(
+            _LOGGER.debug(
                 "Offline Writing Studio package size cache hit: version=%s filename=%s size_mb=%.2f",
                 info.version,
                 info.filename,
@@ -12013,9 +12037,9 @@ Pypad User Guide
         """Return cached runtime download metadata when available."""
         info = runtime_info_from_cache(self.settings.get("writing_tools_runtime_download_cache", {}))
         if info is None:
-            _LOGGER.info("Offline Writing Studio runtime size cache miss.")
+            _LOGGER.debug("Offline Writing Studio runtime size cache miss.")
         else:
-            _LOGGER.info(
+            _LOGGER.debug(
                 "Offline Writing Studio runtime size cache hit: label=%s size_mb=%.2f url=%s",
                 info.label,
                 info.size_mb,
@@ -12025,7 +12049,7 @@ Pypad User Guide
 
     def _store_package_download_cache(self, info: PackageDownloadInfo) -> None:
         """Persist package download metadata for instant repeat prompts."""
-        _LOGGER.info(
+        _LOGGER.debug(
             "Persisting Offline Writing Studio package size cache: version=%s filename=%s size_mb=%.2f",
             info.version,
             info.filename,
@@ -12037,7 +12061,7 @@ Pypad User Guide
 
     def _store_runtime_download_cache(self, info: RuntimeDownloadInfo) -> None:
         """Persist runtime download metadata for instant repeat prompts."""
-        _LOGGER.info(
+        _LOGGER.debug(
             "Persisting Offline Writing Studio runtime size cache: label=%s size_mb=%.2f url=%s",
             info.label,
             info.size_mb,
@@ -12062,7 +12086,7 @@ Pypad User Guide
 
     def _start_language_tool_metadata_check(self) -> None:
         """Query the package registry for language-tool-python size before prompting the user."""
-        _LOGGER.info("Starting foreground package size check for Offline Writing Studio.")
+        _LOGGER.debug("Starting foreground package size check for Offline Writing Studio.")
         progress = create_themed_progress_dialog(self, title="Offline Writing Studio")
         progress.setLabelText("Checking language-tool-python package size...")
         progress.setCancelButton(None)
@@ -12090,7 +12114,7 @@ Pypad User Guide
 
     def _refresh_language_tool_package_cache_in_background(self) -> None:
         """Refresh cached package size metadata without blocking the launch prompt."""
-        _LOGGER.info("Starting background package size cache refresh for Offline Writing Studio.")
+        _LOGGER.debug("Starting background package size cache refresh for Offline Writing Studio.")
         worker = LanguageToolMetadataWorker()
         thread = QThread(self)
         self._writing_tool_worker_threads().append(thread)

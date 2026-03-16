@@ -248,6 +248,24 @@ class UiSetupMixin:
         aliases = {"WARN": "WARNING", "ERR": "ERROR"}
         return aliases.get(text, text or "INFO")
 
+    @staticmethod
+    def _should_demote_log_event_to_debug(level: str, message: str) -> bool:
+        """Return whether an informational event is diagnostic noise better kept at debug level."""
+        if str(level or "").strip().upper() != "INFO":
+            return False
+        text = str(message or "").strip()
+        if not text:
+            return False
+        diagnostic_prefixes = (
+            "[Startup]",
+            "Startup timing:",
+            "Startup deferred timing:",
+            "[Layout]",
+            "[Updater]",
+            "[LSP]",
+        )
+        return text.startswith(diagnostic_prefixes)
+
 
     def _install_custom_dock_title_bar(self, dock: QWidget, title: str, attr_name: str) -> None:
         """Attach the shared custom title bar widget to a dock and retain a reference."""
@@ -800,6 +818,8 @@ class UiSetupMixin:
     def log_event(self, level: str, message: str) -> None:
         """Record a normalized log entry into memory, files, and the debug dialog if present."""
         normalized_level = self._normalize_log_event_level(level)
+        if self._should_demote_log_event_to_debug(normalized_level, message):
+            normalized_level = "DEBUG"
         try:
             if get_level_number(normalized_level) < get_level_number(self._active_logging_level()):
                 return
@@ -1646,7 +1666,7 @@ class UiSetupMixin:
     def toggle_focus_mode(self, checked: bool) -> None:
         """Enable or disable focus mode."""
         self._apply_focus_mode(checked)
-        self.log_event("Info", f"Focus mode {'enabled' if checked else 'disabled'}")
+        self.log_event("Debug", f"Focus mode {'enabled' if checked else 'disabled'}")
 
     def show_version_history(self) -> None:
         """Show version history."""
@@ -1872,7 +1892,7 @@ class UiSetupMixin:
             return False
 
         self._insert_existing_tab(incoming_tab, insert_index=insert_index, make_current=True)
-        self.log_event("Info", f'Received tab from another window: "{self._tab_display_name(incoming_tab)}"')
+        self.log_event("Debug", f'Received tab from another window: "{self._tab_display_name(incoming_tab)}"')
         source_window.update_window_title()
         self.update_window_title()
         return True
@@ -1958,7 +1978,7 @@ class UiSetupMixin:
         if hasattr(self, "_restore_editor_splitter_sizes"):
             self._restore_editor_splitter_sizes(tab)
         self._sync_tab_empty_state()
-        self.log_event("Info", f'New tab created: "{self._tab_display_name(tab)}"')
+        self.log_event("Debug", f'New tab created: "{self._tab_display_name(tab)}"')
         self._emit_plugin_event("open", tab=tab)
         return tab
 
@@ -1983,7 +2003,7 @@ class UiSetupMixin:
             self._update_note_trust_banner()
         return
         self._sync_tab_modified_state_with_current_file(tab)
-        self.log_event("Info", f'Active tab: "{self._tab_display_name(tab)}"')
+        self.log_event("Debug", f'Active tab: "{self._tab_display_name(tab)}"')
         if hasattr(self, "md_toggle_preview_action"):
             self.md_toggle_preview_action.blockSignals(True)
             self.md_toggle_preview_action.setChecked(tab.markdown_mode_enabled)
@@ -2068,9 +2088,27 @@ class UiSetupMixin:
         if bool(getattr(widget, "pinned", False)):
             self.show_status_message("Pinned tab cannot be closed. Unpin it first.", 2500)
             return
-        self.log_event("Info", f'Requested tab close: "{self._tab_display_name(widget)}"')
+        self.log_event("Debug", f'Requested tab close: "{self._tab_display_name(widget)}"')
+        if bool(getattr(widget, "typing_test_mode_enabled", False)):
+            timer = getattr(self, "_typing_test_timer", None)
+            if isinstance(timer, QTimer) and getattr(self, "_typing_test_find_active_tab", None)() in {None, widget}:
+                timer.stop()
+            annotation_widget = getattr(widget.text_edit, "widget", None)
+            if annotation_widget is not None and hasattr(annotation_widget, "annotationClearAll"):
+                try:
+                    annotation_widget.annotationClearAll()
+                except Exception:
+                    pass
+            widget.typing_test_mode_enabled = False
+            widget.typing_test_config = {}
+            widget.typing_test_source_text = ""
+            widget.typing_test_original_text = None
+            widget.typing_test_started_at = None
+            widget.typing_test_finished = False
+            widget.typing_test_result = None
+            widget.text_edit.set_modified(False)
         if not self.maybe_save_tab(widget):
-            self.log_event("Info", f'Tab close cancelled: "{self._tab_display_name(widget)}"')
+            self.log_event("Debug", f'Tab close cancelled: "{self._tab_display_name(widget)}"')
             return
         should_track_closed = bool(
             widget.current_file
@@ -2098,7 +2136,7 @@ class UiSetupMixin:
         self.update_window_title()
         if hasattr(self, "_refresh_window_menu_entries"):
             self._refresh_window_menu_entries()
-        self.log_event("Info", "Tab closed")
+        self.log_event("Debug", "Tab closed")
 
     def detach_tab_to_window(self, index: int, global_pos: QPoint) -> None:
         """Move an existing tab into a new top-level window at the requested screen position."""
@@ -2107,7 +2145,7 @@ class UiSetupMixin:
         moving_tab = self._extract_tab_for_transfer(index)
         if moving_tab is None:
             return
-        self.log_event("Info", f'Detaching tab into new window: "{self._tab_display_name(moving_tab)}"')
+        self.log_event("Debug", f'Detaching tab into new window: "{self._tab_display_name(moving_tab)}"')
 
         new_window = type(self)()
         new_window.settings = dict(self.settings)
@@ -2134,7 +2172,7 @@ class UiSetupMixin:
         self.detached_windows.append(new_window)
 
         self.update_window_title()
-        self.log_event("Info", "Detached window created")
+        self.log_event("Debug", "Detached window created")
 
     def dragEnterEvent(self, event) -> None:  # type: ignore[override]
         """Accept supported drag data when it enters the widget."""

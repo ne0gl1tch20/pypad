@@ -121,7 +121,7 @@ class FileOpsMixin:
         """Create a new blank editor tab and refresh the window title."""
         self.add_new_tab(make_current=True)
         self.update_window_title()
-        self.log_event("Info", "Created new file tab")
+        self.log_event("Debug", "Created new file tab")
 
     def file_open(self) -> None:
         """Open a file picker and load the selected document into the editor."""
@@ -145,10 +145,10 @@ class FileOpsMixin:
         if not path:
             return
         _LOGGER.debug("file_open dialog selected path=%s", path)
-        self.log_event("Info", f'Open requested: "{path}"')
+        self.log_event("Debug", f'Open requested: "{path}"')
         if not self._open_file_path(path, open_origin="file_dialog"):
             return
-        self.log_event("Info", f'Open succeeded: "{path}"')
+        self.log_event("Debug", f'Open succeeded: "{path}"')
 
     def _prompt_password(self, title: str, label: str) -> str | None:
         """Prompt for a password."""
@@ -663,7 +663,7 @@ class FileOpsMixin:
         _LOGGER.debug("file_save_tab complete path=%s bytes=%d", tab.current_file, len(payload))
         self._add_recent_file(tab.current_file)
         self._clear_tab_autosave(tab)
-        self.log_event("Info", f'Save succeeded: "{tab.current_file}"')
+        self.log_event("Debug", f'Save succeeded: "{tab.current_file}"')
         if hasattr(self, "_emit_plugin_event"):
             save_mode = "export" if structured_export else "text"
             self._emit_plugin_event("after_save", tab=tab, save_mode=save_mode)
@@ -742,7 +742,7 @@ class FileOpsMixin:
             was_unsaved,
             previous_favorite,
         )
-        self.log_event("Info", f'Save As selected: "{path}"')
+        self.log_event("Debug", f'Save As selected: "{path}"')
 
         tab.current_file = path
         tab.encoding = tab.encoding or self._encoding_for_path(path)
