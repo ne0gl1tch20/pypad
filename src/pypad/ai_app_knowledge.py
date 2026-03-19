@@ -120,8 +120,20 @@ Core editor capabilities (high-level):
   - random numbers
   - password generation
   - percentage and finance calculations
+  - scientific calculator
+  - unit converter
+  - equation solver
+  - offline graph viewer
+  - cached currency converter
+  - QR generator and scanner
   - color picking
   - world clocks
+  - reminders hub
+  - taskers
+  - timer and stopwatch
+  - clean reader mode
+  - highlights and notes manager
+- QR scanning prefers a bundled `zxing-cpp` decoder for general-purpose QR images and falls back to PyPad-generated matrix codes when that decoder is unavailable.
 - Macros (record/play/run saved macros).
 - Syntax highlighting and language selection.
 - Markdown editing tools + preview.
@@ -165,6 +177,7 @@ Settings keys (frequently useful):
 - currency_rates_cache
 - currency_rates_last_sync
 - reader_mode_defaults
+- annotations
 - spellcheck_enabled
 - spellcheck_language
 - spellcheck_user_dictionary
