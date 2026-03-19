@@ -122,7 +122,7 @@ def decode_any_qr_image(image: QImage) -> str:
 class QRToolDialog(ToolDialogBase):
     """Create and scan PyPad matrix codes."""
 
-    def __init__(self, parent) -> None:
+    def __init__(self, parent, initial_text: str = "") -> None:
         super().__init__(
             parent,
             tool_id="qr_tools",
@@ -152,6 +152,9 @@ class QRToolDialog(ToolDialogBase):
         self.add_section(group)
         self._current_image: QImage | None = None
         self.load_persisted_state()
+        seed = str(initial_text or "").strip()
+        if seed:
+            self.payload_edit.setText(seed)
 
     def generate(self) -> None:
         matrix = encode_matrix_payload(self.payload_edit.text().strip())

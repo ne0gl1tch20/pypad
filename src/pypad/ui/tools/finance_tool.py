@@ -3,11 +3,17 @@
 from __future__ import annotations
 
 import math
+import re
 from typing import Any
 
 from PySide6.QtWidgets import QComboBox, QDoubleSpinBox, QFormLayout, QGroupBox, QMessageBox, QPushButton
 
 from .base_dialog import ToolDialogBase
+
+
+def extract_numeric_values(text: str) -> list[float]:
+    """Extract numeric values from free-form selected text."""
+    return [float(match) for match in re.findall(r"[-+]?(?:\d+\.\d+|\d+|\.\d+)", str(text or ""))]
 
 
 def calculate_finance_result(mode: str, a: float, b: float, c: float, d: float) -> str:
@@ -61,7 +67,7 @@ class FinanceToolDialog(ToolDialogBase):
         "loan_payment": ("Principal", "Rate %", "Months", "Unused"),
     }
 
-    def __init__(self, parent) -> None:
+    def __init__(self, parent, initial_text: str = "") -> None:
         super().__init__(
             parent,
             tool_id="finance_calculator",
@@ -99,6 +105,15 @@ class FinanceToolDialog(ToolDialogBase):
         self.add_section(group)
         self.load_persisted_state()
         self._sync_labels(self.mode_combo.currentText())
+        values = extract_numeric_values(initial_text)
+        if values:
+            self.a_spin.setValue(values[0])
+        if len(values) > 1:
+            self.b_spin.setValue(values[1])
+        if len(values) > 2:
+            self.c_spin.setValue(values[2])
+        if len(values) > 3:
+            self.d_spin.setValue(values[3])
 
     def _mode_key(self) -> str:
         selected = self.mode_combo.currentText()

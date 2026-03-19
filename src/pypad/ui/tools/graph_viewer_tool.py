@@ -109,7 +109,7 @@ class GraphCanvas(QWidget):
 class GraphViewerToolDialog(ToolDialogBase):
     """Plot local expressions or simple datasets."""
 
-    def __init__(self, parent) -> None:
+    def __init__(self, parent, initial_text: str = "") -> None:
         super().__init__(
             parent,
             tool_id="graph_viewer",
@@ -134,6 +134,9 @@ class GraphViewerToolDialog(ToolDialogBase):
         form.addRow(self.canvas)
         self.add_section(group)
         self.load_persisted_state()
+        seed = str(initial_text or "").strip()
+        if seed:
+            self.expr_edit.setText(seed)
 
     def plot(self) -> None:
         source = self.expr_edit.text().strip()

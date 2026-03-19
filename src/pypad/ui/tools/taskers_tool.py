@@ -25,7 +25,7 @@ def task_scope_from_window(window) -> tuple[str, str]:
 class TaskersToolDialog(ToolDialogBase):
     """Manage local tasks and optionally promote them into reminders."""
 
-    def __init__(self, parent) -> None:
+    def __init__(self, parent, initial_text: str = "") -> None:
         super().__init__(
             parent,
             tool_id="taskers",
@@ -74,6 +74,9 @@ class TaskersToolDialog(ToolDialogBase):
         self.insert_btn.clicked.disconnect()
         self.insert_btn.clicked.connect(self.insert_checklist)
         self._load_tasks()
+        seed = str(initial_text or "").strip()
+        if seed:
+            self.title_edit.setPlainText(seed)
 
     def _task_store(self) -> dict[str, list[dict[str, str]]]:
         store = self.window.settings.get("task_lists", {})

@@ -35,7 +35,7 @@ def apply_annotations_to_editor(tab, notes: dict[str, str]) -> None:
 class AnnotationsToolDialog(ToolDialogBase):
     """Review, edit, and jump through note annotations."""
 
-    def __init__(self, parent) -> None:
+    def __init__(self, parent, initial_text: str = "") -> None:
         super().__init__(
             parent,
             tool_id="annotations_manager",
@@ -71,6 +71,10 @@ class AnnotationsToolDialog(ToolDialogBase):
         self.delete_btn.clicked.connect(self.delete_current)
         self.list_widget.currentItemChanged.connect(self._load_preview)
         self._refresh()
+        seed = str(initial_text or "").strip()
+        if seed:
+            self.note_preview.setPlainText(seed)
+            self.output.setPlainText(seed)
 
     def _store(self) -> dict[str, dict[str, str]]:
         store = self.window.settings.get("annotations", {})

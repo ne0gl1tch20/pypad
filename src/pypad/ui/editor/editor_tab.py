@@ -441,6 +441,48 @@ class EditorTab(QWidget):
             self._prune_empty_menu(style_menu, clear_menu)
         return any_added
 
+    def _add_selection_tools_submenu(self, selection_menu: QMenu, window, selected_text: str) -> bool:
+        """Add selection-adjacent built-in tools to the context menu."""
+        if not str(selected_text or "").strip():
+            return False
+        tools_menu = selection_menu.addMenu("Tools")
+        tools_icon = self._context_icon(window, "command-palette")
+        if not tools_icon.isNull():
+            tools_menu.setIcon(tools_icon)
+        added = False
+
+        text_tool_actions = (
+            "password_generator_action",
+            "qr_tools_action",
+            "annotations_manager_action",
+            "taskers_action",
+            "reminders_hub_action",
+        )
+        numeric_tool_actions = (
+            "random_number_action",
+            "finance_calculator_action",
+            "scientific_calculator_action",
+            "unit_converter_action",
+            "equation_solver_action",
+            "graph_viewer_action",
+            "currency_converter_action",
+            "color_picker_action",
+            "world_clock_action",
+            "timer_stopwatch_action",
+            "reader_mode_action",
+        )
+
+        for attr in text_tool_actions:
+            added = self._add_window_action_if_enabled(tools_menu, window, attr) or added
+        if self._selection_looks_like_math(selected_text):
+            if added:
+                tools_menu.addSeparator()
+            for attr in numeric_tool_actions:
+                added = self._add_window_action_if_enabled(tools_menu, window, attr) or added
+        if not added:
+            self._prune_empty_menu(selection_menu, tools_menu)
+        return added
+
     def _show_editor_context_menu(self, pos) -> None:
         """Build and show the full editor context menu based on selection and action state."""
         window = self._main_window()
@@ -552,6 +594,8 @@ class EditorTab(QWidget):
             style_added = True
         if not style_added:
             self._prune_empty_menu(selection_menu, style_menu)
+
+        self._add_selection_tools_submenu(selection_menu, window, selected_text)
 
         ai_menu = menu.addMenu("AI")
         ai_icon = self._context_icon(window, "ai-sparkles")

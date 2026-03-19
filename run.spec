@@ -37,7 +37,6 @@ a = Analysis(
     datas=[
         ('assets', 'assets'),
         ('plugins', 'plugins'),
-        ('online_plugins', 'online_plugins'),
     ],
     hiddenimports=hiddenimports,
     hookspath=[],

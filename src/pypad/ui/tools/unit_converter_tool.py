@@ -7,6 +7,7 @@ from typing import Any
 from PySide6.QtWidgets import QComboBox, QDoubleSpinBox, QFormLayout, QGroupBox, QPushButton
 
 from .base_dialog import ToolDialogBase
+from .finance_tool import extract_numeric_values
 
 LENGTH_FACTORS = {"mm": 0.001, "cm": 0.01, "m": 1.0, "km": 1000.0, "in": 0.0254, "ft": 0.3048, "yd": 0.9144, "mi": 1609.344}
 WEIGHT_FACTORS = {"mg": 0.000001, "g": 0.001, "kg": 1.0, "lb": 0.45359237, "oz": 0.028349523125}
@@ -41,7 +42,7 @@ class UnitConverterToolDialog(ToolDialogBase):
         "temperature": ["C", "F", "K"],
     }
 
-    def __init__(self, parent) -> None:
+    def __init__(self, parent, initial_text: str = "") -> None:
         super().__init__(
             parent,
             tool_id="unit_converter",
@@ -69,6 +70,9 @@ class UnitConverterToolDialog(ToolDialogBase):
         self.add_section(group)
         self.load_persisted_state()
         self._sync_units(self.category_combo.currentText())
+        values = extract_numeric_values(initial_text)
+        if values:
+            self.value_spin.setValue(values[0])
 
     def _sync_units(self, category: str) -> None:
         units = self.CATEGORY_UNITS.get(category, [])

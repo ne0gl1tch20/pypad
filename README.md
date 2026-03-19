@@ -93,7 +93,7 @@ Saved settings are merged with these defaults so the app can add new options wit
 
 ## Project Status
 
-PyPad is currently at version `1.8.3` and remains under active development. The app now includes a first-party offline built-in tools surface alongside its editor, workspace, AI, recovery, and productivity features.
+PyPad is currently at version `1.8.3` and remains under active development. The app now includes a larger first-party local tools surface alongside its editor, workspace, AI, recovery, and productivity features, including calculators, converters, reminders/taskers, reader mode, annotations, graphing, cached currency tools, and QR generation/scanning.
 
 Development happens during free time, so updates may be irregular and some newer surfaces may continue evolving between releases.
 
@@ -102,7 +102,9 @@ Development happens during free time, so updates may be irregular and some newer
 - Fast multi-tab editing
 - Quick Open (`Ctrl+Alt+P`) for files, symbols, and commands
 - Command Palette (`Ctrl+Shift+P`) for quick commands
-- Built-in offline tools for random numbers, passwords, quick finance math, color picking, and world clocks
+- Built-in offline tools for random numbers, passwords, finance math, scientific calculation, unit conversion, equation solving, offline graphing, cached currency conversion, color picking, world clocks, timer/stopwatch workflows, reminders, taskers, reader mode, highlights/notes, and QR generation/scanning
+- General-purpose QR scanning now uses bundled `zxing-cpp` decoding when available, with a local fallback path for PyPad-generated codes
+- Editor right-click selection menus now surface built-in tools and can auto-seed relevant dialogs from the current selection
 - AI assistant dock with apply actions
 - Google Translate integration for in-app translation workflows
 - Markdown preview and tools
@@ -114,7 +116,7 @@ Development happens during free time, so updates may be irregular and some newer
 ## Feature Areas
 
 - Editing: tabs, navigation, Scintilla-style commands, markdown tools, syntax-aware behavior, local spell checking, annotations, and review helpers
-- Productivity: autosave, recovery, reminders, quick open, session restore, and built-in offline utility tools
+- Productivity: autosave, recovery, reminders, taskers, quick open, session restore, and built-in local utility tools
 - Workspace: file browsing, project search, profiles, workspace-aware assistant actions
 - Language tools: Google Translate integration, document-level spelling review, and offline writing assistance
 - Appearance: token-based themes, editor/chrome colors, density controls, accessibility settings

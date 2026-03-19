@@ -1,14 +1,15 @@
 ﻿<?xml version="1.0" encoding="UTF-8"?>
 <updates>
   <item>
-    <title>PyPad 1.8.3 Released</title>
+    <title>PyPad 1.8.3</title>
     <version>1.8.3</version>
     <pubDate>2026-03-19</pubDate>
     <description>
-      - PyPad 1.8.3 introduces a new built-in offline tools framework under Tools.
-      - New built-in utilities include Random Number Generator, Password Generator, Percentage / Finance Calculator, Color Picker, and World Clock.
-      - Tool dialogs now support shared help, copy, insert, save, and persisted local tool state.
-      - Command palette discovery and release summaries were updated to reflect the new built-in utilities surface.
+      - PyPad 1.8.3 expands the built-in local tools framework under Tools with calculators, converters, reminders/taskers, reader mode, annotations, offline graphing, cached currency tools, and QR generation/scanning.
+      - Built-in utilities now include Random Number Generator, Password Generator, Percentage / Finance Calculator, Scientific Calculator, Unit Converter, Equation Solver, Offline Graph Viewer, Cached Currency Tools, Timer / Stopwatch, Color Picker, World Clock, Reminders, Taskers, Clean Reader Mode, Highlights + Notes, and QR Generator / Scanner.
+      - QR scanning now supports bundled general-purpose decoding through zxing-cpp, with a PyPad-local fallback path for generated matrix codes.
+      - Editor right-click selection menus now expose built-in tools directly and auto-seed relevant dialogs from the current selection.
+      - Tool dialogs continue to share help, copy, insert, save, and persisted local tool state.
       - Detailed changelog: CHANGELOG.md
     </description>
     <sha256>0000000000000000000000000000000000000000000000000000000000000000</sha256>

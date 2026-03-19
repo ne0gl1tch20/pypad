@@ -58,7 +58,7 @@ def solve_quadratic(a: float, b: float, c: float) -> str:
 class EquationSolverToolDialog(ToolDialogBase):
     """Friendly equation solving dialog for common algebra."""
 
-    def __init__(self, parent) -> None:
+    def __init__(self, parent, initial_text: str = "") -> None:
         super().__init__(
             parent,
             tool_id="equation_solver",
@@ -92,6 +92,9 @@ class EquationSolverToolDialog(ToolDialogBase):
         self.add_section(group)
         self._sync_mode(self.mode_combo.currentText())
         self.load_persisted_state()
+        seed = str(initial_text or "").strip()
+        if seed:
+            self.linear_input.setText(seed)
 
     def _sync_mode(self, mode: str) -> None:
         quadratic = mode == "Quadratic"

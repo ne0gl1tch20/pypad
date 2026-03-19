@@ -82,7 +82,7 @@ def evaluate_expression(expr: str) -> float:
 class ScientificCalculatorToolDialog(ToolDialogBase):
     """Evaluate scientific calculator expressions locally."""
 
-    def __init__(self, parent) -> None:
+    def __init__(self, parent, initial_text: str = "") -> None:
         super().__init__(
             parent,
             tool_id="scientific_calculator",
@@ -107,6 +107,9 @@ class ScientificCalculatorToolDialog(ToolDialogBase):
         form.addRow("History:", self.history)
         self.add_section(group)
         self.load_persisted_state()
+        seed = str(initial_text or "").strip()
+        if seed:
+            self.expr_edit.setText(seed)
 
     def calculate(self) -> None:
         try:

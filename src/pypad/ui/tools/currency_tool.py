@@ -8,6 +8,7 @@ from typing import Any
 from PySide6.QtWidgets import QComboBox, QFormLayout, QGroupBox, QInputDialog, QLineEdit, QMessageBox, QPushButton
 
 from .base_dialog import ToolDialogBase
+from .finance_tool import extract_numeric_values
 
 DEFAULT_RATES = {
     "USD": 1.0,
@@ -31,7 +32,7 @@ def convert_currency(amount: float, from_code: str, to_code: str, rates: dict[st
 class CurrencyToolDialog(ToolDialogBase):
     """Convert currencies using a visible local cache."""
 
-    def __init__(self, parent) -> None:
+    def __init__(self, parent, initial_text: str = "") -> None:
         super().__init__(
             parent,
             tool_id="currency_converter",
@@ -67,6 +68,9 @@ class CurrencyToolDialog(ToolDialogBase):
         self.add_section(group)
         self._refresh_status()
         self.load_persisted_state()
+        values = extract_numeric_values(initial_text)
+        if values:
+            self.amount_edit.setText(f"{values[0]:.12g}")
 
     def _load_rates(self) -> dict[str, float]:
         raw = self.window.settings.get("currency_rates_cache", {})

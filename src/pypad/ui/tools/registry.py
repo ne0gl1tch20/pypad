@@ -77,6 +77,15 @@ class BuiltInToolsController:
         if hasattr(dialog, "exec"):
             dialog.exec()
 
+    def _current_selection_text(self) -> str:
+        tab = self.window.active_tab() if hasattr(self.window, "active_tab") else None
+        if tab is None or not hasattr(tab, "text_edit"):
+            return ""
+        try:
+            return str(tab.text_edit.selected_text() or "").strip()
+        except Exception:
+            return ""
+
     def open_random_number_tool(self) -> None:
         self._exec(lambda: RandomNumberToolDialog(self.window))
 
@@ -84,7 +93,7 @@ class BuiltInToolsController:
         self._exec(lambda: PasswordToolDialog(self.window))
 
     def open_finance_calculator_tool(self) -> None:
-        self._exec(lambda: FinanceToolDialog(self.window))
+        self._exec(lambda: FinanceToolDialog(self.window, initial_text=self._current_selection_text()))
 
     def open_color_picker_tool(self) -> None:
         self._exec(lambda: ColorPickerToolDialog(self.window))
@@ -93,19 +102,19 @@ class BuiltInToolsController:
         self._exec(lambda: WorldClockToolDialog(self.window))
 
     def open_scientific_calculator_tool(self) -> None:
-        self._exec(lambda: ScientificCalculatorToolDialog(self.window))
+        self._exec(lambda: ScientificCalculatorToolDialog(self.window, initial_text=self._current_selection_text()))
 
     def open_unit_converter_tool(self) -> None:
-        self._exec(lambda: UnitConverterToolDialog(self.window))
+        self._exec(lambda: UnitConverterToolDialog(self.window, initial_text=self._current_selection_text()))
 
     def open_equation_solver_tool(self) -> None:
-        self._exec(lambda: EquationSolverToolDialog(self.window))
+        self._exec(lambda: EquationSolverToolDialog(self.window, initial_text=self._current_selection_text()))
 
     def open_graph_viewer_tool(self) -> None:
-        self._exec(lambda: GraphViewerToolDialog(self.window))
+        self._exec(lambda: GraphViewerToolDialog(self.window, initial_text=self._current_selection_text()))
 
     def open_currency_converter_tool(self) -> None:
-        self._exec(lambda: CurrencyToolDialog(self.window))
+        self._exec(lambda: CurrencyToolDialog(self.window, initial_text=self._current_selection_text()))
 
     def open_timer_stopwatch_tool(self) -> None:
         self._exec(lambda: TimerToolDialog(self.window))
@@ -114,13 +123,13 @@ class BuiltInToolsController:
         self._exec(lambda: RemindersToolDialog(self.window))
 
     def open_taskers_tool(self) -> None:
-        self._exec(lambda: TaskersToolDialog(self.window))
+        self._exec(lambda: TaskersToolDialog(self.window, initial_text=self._current_selection_text()))
 
     def open_reader_mode_tool(self) -> None:
         self._exec(lambda: ReaderModeToolDialog(self.window))
 
     def open_annotations_tool(self) -> None:
-        self._exec(lambda: AnnotationsToolDialog(self.window))
+        self._exec(lambda: AnnotationsToolDialog(self.window, initial_text=self._current_selection_text()))
 
     def open_qr_tool(self) -> None:
-        self._exec(lambda: QRToolDialog(self.window))
+        self._exec(lambda: QRToolDialog(self.window, initial_text=self._current_selection_text()))
