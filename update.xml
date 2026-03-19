@@ -1,21 +1,19 @@
 ﻿<?xml version="1.0" encoding="UTF-8"?>
 <updates>
   <item>
-    <title>PyPad 1.8.2 Released</title>
-    <version>1.8.2</version>
-    <pubDate>2026-03-15</pubDate>
+    <title>PyPad 1.8.3 Released</title>
+    <version>1.8.3</version>
+    <pubDate>2026-03-19</pubDate>
     <description>
-      - Important: PyPad 1.8.2 adds full light/dark support for the Soft Light, High Contrast, Solarized Light, and Ocean Blue theme presets.
-      - Theme-driven surfaces now stay consistent in AI chat, print view, terminal/tasks panels, and settings search highlighting.
-      - Appearance verification removed remaining hard-coded theme bypasses from key UI surfaces.
-      - SECURITY UPDATE! PyPad 1.8.2 includes critical security fixes for vulnerabilities CVE-2026-12345 and CVE-2026-67890, which could allow remote code execution through crafted plugin packages or malicious AI responses.
-      - All users are strongly urged to update immediately to protect against potential exploits.
-      - ACCESSIBILITY UPDATE! PyPad 1.8.2 introduces improved screen reader support and keyboard navigation for the new theme-driven UI elements, enhancing accessibility for users with disabilities.
+      - PyPad 1.8.3 introduces a new built-in offline tools framework under Tools.
+      - New built-in utilities include Random Number Generator, Password Generator, Percentage / Finance Calculator, Color Picker, and World Clock.
+      - Tool dialogs now support shared help, copy, insert, save, and persisted local tool state.
+      - Command palette discovery and release summaries were updated to reflect the new built-in utilities surface.
       - Detailed changelog: CHANGELOG.md
     </description>
     <sha256>0000000000000000000000000000000000000000000000000000000000000000</sha256>
     <enclosure
-      url="https://github.com/ne0gl1tch20/pypad/releases/download/1.8.2/PyPad-Setup-1.8.2.exe"
+      url="https://github.com/ne0gl1tch20/pypad/releases/download/1.8.3/PyPad-Setup-1.8.3.exe"
       type="application/octet-stream" />
   </item>
 </updates>

@@ -4,6 +4,28 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, and this project uses Semantic Versioning.
 
+## [1.8.3] - 2026-03-19
+
+### Added
+- New built-in offline tools framework under `src/pypad/ui/tools` with a shared registration layer, common tool dialog chrome, local help affordance, and shared `Insert`, `Copy`, and `Save` actions.
+- New `Tools > Built-in Tools` submenu entries for:
+  - `Random Number Generator...`
+  - `Password Generator...`
+  - `Percentage / Finance Calculator...`
+  - `Color Picker...`
+  - `World Clock...`
+- New persisted settings families for tool state and release-planned utility surfaces, including `tool_state`, `tool_help_dismissed`, `world_clock_zones`, `task_lists`, `currency_rates_cache`, `currency_rates_last_sync`, and `reader_mode_defaults`.
+- New tool-focused regression coverage in `tests/test_tools.py` for generator/calculator helpers, dialog accessibility, and tool-action registration.
+
+### Changed
+- App/version metadata has been aligned to the `1.8.3` release line across release files, summaries, and update feed metadata.
+- README project summary, feature overview, and developer-facing app knowledge were refreshed to reflect the new built-in tools surface and the current local-first direction.
+- The command palette can now discover the new built-in tool actions automatically because they are registered as normal main-window actions.
+
+### Fixed
+- Settings coercion now includes a concrete `coerce_str(...)` helper instead of relying on an undefined symbol in migration paths.
+- World Clock now falls back to fixed-offset time zone definitions for common regions when the Python `tzdata` package is unavailable, keeping the tool usable in lean Windows environments and packaged builds.
+
 ## [1.8.2] - 2026-03-15
 
 ### Please Note!

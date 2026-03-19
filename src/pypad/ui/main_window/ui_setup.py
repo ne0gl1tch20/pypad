@@ -86,6 +86,7 @@ from pypad.ui.editor.syntax_highlighter import CodeSyntaxHighlighter
 from pypad.ui.editor.spellcheck import spellcheck_available
 from pypad.ui.system.updater_controller import UpdaterController
 from pypad.ui.system.version_history import LocalHistoryTimelineDialog, VersionHistoryDialog
+from pypad.ui.tools import BuiltInToolsController
 from pypad.ui.workspace.workspace_controller import WorkspaceController
 from pypad.logging_utils import (
     clear_console_log_lines,
@@ -2435,6 +2436,14 @@ class UiSetupMixin:
             "Text Direction RTL": "Set right-to-left text direction for this tab",
             "Text Direction LTR": "Set left-to-right text direction for this tab",
             "Reminders & Alarms": "Manage reminders for this note",
+            "Random Number Generator": "Generate insertable random integers or decimals",
+            "Password Generator": "Generate local passwords and copy or insert them",
+            "Percentage / Finance Calculator": "Run quick percentage and finance calculations",
+            "Scientific Calculator": "Evaluate math expressions with built-in scientific functions",
+            "Unit Converter": "Convert common length, weight, and temperature values",
+            "Timer / Stopwatch": "Run local countdown and stopwatch productivity timers",
+            "Color Picker": "Choose a color and copy or insert its values",
+            "World Clock": "Track multiple saved time zones locally",
             "Search with Internet": "Search selected text on the configured search engine",
             "Word Wrap": "Toggle wrapping long lines",
             "Font": "Change editor font",
@@ -4348,6 +4357,8 @@ class UiSetupMixin:
 
         self.task_workflow_action = QAction("Task Workflow...", self)
         self.task_workflow_action.triggered.connect(self.show_task_workflow_panel)
+        self.built_in_tools = BuiltInToolsController(self)
+        self.built_in_tools.create_actions()
 
         self.ai_file_citations_action = QAction("Ask About File (Citations)...", self)
         self.ai_file_citations_action.triggered.connect(self.ai_ask_file_with_citations)
@@ -5246,6 +5257,10 @@ class UiSetupMixin:
         self.tools_menu.addAction(self.git_panel_action_open)
         self.tools_menu.addSeparator()
         self.tools_menu.addAction(self.task_workflow_action)
+        self.tools_menu.addSeparator()
+        built_in_tools_menu = self.tools_menu.addMenu("Built-in Tools")
+        if hasattr(self, "built_in_tools"):
+            self.built_in_tools.add_to_menu(built_in_tools_menu)
         self.tools_menu.addSeparator()
         more_tools_menu = self.tools_menu.addMenu("More")
         more_tools_menu.addAction(self.backup_scheduler_action)

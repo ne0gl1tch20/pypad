@@ -93,29 +93,30 @@ Saved settings are merged with these defaults so the app can add new options wit
 
 ## Project Status
 
-PyPad is currently released and under active development. Some features are experimental and may change as the editor evolves.
+PyPad is currently at version `1.8.3` and remains under active development. The app now includes a first-party offline built-in tools surface alongside its editor, workspace, AI, recovery, and productivity features.
 
-Development happens during free time, so updates may be irregular.
+Development happens during free time, so updates may be irregular and some newer surfaces may continue evolving between releases.
 
 ## Features
 
 - Fast multi-tab editing
 - Quick Open (`Ctrl+Alt+P`) for files, symbols, and commands
 - Command Palette (`Ctrl+Shift+P`) for quick commands
+- Built-in offline tools for random numbers, passwords, quick finance math, color picking, and world clocks
 - AI assistant dock with apply actions
 - Google Translate integration for in-app translation workflows
 - Markdown preview and tools
-- Local spell checking powered by `symspellpy`
+- Local spell checking powered by bundled dictionaries with `chunspell` and `symspellpy`
 - Autosave and crash recovery
 - Workspace search and workspace file browsing
 - Token-based UI theming
 
 ## Feature Areas
 
-- Editing: tabs, navigation, Scintilla-style commands, markdown tools, syntax-aware behavior, local spell checking with `symspellpy`
-- Productivity: autosave, recovery, reminders, quick open, session restore
+- Editing: tabs, navigation, Scintilla-style commands, markdown tools, syntax-aware behavior, local spell checking, annotations, and review helpers
+- Productivity: autosave, recovery, reminders, quick open, session restore, and built-in offline utility tools
 - Workspace: file browsing, project search, profiles, workspace-aware assistant actions
-- Language tools: Google Translate integration and document-level spelling review
+- Language tools: Google Translate integration, document-level spelling review, and offline writing assistance
 - Appearance: token-based themes, editor/chrome colors, density controls, accessibility settings
 - Safety: privacy lock, trust policies, guarded AI behavior, update-policy controls
 
@@ -125,6 +126,7 @@ The long-term goals of PyPad include:
 
 - Build a fast and reliable desktop editor for everyday writing and coding
 - Provide powerful navigation tools for large projects
+- Expand useful local-first tools directly inside the editor without turning them into disconnected mini-apps
 - Keep the UI customizable through token-based theming
 - Expand AI-assisted workflows while keeping the editor lightweight
 - Maintain a clean architecture that is easy to extend

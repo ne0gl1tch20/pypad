@@ -48,6 +48,7 @@ Current UI truths:
 - Workspace actions are available from `File > Workspace` and workspace panels.
 - IDE-style helper panels now include `Problems`, `Output`, `GitLens`, `Terminal & Tasks`, and `Git`.
 - Productivity and gamification actions are grouped under `Play`.
+- Built-in local utilities now live under `Tools > Built-in Tools`.
 - The visible productivity surfaces are the status-area widget, the momentum banner, the `Productivity Hub` dock, and the `Gamification Dashboard` dialog.
 - `Play` includes `Productivity Hub`, `Daily Briefing`, `Seasonal Event Briefing`, `Session Review`, `Productivity Routine`, and `Coach Recommendation`.
 - Preferences are under `Settings > Preferences`.
@@ -115,6 +116,12 @@ Core editor capabilities (high-level):
   - document formatting
   - diagnostics routed into `Problems`
 - Local spellcheck workflows with document-wide review and current-word suggestions.
+- Built-in offline tools for:
+  - random numbers
+  - password generation
+  - percentage and finance calculations
+  - color picking
+  - world clocks
 - Macros (record/play/run saved macros).
 - Syntax highlighting and language selection.
 - Markdown editing tools + preview.
@@ -151,6 +158,13 @@ Settings keys (frequently useful):
 - ai_workspace_qa_max_lines_per_file
 - auto_check_updates
 - update_require_signed
+- tool_state
+- tool_help_dismissed
+- world_clock_zones
+- task_lists
+- currency_rates_cache
+- currency_rates_last_sync
+- reader_mode_defaults
 - spellcheck_enabled
 - spellcheck_language
 - spellcheck_user_dictionary

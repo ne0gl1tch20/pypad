@@ -17,7 +17,7 @@ class SettingsMigrationTests(unittest.TestCase):
     def test_migrates_v1_and_sets_schema(self) -> None:
         source = {"dark_mode": True, "settings_schema_version": 1}
         migrated = migrate_settings(source)
-        self.assertEqual(migrated["settings_schema_version"], 2)
+        self.assertEqual(migrated["settings_schema_version"], 3)
         self.assertTrue(migrated["dark_mode"])
         self.assertIn("icon_size_px", migrated)
 
@@ -38,6 +38,8 @@ class SettingsMigrationTests(unittest.TestCase):
         migrated = migrate_settings(source)
         self.assertEqual(migrated["my_custom_flag"], "x")
         self.assertTrue(migrated["fast_startup_mode"])
+        self.assertEqual(migrated["world_clock_zones"], ["UTC"])
+        self.assertEqual(migrated["tool_state"], {})
 
     def test_scintilla_profile_values_are_sanitized(self) -> None:
         source = {
@@ -58,6 +60,19 @@ class SettingsMigrationTests(unittest.TestCase):
         self.assertEqual(migrated["scintilla_line_number_width_px"], 24)
         self.assertEqual(migrated["scintilla_style_theme"], "default")
         self.assertEqual(migrated["scintilla_style_overrides"]["python"]["string"], "#123456")
+
+    def test_tool_related_settings_are_sanitized(self) -> None:
+        source = {
+            "settings_schema_version": 1,
+            "world_clock_zones": ["UTC", "", "Asia/Tokyo"],
+            "tool_help_dismissed": {"random_number": 1, "bad": ""},
+            "reader_mode_defaults": {"font_scale": 1.2, "chrome": "dim"},
+        }
+        migrated = migrate_settings(source)
+        self.assertEqual(migrated["world_clock_zones"], ["UTC", "Asia/Tokyo"])
+        self.assertTrue(migrated["tool_help_dismissed"]["random_number"])
+        self.assertFalse(migrated["tool_help_dismissed"]["bad"])
+        self.assertEqual(migrated["reader_mode_defaults"]["font_scale"], "1.2")
 
 
 if __name__ == "__main__":

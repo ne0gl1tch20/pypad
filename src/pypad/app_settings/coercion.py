@@ -31,6 +31,14 @@ def coerce_bool(value, default: bool = False) -> bool:
     return default
 
 
+def coerce_str(value, default: str = "") -> str:
+    """Coerce a value into a string with a fallback."""
+    if value is None:
+        return default
+    text = str(value).strip()
+    return text if text else default
+
+
 def normalize_ui_visibility_settings(settings: dict) -> dict:
     """Normalize UI visibility settings."""
     settings["show_markdown_toolbar"] = coerce_bool(
@@ -110,6 +118,13 @@ def _coerce_str_list(value: object) -> list[str]:
     if isinstance(value, list):
         return [str(item).strip() for item in value if str(item).strip()]
     return []
+
+
+def _coerce_str_dict(value: object) -> dict[str, str]:
+    """Coerce a flat string dictionary."""
+    if not isinstance(value, dict):
+        return {}
+    return {str(k).strip(): str(v).strip() for k, v in value.items() if str(k).strip()}
 
 
 def _sanitize_update_feed_url(value: object, default: str) -> str:
@@ -265,6 +280,17 @@ def migrate_settings(settings: dict) -> dict:
             if isinstance(current.get("writing_tools_runtime_download_cache", {}), dict)
             else {}
         )
+        current["tool_state"] = dict(current.get("tool_state", {})) if isinstance(current.get("tool_state", {}), dict) else {}
+        current["tool_help_dismissed"] = {
+            str(k).strip(): coerce_bool(v, False)
+            for k, v in dict(current.get("tool_help_dismissed", {})).items()
+            if str(k).strip()
+        } if isinstance(current.get("tool_help_dismissed", {}), dict) else {}
+        current["world_clock_zones"] = _coerce_str_list(current.get("world_clock_zones")) or ["UTC"]
+        current["task_lists"] = dict(current.get("task_lists", {})) if isinstance(current.get("task_lists", {}), dict) else {}
+        current["currency_rates_cache"] = dict(current.get("currency_rates_cache", {})) if isinstance(current.get("currency_rates_cache", {}), dict) else {}
+        current["currency_rates_last_sync"] = str(current.get("currency_rates_last_sync", "") or "").strip()
+        current["reader_mode_defaults"] = _coerce_str_dict(current.get("reader_mode_defaults"))
         closed_tab_history = current.get("closed_tab_history", [])
         current["closed_tab_history"] = closed_tab_history if isinstance(closed_tab_history, list) else []
         normalize_ui_visibility_settings(current)
@@ -463,6 +489,17 @@ def migrate_settings(settings: dict) -> dict:
     current["status_show_autosave"] = coerce_bool(current.get("status_show_autosave", True), True)
     current["status_show_gamification"] = coerce_bool(current.get("status_show_gamification", False), False)
     current["status_show_momentum"] = coerce_bool(current.get("status_show_momentum", False), False)
+    current["tool_state"] = dict(current.get("tool_state", {})) if isinstance(current.get("tool_state", {}), dict) else {}
+    current["tool_help_dismissed"] = {
+        str(k).strip(): coerce_bool(v, False)
+        for k, v in dict(current.get("tool_help_dismissed", {})).items()
+        if str(k).strip()
+    } if isinstance(current.get("tool_help_dismissed", {}), dict) else {}
+    current["world_clock_zones"] = _coerce_str_list(current.get("world_clock_zones")) or ["UTC"]
+    current["task_lists"] = dict(current.get("task_lists", {})) if isinstance(current.get("task_lists", {}), dict) else {}
+    current["currency_rates_cache"] = dict(current.get("currency_rates_cache", {})) if isinstance(current.get("currency_rates_cache", {}), dict) else {}
+    current["currency_rates_last_sync"] = str(current.get("currency_rates_last_sync", "") or "").strip()
+    current["reader_mode_defaults"] = _coerce_str_dict(current.get("reader_mode_defaults"))
     current["accessibility_preset"] = coerce_str(current.get("accessibility_preset", "none"), "none").strip().lower() or "none"
     current["accessibility_reduce_motion"] = coerce_bool(current.get("accessibility_reduce_motion", False), False)
     current["accessibility_cursor_blink"] = coerce_bool(current.get("accessibility_cursor_blink", True), True)
