@@ -35,7 +35,9 @@ class MarkdownPreviewPane(QWidget):
     def __init__(self, parent=None) -> None:
         """Create the fallback text preview and optional web-based MathJax renderer."""
         super().__init__(parent)
+        self.setObjectName("markdownPreviewPane")
         self._text_preview = QTextEdit(self)
+        self._text_preview.setObjectName("markdownPreviewText")
         self._text_preview.setReadOnly(True)
         self._text_preview.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
         self._text_preview.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
@@ -678,6 +680,24 @@ class EditorTab(QWidget):
             advanced_added = True
         else:
             self._prune_empty_menu(advanced_menu, lines_menu)
+
+        macros_menu = advanced_menu.addMenu("Macros")
+        macro_icon = self._context_icon(window, "macro-run-multi")
+        if not macro_icon.isNull():
+            macros_menu.setIcon(macro_icon)
+        macros_added = False
+        for attr in (
+            "play_macro_action",
+            "save_current_macro_action",
+            "run_macro_multiple_times_action",
+            "macro_library_action",
+            "modify_macro_shortcut_delete_action",
+        ):
+            macros_added = self._add_window_action_if_enabled(macros_menu, window, attr) or macros_added
+        if macros_added:
+            advanced_added = True
+        else:
+            self._prune_empty_menu(advanced_menu, macros_menu)
 
         if not selection_menu.actions():
             self._prune_empty_menu(menu, selection_menu)

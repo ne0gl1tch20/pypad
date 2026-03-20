@@ -4,6 +4,145 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, and this project uses Semantic Versioning.
 
+## [2.0.0] - 2026-03-20
+
+### Please Note!
+- This release is a major UX, accessibility, and workflow milestone focused on making PyPad feel more serious, more trustworthy, and more maintainable as a desktop editor.
+
+### Added
+- Full timeline overhaul with modular foundations for file, folder, and workspace history:
+  - `src/pypad/ui/system/timeline_models.py`
+  - `src/pypad/ui/system/timeline_controller.py`
+  - `src/pypad/ui/system/timeline_dialog.py`
+  - `src/pypad/ui/system/workspace_timeline_models.py`
+  - `src/pypad/ui/system/workspace_timeline_controller.py`
+  - `src/pypad/ui/system/workspace_timeline_dialog.py`
+  - `src/pypad/ui/system/workspace_timeline_panel.py`
+- New VS Code-inspired unified file timeline that can merge:
+  - current unsaved editor text
+  - saved-on-disk content
+  - local history snapshots
+  - autosave drafts
+  - crash recovery snapshots
+  - recent Git file history
+- New file timeline review features:
+  - source filtering
+  - grouped timeline sections
+  - snapshot preview
+  - diff preview
+  - mark-for-compare baseline flow
+  - restore to current tab
+  - restore to new tab
+  - copy snapshot text
+  - auto-refresh when the active tab changes
+  - live refresh while the current tab text changes
+  - autosave-aware refresh so new draft snapshots appear without reopening the panel
+- New docked File Timeline panel so current-file history now lives in the same panel system as scope timelines.
+- New docked Timeline panel for folder and workspace scopes with Explorer and workspace integration.
+- New scope timeline entries for:
+  - recent filesystem activity
+  - autosave drafts inside the selected scope
+  - crash recovery snapshots inside the selected scope
+  - Git commit activity for the selected folder or workspace
+- New scope timeline actions:
+  - open selected file
+  - open selected file timeline
+  - copy summary
+- New `Workspace > Scope Timeline...` entry and `Timeline Panel` view toggle.
+- New accessibility-first compare and merge workflow with dedicated modular implementation:
+  - `src/pypad/ui/document/compare_dialog.py`
+  - `src/pypad/ui/document/compare_engine.py`
+  - `src/pypad/ui/document/compare_models.py`
+- New compare flows for:
+  - current tab vs saved file
+  - current tab vs clipboard
+  - current tab vs another open tab
+  - merge result preview with apply/open-in-new-tab paths
+- New structured data tools surface with dedicated dialog and format-aware helpers:
+  - JSON formatting and validation preview
+  - XML formatting and validation preview
+  - CSV table preview
+  - YAML structure preview
+- New reusable accessible banner component:
+  - `src/pypad/ui/components/banner_widget.py`
+- New inline Large File Mode banner with explicit actions for:
+  - loading the full file
+  - opening compare
+  - opening structured data tools
+- New named session management workflow with dedicated storage and manager dialog:
+  - save named sessions
+  - browse/open/delete named sessions
+  - session summaries and timestamps
+- New macro library manager dialog for saved macros with:
+  - run
+  - rename
+  - shortcut update
+  - delete
+- Local History timeline improvements:
+  - filter box
+  - restore to new tab
+  - clearer snapshot review flow
+- New split-view presentation controller:
+  - `src/pypad/ui/editor/split_view_controller.py`
+  - clearer active-pane indication
+  - accessible split-pane metadata
+  - status-bar split-state feedback
+- New explicit portable-mode detection and storage routing:
+  - `src/pypad/app_settings/portable_mode.py`
+  - portable marker support for local app-data storage beside the runtime
+- New workspace insights feature:
+  - `Workspace Insights...`
+  - lightweight TODO/FIXME/NOTE collection across workspace or open files
+  - accessible list-detail review dialog
+- New plugin manager presentation helper:
+  - `src/pypad/ui/features/plugin_manager_presenters.py`
+  - plain-language plugin health summary in the manager UI
+- New status-bar indicators for:
+  - portable mode
+  - split-view state
+- Explorer right-click menu expanded into a more serious file/folder workflow surface with:
+  - `Open Timeline`
+  - `Restore Previous Version...`
+  - `Compare With`
+  - `Open Read-Only`
+  - `Open in Other View`
+  - `Pin File` / `Favorite File`
+  - `Reveal Related`
+  - scoped workspace search/replace
+  - scope-filtered workspace insights / TODO review
+  - structured-data entry points
+  - richer copy-path options
+  - terminal and Git review actions
+
+### Changed
+- Timeline review now behaves more like a serious editor feature instead of a simple local-history popup or Explorer text dump.
+- File timeline review is now dock-first and live-updating instead of opening only as a one-shot modal workflow.
+- Folder and workspace timeline browsing now lives in a dock-capable panel so timeline activity can stay visible alongside Explorer, Git, and other review surfaces.
+- Git-backed scope timeline entries now include richer commit preview content with stats and bounded patch excerpts, not just commit titles.
+- The application architecture now uses more feature-local modules for major editor workflows instead of pushing additional logic into main-window catch-all files.
+- Core roadmap work was implemented with unique module docstrings and clearer responsibility boundaries so the source is easier to read and learn from.
+- Large-file behavior now presents itself as an intentional editor mode instead of relying only on transient warnings or implicit degraded behavior.
+- Compare/review workflows now feel more like a dedicated editor surface instead of a one-off preview utility.
+- Structured-data handling is now presented as a proper editor-side tool workflow instead of staying buried in plain text-only handling.
+- Session and macro management are now more discoverable through dedicated manager-style dialogs.
+- Local history restore flow is safer because historical text can now be restored into a new tab without overwriting the current document immediately.
+- Split editing now communicates active-pane state more clearly, improving keyboard-first multi-view use.
+- Portable storage support now routes settings, themes, autosave, reminders, translation cache, logs, and plugin storage through one shared path policy.
+- Workspace navigation now includes a project-summary style surface for lightweight code/document signals instead of requiring ad hoc manual scanning.
+- Explorer context menus now behave more like a serious editor/workspace tool instead of only exposing basic file operations.
+- Plugin management now summarizes runtime health in a more trustworthy and readable way before the user has to inspect raw diagnostics.
+- Theme token styling now also covers split-pane focus emphasis so multi-view editing remains visible in dark, light, and accessibility-oriented themes.
+- Main-window status reporting is more descriptive for serious editor use, especially around split state and portable-mode context.
+
+### Fixed
+- Split-view UX now avoids the unclear “which pane is active?” state by applying explicit focus and status feedback.
+- Portable-mode runs no longer require ad hoc path changes because app-managed storage can now resolve locally through a dedicated detection layer.
+- Plugin manager readability is improved by surfacing concise health status instead of forcing users to infer overall plugin state from raw diagnostics alone.
+- Workspace TODO/FIXME review no longer depends on the older task-only flow when the user primarily needs a project insight surface.
+- Explorer file/folder review no longer requires bouncing between multiple menus for timeline, compare, workspace, copy-path, and Git actions.
+- Large-file workflows are clearer and safer because reduced-feature behavior is now communicated inline near the editor.
+- Source organization regressions were reduced by moving new feature logic into dedicated modules rather than expanding already-large orchestration files further.
+
 ## [1.8.4] - 2026-03-19
 
 ### Please Note!
@@ -18,6 +157,8 @@ The format is based on Keep a Changelog, and this project uses Semantic Versioni
 - `Cached Currency Tools...` has been renamed to `Currency Converter...` across the built-in tools surface, docs, and app knowledge.
 - Currency status messaging now distinguishes bundled defaults, cached rates, and live rates, while preserving existing settings compatibility.
 - PyInstaller packaging now explicitly bundles `zxing-cpp` runtime pieces plus the packaged `online_plugins` catalog so QR tooling and packaged plugin metadata remain available in frozen builds.
+- Settings now route logging-level and related debug controls into Developer Hub more directly, including a shortcut from `Settings > Preferences > Advanced > Diagnostics`.
+- Default dark mode now separates major surfaces more clearly with a darker sidebar chrome, a slightly lighter editor, and a distinct Markdown preview shade.
 
 ### Fixed
 - Offline Writing Studio now bounds local LanguageTool warmup and falls back to rule-based analysis instead of hanging the app when the local grammar backend is slow or unavailable.
@@ -25,6 +166,9 @@ The format is based on Keep a Changelog, and this project uses Semantic Versioni
 - Settings search highlighting now uses theme-safe property styling instead of per-widget stylesheet overrides that could produce ghost black text artifacts.
 - Hidden developer mode in the About dialog now requires 10 clicks instead of 3.
 - Frozen builds now continue to install and execute `plugin.py` files from the writable plugins directory, including plugins installed through Online Plugins mode.
+- Offline Graph Viewer now shows concrete plotting errors such as `SyntaxError: invalid syntax` in its output area instead of failing silently.
+- The `Window` menu now refreshes from live tab titles so open documents no longer appear incorrectly as `Untitled`.
+- Opening a file from `Recent Files` no longer replaces an actively open blank `Untitled` tab.
 
 ## [1.8.3] - 2026-03-19
 

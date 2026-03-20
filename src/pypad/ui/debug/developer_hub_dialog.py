@@ -57,8 +57,7 @@ class DeveloperHubDialog(QDialog):
         self._tab_editors: dict[str, QTextEdit] = {}
         self._tab_copy_mode: dict[str, str] = {}
 
-        tokens = build_tokens_from_settings(getattr(parent, "settings", {}) if parent is not None else {})
-        self.setStyleSheet(build_dialog_theme_qss_from_tokens(tokens))
+        self._apply_theme()
 
         layout = QVBoxLayout(self)
         self.summary_label = QLabel("Developer diagnostics", self)
@@ -222,6 +221,8 @@ class DeveloperHubDialog(QDialog):
         form.addRow("", self.devhub_save_debug_logs_checkbox)
         layout.addLayout(form)
         self.devhub_apply_btn = QPushButton("Apply Developer Controls", host)
+        self.devhub_apply_btn.setAutoDefault(False)
+        self.devhub_apply_btn.setDefault(False)
         self.devhub_apply_btn.clicked.connect(self._apply_controls)
         actions = QHBoxLayout()
         actions.addWidget(self.devhub_apply_btn)
@@ -230,6 +231,11 @@ class DeveloperHubDialog(QDialog):
         layout.addStretch(1)
         self.tabs.addTab(host, "Controls")
         self._tab_copy_mode["Controls"] = "controls"
+
+    def _apply_theme(self) -> None:
+        """Apply the current dialog theme from the parent window settings."""
+        tokens = build_tokens_from_settings(getattr(self._window, "settings", {}) if self._window is not None else {})
+        self.setStyleSheet(build_dialog_theme_qss_from_tokens(tokens))
 
     def focus_tab(self, name: str) -> None:
         """Focus one tab by name if it exists."""
@@ -370,6 +376,10 @@ class DeveloperHubDialog(QDialog):
         save_settings = getattr(self._window, "save_settings_to_disk", None)
         if callable(save_settings):
             save_settings()
+        self._apply_theme()
+        self.refresh()
+        self.raise_()
+        self.activateWindow()
         QMessageBox.information(self, "Developer Controls", "Developer logging controls saved.")
 
     def copy_current_tab(self) -> None:

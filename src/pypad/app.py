@@ -11,13 +11,14 @@ from PySide6.QtWidgets import QApplication
 
 from .app_settings import get_settings_file_path
 from .logging_utils import configure_app_logging, get_logger, resolve_persisted_log_level
-from .ui.main_window import Notepad
 
 LOGGER = get_logger(__name__)
 
-def main(existing_app: Optional[QApplication] = None) -> Notepad:
+def main(existing_app: Optional[QApplication] = None):
     # Use existing QApplication if passed (from run.py), otherwise create one
     """Create the main window, attach top-level exception handling, and return it."""
+    from .ui.main_window import Notepad
+
     owns_app = existing_app is None
     app = existing_app or QApplication(sys.argv)
     configure_app_logging(resolve_persisted_log_level(get_settings_file_path(), default="INFO"))

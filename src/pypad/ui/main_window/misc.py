@@ -8,6 +8,7 @@ from __future__ import annotations
 import getpass
 import importlib.metadata as importlib_metadata
 import base64
+import hmac
 import hashlib
 import json
 import math
@@ -142,6 +143,7 @@ class _OfflineWritingAnalysisWorker(QObject):
             return
         self.finished.emit(analysis)
 
+
 THEME_SETTINGS_KEYS: tuple[str, ...] = (
     "theme",
     "app_style",
@@ -167,6 +169,10 @@ from ...app_settings import (
 from pypad.app_settings.defaults import DEFAULT_UPDATE_FEED_URL
 from pypad.app_settings.scintilla_profile import ScintillaProfile
 from pypad.ui.ai.ai_controller import AIController
+from pypad.ui.document.compare_dialog import CompareDialog
+from pypad.ui.document.compare_models import CompareSource
+from pypad.ui.editor.macro_library_dialog import MacroLibraryDialog
+from pypad.ui.tools.structured_data_dialog import StructuredDataDialog
 from pypad.ui.ai.ai_edit_preview_dialog import AIEditPreviewDialog
 from pypad.ui.theme.asset_paths import resolve_asset_path
 from pypad.ui.system.autosave import AutoSaveRecoveryDialog, AutoSaveStore
@@ -183,6 +189,8 @@ from pypad.ui.security.note_trust import (
 from pypad.ui.security.security_profile import profile_setting, resolve_security_policy, store_active_profile_state
 from pypad.ui.editor.syntax_highlighter import CodeSyntaxHighlighter
 from pypad.ui.system.updater_controller import UpdaterController
+from pypad.ui.system.named_sessions_dialog import NamedSessionsDialog
+from pypad.ui.system.named_sessions_store import load_named_sessions, save_named_session
 from pypad.ui.system.version_history import VersionEntry, VersionHistoryDialog
 from pypad.ui.workspace.workspace_controller import WorkspaceController
 from pypad.ui.theme.dialog_theme import (
@@ -2773,54 +2781,63 @@ class MiscMixin(
             self.macro_playing = False
             self.update_action_states()
 
-    def modify_macro_shortcut_or_delete(self) -> None:
-        """Edit a saved macro shortcut or remove the macro entry."""
+    def open_macro_library(self) -> None:
+        """Open the macro library manager for saved macro inspection and editing."""
         saved = self._normalized_saved_macros()
         if not saved:
-            QMessageBox.information(self, "Modify Shortcut/Delete Macro", "No saved macros found.")
+            QMessageBox.information(self, "Macro Library", "No saved macros found.")
             return
-        names = sorted(saved.keys(), key=str.lower)
-        name, ok = QInputDialog.getItem(self, "Modify Shortcut/Delete Macro", "Macro:", names, 0, False)
-        if not ok or not name:
+        dialog = MacroLibraryDialog(self, saved)
+        result = dialog.exec()
+        name = dialog.selected_name
+        if not name:
             return
-        options = ["Modify shortcut", "Delete macro"]
-        choice, ok = QInputDialog.getItem(self, "Modify Shortcut/Delete Macro", "Action:", options, 0, False)
-        if not ok or not choice:
+        if result == QDialog.Accepted:
+            self.run_saved_macro(name)
             return
-
-        if choice == "Delete macro":
-            ret = QMessageBox.question(
+        if result == 2:
+            new_name, ok = QInputDialog.getText(self, "Rename Macro", "New macro name:", text=name)
+            if not ok:
+                return
+            new_name = new_name.strip()
+            if not new_name or new_name == name:
+                return
+            saved[new_name] = dict(saved.pop(name))
+            self._save_saved_macros(saved)
+            self.show_status_message(f'Renamed macro to "{new_name}".', 3000)
+            return
+        if result == 3:
+            current_shortcut = str(saved.get(name, {}).get("shortcut", "") or "")
+            shortcut, ok = QInputDialog.getText(
                 self,
-                "Delete Macro",
-                f'Delete macro "{name}"?',
-                QMessageBox.Yes | QMessageBox.No,
+                "Edit Macro Shortcut",
+                f'Shortcut for "{name}" (leave empty to clear):',
+                text=current_shortcut,
             )
-            if ret != QMessageBox.Yes:
+            if not ok:
+                return
+            shortcut = shortcut.strip()
+            if shortcut:
+                seq = QKeySequence(shortcut)
+                if seq.isEmpty():
+                    QMessageBox.warning(self, "Edit Macro Shortcut", "Invalid shortcut format.")
+                    return
+                shortcut = seq.toString(QKeySequence.SequenceFormat.PortableText)
+            saved[name]["shortcut"] = shortcut
+            self._save_saved_macros(saved)
+            self.show_status_message(f'Updated shortcut for "{name}".', 3000)
+            return
+        if result == 4:
+            answer = QMessageBox.question(self, "Delete Macro", f'Delete macro "{name}"?', QMessageBox.Yes | QMessageBox.No)
+            if answer != QMessageBox.Yes:
                 return
             saved.pop(name, None)
             self._save_saved_macros(saved)
             self.show_status_message(f'Deleted macro "{name}".', 3000)
-            return
 
-        current_shortcut = str(saved.get(name, {}).get("shortcut", "") or "")
-        shortcut, ok = QInputDialog.getText(
-            self,
-            "Modify Shortcut",
-            f'Shortcut for "{name}" (leave empty to clear):',
-            text=current_shortcut,
-        )
-        if not ok:
-            return
-        shortcut = shortcut.strip()
-        if shortcut:
-            seq = QKeySequence(shortcut)
-            if seq.isEmpty():
-                QMessageBox.warning(self, "Modify Shortcut", "Invalid shortcut format.")
-                return
-            shortcut = seq.toString(QKeySequence.SequenceFormat.PortableText)
-        saved[name]["shortcut"] = shortcut
-        self._save_saved_macros(saved)
-        self.show_status_message(f'Updated shortcut for "{name}".', 3000)
+    def modify_macro_shortcut_or_delete(self) -> None:
+        """Edit a saved macro shortcut or remove the macro entry."""
+        self.open_macro_library()
 
     def ask_ai(self) -> None:
         """Open the AI entry point for the current editor context."""
@@ -3105,6 +3122,15 @@ class MiscMixin(
         except Exception as exc:  # noqa: BLE001
             QMessageBox.critical(self, "Open Plugins Folder", f"Could not open folder:\n{exc}")
 
+    def open_workspace_insights(self) -> None:
+        """Open the workspace insights dialog through the advanced-features controller."""
+
+        controller = getattr(self, "advanced_features", None)
+        if controller is None or not hasattr(controller, "open_workspace_insights"):
+            QMessageBox.information(self, "Workspace Insights", "Workspace insights are unavailable right now.")
+            return
+        controller.open_workspace_insights()
+
     def open_mime_tools(self) -> None:
         """Open the MIME and encoding tools dialog."""
         tab = self.active_tab()
@@ -3271,8 +3297,65 @@ class MiscMixin(
         self.advanced_features.go_to_definition()
 
     def open_side_by_side_diff(self) -> None:
-        """Open the side-by-side diff tool."""
-        self.advanced_features.open_diff()
+        """Open an accessible compare workflow for the active tab and a related source."""
+        tab = self.active_tab()
+        if tab is None:
+            QMessageBox.information(self, "Compare and Merge", "Open a tab first.")
+            return
+        left = CompareSource(label="Current Tab", text=tab.text_edit.get_text())
+        right: CompareSource | None = None
+
+        if tab.current_file and Path(tab.current_file).exists():
+            try:
+                encoding = tab.encoding or self._encoding_for_path(tab.current_file)
+                saved_text, _encrypted, _password = self._load_text_from_path(tab.current_file, encoding=encoding)
+                right = CompareSource(label="Saved on Disk", text=saved_text)
+            except Exception as exc:  # noqa: BLE001
+                QMessageBox.warning(self, "Compare and Merge", f"Could not load the saved file for comparison:\n{exc}")
+                return
+        else:
+            clip = QApplication.clipboard()
+            clip_text = clip.text() if clip is not None else ""
+            if clip_text.strip():
+                right = CompareSource(label="Clipboard", text=clip_text)
+            else:
+                candidates: list[tuple[str, EditorTab]] = []
+                for index in range(self.tab_widget.count()):
+                    candidate = self.tab_widget.widget(index)
+                    if isinstance(candidate, EditorTab) and candidate is not tab:
+                        candidates.append((self._tab_display_name(candidate), candidate))
+                if candidates:
+                    chosen, ok = QInputDialog.getItem(
+                        self,
+                        "Compare and Merge",
+                        "Compare current tab with:",
+                        [label for label, _candidate in candidates],
+                        0,
+                        False,
+                    )
+                    if not ok or not chosen:
+                        return
+                    for label, candidate in candidates:
+                        if label == chosen:
+                            right = CompareSource(label=label, text=candidate.text_edit.get_text())
+                            break
+        if right is None:
+            QMessageBox.information(
+                self,
+                "Compare and Merge",
+                "Save the file, copy comparison text to the clipboard, or open another tab to compare against.",
+            )
+            return
+        merged = CompareDialog.run_for_sources(self, left=left, right=right)
+        if merged is None:
+            return
+        if tab.text_edit.is_read_only():
+            self.add_new_tab(text=merged, make_current=True)
+            self.show_status_message("Current tab is read-only. Opened merged result in a new tab instead.", 3500)
+            return
+        tab.text_edit.set_text(merged)
+        tab.text_edit.set_modified(True)
+        self.show_status_message("Merged comparison result applied to the current tab.", 3200)
 
     def open_three_way_merge(self) -> None:
         """Open the three-way merge helper."""
@@ -3282,9 +3365,59 @@ class MiscMixin(
         """Apply a unified patch file to the contents of the active tab."""
         self.advanced_features.apply_patch_file_to_active()
 
+    def open_structured_data_tools(self) -> None:
+        """Open an accessible structured-data review dialog for the active tab."""
+        tab = self.active_tab()
+        if tab is None:
+            QMessageBox.information(self, "Structured Data Tools", "Open a tab first.")
+            return
+        dialog = StructuredDataDialog(
+            self,
+            source_text=tab.text_edit.selected_text() or tab.text_edit.get_text(),
+            file_path=tab.current_file,
+        )
+        if dialog.exec() != QDialog.Accepted:
+            return
+        if tab.text_edit.is_read_only():
+            self.add_new_tab(text=dialog.final_text, make_current=True)
+            self.show_status_message("Current tab is read-only. Opened the structured-data result in a new tab instead.", 3500)
+            return
+        if tab.text_edit.has_selection():
+            tab.text_edit.replace_selection(dialog.final_text)
+        else:
+            tab.text_edit.set_text(dialog.final_text)
+            tab.text_edit.set_modified(True)
+        self.show_status_message("Structured-data changes applied to the current tab.", 3200)
+
     def load_full_large_file(self) -> None:
         """Load the full contents of a large file that was previously opened in preview mode."""
         self.load_full_large_file_current_tab()
+
+    def _update_large_file_banner(self) -> None:
+        """Refresh the inline large-file banner for the current tab."""
+        banner = getattr(self, "large_file_banner", None)
+        if banner is None:
+            return
+        tab = self.active_tab()
+        if tab is None or not bool(getattr(tab, "large_file", False)):
+            banner.hide()
+            return
+        partial = bool(getattr(tab, "partial_large_preview", False))
+        line_info = int(getattr(tab, "large_file_total_lines", 0) or 0)
+        char_info = int(getattr(tab, "large_file_total_chars", 0) or 0)
+        state = "Large File Preview" if partial else "Large File Mode"
+        message = (
+            f"{line_info} line(s), {char_info} character(s). "
+            + (
+                "The file is partially loaded to keep the editor responsive. Load the full file before saving changes."
+                if partial
+                else "Performance-sensitive editor safeguards are active for this file."
+            )
+        )
+        banner.set_content(title=state, message=message)
+        if hasattr(self, "large_file_load_btn"):
+            self.large_file_load_btn.setVisible(partial)
+        banner.show()
 
     def open_snippet_engine(self) -> None:
         """Open the snippet engine dialog."""
@@ -3356,6 +3489,107 @@ class MiscMixin(
             action = getattr(self, name, None)
             if action is not None:
                 action.setVisible(enabled)
+
+    def _start_windows_hello_for_developer_mode(self, *, enabled: bool | None = None) -> bool:
+        """Start Windows Hello verification for developer-mode changes without blocking the UI thread."""
+        if os.name != "nt":
+            QMessageBox.information(self, "Developer Mode", "Windows Hello verification is only available on Windows.")
+            return False
+        if bool(getattr(self, "_developer_mode_hello_pending", False)):
+            self.show_status_message("Windows Hello verification is already in progress.", 2500)
+            return False
+        self._developer_mode_hello_pending = True
+        self._developer_mode_hello_target_state = enabled
+        self._developer_mode_hello_progress = QMessageBox(self)
+        self._developer_mode_hello_progress.setWindowTitle("Developer Mode")
+        self._developer_mode_hello_progress.setIcon(QMessageBox.Information)
+        self._developer_mode_hello_progress.setStandardButtons(QMessageBox.NoButton)
+        self._developer_mode_hello_progress.setText("Waiting for Windows Hello verification...")
+        self._developer_mode_hello_progress.setModal(False)
+        self._developer_mode_hello_progress.show()
+        self._developer_mode_hello_restore_state = {
+            "visible": bool(self.isVisible()),
+            "mode": self._current_window_mode() if hasattr(self, "_current_window_mode") else "normal",
+            "was_minimized": bool(self.isMinimized()),
+        }
+        if self.isVisible():
+            self.showMinimized()
+
+        helper_path = Path(__file__).resolve().parents[2] / "services" / "windows_hello_verify.py"
+        process = QProcess(self)
+        process.setProgram(str(Path(sys.executable).resolve()))
+        process.setArguments([str(helper_path)])
+        process.setProcessChannelMode(QProcess.ProcessChannelMode.SeparateChannels)
+        self._developer_mode_hello_process = process
+
+        def _finish(verified: bool, message: str) -> None:
+            progress = getattr(self, "_developer_mode_hello_progress", None)
+            if progress is not None:
+                progress.hide()
+                progress.deleteLater()
+            self._developer_mode_hello_progress = None
+            self._developer_mode_hello_pending = False
+            target_state = getattr(self, "_developer_mode_hello_target_state", None)
+            self._developer_mode_hello_target_state = None
+            restore_state = getattr(self, "_developer_mode_hello_restore_state", None) or {}
+            self._developer_mode_hello_restore_state = None
+            process_ref = getattr(self, "_developer_mode_hello_process", None)
+            self._developer_mode_hello_process = None
+            if process_ref is not None:
+                process_ref.deleteLater()
+            if bool(restore_state.get("visible")):
+                restore_mode = str(restore_state.get("mode", "normal") or "normal")
+                if bool(restore_state.get("was_minimized")):
+                    self.showMinimized()
+                else:
+                    if hasattr(self, "_apply_window_mode"):
+                        self._apply_window_mode(restore_mode)
+                    else:
+                        if restore_mode == "fullscreen":
+                            self.showFullScreen()
+                        elif restore_mode == "maximized":
+                            self.showMaximized()
+                        else:
+                            self.showNormal()
+                    self.raise_()
+                    self.activateWindow()
+            if verified:
+                self.toggle_developer_mode_enabled(target_state)
+                current_state = bool(self.settings.get("developer_mode_enabled", False))
+                QMessageBox.information(
+                    self,
+                    "Developer Mode",
+                    f"Developer mode {'enabled' if current_state else 'disabled'} successfully.",
+                )
+                return
+            QMessageBox.warning(
+                self,
+                "Developer Mode",
+                (message or "Windows Hello verification was unsuccessful.") + "\n\nPlease try again.",
+            )
+
+        def _on_finished(_exit_code: int, _exit_status) -> None:
+            payload = bytes(process.readAllStandardOutput()).decode("utf-8", errors="replace").strip()
+            stderr_text = bytes(process.readAllStandardError()).decode("utf-8", errors="replace").strip()
+            verified = False
+            message = ""
+            if payload:
+                try:
+                    parsed = json.loads(payload)
+                except Exception:
+                    message = payload
+                else:
+                    verified = bool(parsed.get("verified", False))
+                    message = str(parsed.get("message", "") or "")
+            if not payload and stderr_text:
+                message = stderr_text
+            if process.error() != QProcess.ProcessError.UnknownError and not verified and not message:
+                message = process.errorString() or "Windows Hello verification helper failed."
+            _finish(verified, message)
+
+        process.finished.connect(_on_finished)
+        process.start()
+        return True
 
     def toggle_developer_mode_enabled(self, enabled: bool | None = None) -> None:
         """Toggle the hidden developer mode and refresh related UI surfaces."""
@@ -5280,6 +5514,8 @@ class MiscMixin(
                 self.autosave_status_label.setText(f"Saved {saved_count}")
             elif draft_count > 0:
                 self.autosave_status_label.setText(f"Draft {draft_count}")
+        if draft_count > 0 and hasattr(self, "_refresh_file_timeline_for_active_tab"):
+            self._refresh_file_timeline_for_active_tab()
         if autosave_marked_saved:
             self.update_action_states()
             self.update_window_title()
@@ -6767,7 +7003,20 @@ class MiscMixin(
             and self.focus_mode_action.isChecked()
             and self.settings.get("focus_allow_escape_exit", True)
         ):
-            self.toggle_focus_mode(False)
+            distraction_free_action = getattr(self, "distraction_free_action", None)
+            if distraction_free_action is not None and distraction_free_action.isChecked():
+                distraction_free_action.blockSignals(True)
+                distraction_free_action.setChecked(False)
+                distraction_free_action.blockSignals(False)
+                self.toggle_distraction_free_mode(False)
+            else:
+                self.toggle_focus_mode(False)
+                full_screen_action = getattr(self, "full_screen_action", None)
+                if full_screen_action is not None and full_screen_action.isChecked():
+                    full_screen_action.blockSignals(True)
+                    full_screen_action.setChecked(False)
+                    full_screen_action.blockSignals(False)
+                    self.toggle_full_screen(False)
             event.accept()
             return
         super().keyPressEvent(event)
@@ -6904,6 +7153,88 @@ class MiscMixin(
         if self._session_review_enabled() and hasattr(self, "show_session_review"):
             self.show_session_review(auto=True)
         return True
+
+    def save_named_session(self) -> None:
+        """Save the current session into the named-session library stored in settings."""
+        default_name = datetime.now().strftime("Session %Y-%m-%d %H-%M")
+        name, ok = QInputDialog.getText(self, "Save Named Session", "Session name:", text=default_name)
+        if not ok:
+            return
+        name = name.strip()
+        if not name:
+            return
+        payload = self._collect_session_state()
+        existing = load_named_sessions(self.settings)
+        if name in existing:
+            answer = QMessageBox.question(
+                self,
+                "Save Named Session",
+                f'A named session called "{name}" already exists. Overwrite it?',
+                QMessageBox.Yes | QMessageBox.No,
+            )
+            if answer != QMessageBox.Yes:
+                return
+        save_named_session(self.settings, name=name, payload=payload, existing=existing)
+        self.save_settings_to_disk()
+        self.show_status_message(f'Named session saved: "{name}"', 3000)
+
+    def open_named_sessions_manager(self) -> None:
+        """Open the named-session manager and execute the selected library action."""
+        sessions = load_named_sessions(self.settings)
+        if not sessions:
+            QMessageBox.information(
+                self,
+                "Named Sessions",
+                "No named sessions have been saved yet. Use Save Named Session to create one.",
+            )
+            return
+        dialog = NamedSessionsDialog(self, sessions)
+        result = dialog.exec()
+        name = dialog.selected_name
+        if not name:
+            return
+        if result == QDialog.Accepted:
+            payload = sessions.get(name, {}).get("payload", {})
+            if isinstance(payload, dict) and self._open_session_payload(payload):
+                self.show_status_message(f'Opened named session: "{name}"', 3000)
+            return
+        if result == 2:
+            new_name, ok = QInputDialog.getText(self, "Rename Named Session", "New name:", text=name)
+            if not ok:
+                return
+            new_name = new_name.strip()
+            if not new_name or new_name == name:
+                return
+            sessions[new_name] = dict(sessions.pop(name))
+            self.settings["named_sessions_store"] = sessions
+            self.save_settings_to_disk()
+            self.show_status_message(f'Renamed named session to "{new_name}".', 3000)
+            return
+        if result == 3:
+            duplicate_name, ok = QInputDialog.getText(self, "Duplicate Named Session", "Duplicate as:", text=f"{name} Copy")
+            if not ok:
+                return
+            duplicate_name = duplicate_name.strip()
+            if not duplicate_name:
+                return
+            sessions[duplicate_name] = dict(sessions[name])
+            self.settings["named_sessions_store"] = sessions
+            self.save_settings_to_disk()
+            self.show_status_message(f'Duplicated named session as "{duplicate_name}".', 3000)
+            return
+        if result == 4:
+            answer = QMessageBox.question(
+                self,
+                "Delete Named Session",
+                f'Delete named session "{name}"?',
+                QMessageBox.Yes | QMessageBox.No,
+            )
+            if answer != QMessageBox.Yes:
+                return
+            sessions.pop(name, None)
+            self.settings["named_sessions_store"] = sessions
+            self.save_settings_to_disk()
+            self.show_status_message(f'Deleted named session "{name}".', 3000)
 
     def save_session(self) -> None:
         """Save the current session to the last-used session file path."""
@@ -7722,6 +8053,8 @@ class MiscMixin(
             return
         self._layout_docks_ready = True
         self._build_explorer_dock()
+        self._build_file_timeline_dock()
+        self._build_workspace_timeline_dock()
         self._build_search_results_dock()
         self._build_terminal_tasks_dock()
         self._build_git_dock()
@@ -8102,6 +8435,425 @@ class MiscMixin(
         selected = Path(path)
         return selected if selected.is_dir() else selected.parent
 
+    def _find_open_tab_for_path(self, path: str) -> EditorTab | None:
+        """Return the first open tab that already points at the supplied file path."""
+
+        normalized = str(Path(path).resolve()) if path else ""
+        for index in range(self.tab_widget.count()):
+            tab = self.tab_widget.widget(index)
+            if not isinstance(tab, EditorTab) or not getattr(tab, "current_file", None):
+                continue
+            try:
+                if str(Path(tab.current_file).resolve()) == normalized:
+                    return tab
+            except Exception:
+                if str(tab.current_file) == str(path):
+                    return tab
+        return None
+
+    def _open_path_in_tab(self, path: str, *, make_current: bool = True) -> EditorTab | None:
+        """Open the supplied path and return the matching editor tab when available."""
+
+        existing = self._find_open_tab_for_path(path)
+        if existing is not None:
+            if make_current:
+                self.tab_widget.setCurrentWidget(existing)
+            return existing
+        before = {id(self.tab_widget.widget(i)) for i in range(self.tab_widget.count())}
+        if not self._open_file_path(path):
+            return None
+        active = self.active_tab()
+        if isinstance(active, EditorTab) and id(active) not in before:
+            return active
+        return self._find_open_tab_for_path(path)
+
+    def _workspace_relative_path_text(self, path: Path) -> str:
+        """Return a workspace-relative path when possible, falling back to the full path."""
+
+        root = str(self.settings.get("workspace_root", "") or "").strip()
+        if not root:
+            return str(path)
+        try:
+            return str(path.resolve().relative_to(Path(root).resolve()))
+        except Exception:
+            return str(path)
+
+    def _portable_relative_path_text(self, path: Path) -> str:
+        """Return a portable-root-relative path when portable mode is active."""
+
+        portable_state = getattr(self, "portable_mode_state", None)
+        root = getattr(portable_state, "root", None)
+        if not root:
+            return str(path)
+        try:
+            return str(path.resolve().relative_to(Path(root).resolve()))
+        except Exception:
+            return str(path)
+
+    def _show_explorer_timeline_for_path(self, selected: Path) -> None:
+        """Show a file or scope timeline using the appropriate review surface."""
+
+        if selected.is_file():
+            tab = self._find_open_tab_for_path(str(selected))
+            if tab is None:
+                tab = self._open_path_in_tab(str(selected), make_current=True)
+            if tab is not None:
+                self.tab_widget.setCurrentWidget(tab)
+                self.show_local_history_timeline()
+                return
+        self.open_scope_timeline(selected)
+
+    def open_scope_timeline(self, selected: Path | None = None) -> None:
+        """Open the docked scope timeline for the selected folder or workspace root."""
+
+        target = selected
+        if target is None:
+            selected_path = self._selected_explorer_path().strip()
+            if selected_path:
+                target = Path(selected_path)
+            else:
+                root = str(self.settings.get("workspace_root", "") or "").strip()
+                if root:
+                    target = Path(root)
+        if target is None:
+            QMessageBox.information(self, "Timeline", "Select a folder or workspace first.")
+            return
+        if target.is_file():
+            target = target.parent
+        if not hasattr(self, "workspace_timeline_dock"):
+            self._build_workspace_timeline_dock()
+        from pypad.ui.system.workspace_timeline_controller import WorkspaceTimelineController
+
+        scope_label, entries = WorkspaceTimelineController(self).entries_for_scope(target)
+        self.workspace_timeline_panel.set_scope_entries(scope_label, entries)
+        self.workspace_timeline_dock.show()
+        self.workspace_timeline_dock.raise_()
+        self.show_status_message(f"Opened timeline for {target.name or target}.", 2500)
+
+    def _build_workspace_timeline_dock(self) -> None:
+        """Build the docked timeline panel used for folder and workspace review."""
+
+        if hasattr(self, "workspace_timeline_dock"):
+            return
+        from pypad.ui.system.workspace_timeline_panel import WorkspaceTimelinePanel
+
+        dock = QDockWidget("Timeline", self)
+        dock.setObjectName("workspaceTimelineDock")
+        dock.setAllowedAreas(Qt.AllDockWidgetAreas)
+        dock.setFeatures(QDockWidget.DockWidgetMovable | QDockWidget.DockWidgetFloatable | QDockWidget.DockWidgetClosable)
+        if hasattr(self, "_install_custom_dock_title_bar"):
+            self._install_custom_dock_title_bar(dock, "Timeline", "workspace_timeline_dock_title_bar")
+        panel = WorkspaceTimelinePanel(dock)
+        panel.open_requested.connect(lambda path: self._open_path_in_tab(path, make_current=True))
+        panel.file_timeline_requested.connect(self._open_file_timeline_from_scope_panel)
+        dock.setWidget(panel)
+        self.workspace_timeline_panel = panel
+        self.workspace_timeline_dock = dock
+        self.addDockWidget(Qt.RightDockWidgetArea, dock)
+        dock.hide()
+        dock.visibilityChanged.connect(lambda _visible: self._sync_layout_panel_actions())
+
+    def _open_file_timeline_from_scope_panel(self, path: str) -> None:
+        """Open the file-level timeline from the scope timeline dock."""
+
+        tab = self._open_path_in_tab(path, make_current=True)
+        if tab is not None:
+            self.show_local_history_timeline()
+
+    def _build_file_timeline_dock(self) -> None:
+        """Build the docked timeline panel used for current-file review."""
+
+        if hasattr(self, "file_timeline_dock"):
+            return
+        from pypad.ui.system.timeline_panel import TimelinePanel
+
+        dock = QDockWidget("File Timeline", self)
+        dock.setObjectName("fileTimelineDock")
+        dock.setAllowedAreas(Qt.AllDockWidgetAreas)
+        dock.setFeatures(QDockWidget.DockWidgetMovable | QDockWidget.DockWidgetFloatable | QDockWidget.DockWidgetClosable)
+        if hasattr(self, "_install_custom_dock_title_bar"):
+            self._install_custom_dock_title_bar(dock, "File Timeline", "file_timeline_dock_title_bar")
+        panel = TimelinePanel(dock)
+        panel.restore_current_requested.connect(self._restore_current_from_file_timeline_panel)
+        panel.restore_new_tab_requested.connect(self._restore_new_tab_from_file_timeline_panel)
+        dock.setWidget(panel)
+        self.file_timeline_panel = panel
+        self.file_timeline_dock = dock
+        self.addDockWidget(Qt.RightDockWidgetArea, dock)
+        dock.hide()
+        dock.visibilityChanged.connect(lambda _visible: self._sync_layout_panel_actions())
+
+    def _restore_current_from_file_timeline_panel(self, text: str) -> None:
+        """Restore selected timeline text into the active tab from the docked panel."""
+
+        tab = self.active_tab()
+        if tab is None:
+            return
+        tab.text_edit.set_text(text)
+        self._seed_version_history(tab, label="Restored from Timeline")
+        self.show_status_message("Local-history snapshot restored to the current tab.", 3000)
+        self.update_status_bar()
+
+    def _restore_new_tab_from_file_timeline_panel(self, text: str) -> None:
+        """Restore selected timeline text into a new tab from the docked panel."""
+
+        self.add_new_tab(text=text, make_current=True)
+        self.show_status_message("Local-history snapshot restored to a new tab.", 3000)
+        self.update_status_bar()
+
+    def _refresh_file_timeline_for_active_tab(self) -> None:
+        """Refresh the docked file timeline so it follows the active editor tab."""
+
+        dock = getattr(self, "file_timeline_dock", None)
+        panel = getattr(self, "file_timeline_panel", None)
+        if dock is None or panel is None or not dock.isVisible():
+            return
+        tab = self.active_tab()
+        if tab is None:
+            panel.set_timeline("Current File Timeline", entries=[], current_text="")
+            return
+        from pypad.ui.system.timeline_controller import TimelineController
+
+        file_label = f"Timeline: {self._tab_display_name(tab)}"
+        entries = TimelineController(self).entries_for_tab(tab)
+        panel.set_timeline(file_label, entries=entries, current_text=tab.text_edit.get_text())
+
+    def _compare_current_tab_with_path(self, selected: Path) -> None:
+        """Compare the active tab against the selected file path."""
+
+        tab = self.active_tab()
+        if tab is None:
+            QMessageBox.information(self, "Compare With File", "Open a tab first.")
+            return
+        if not selected.is_file():
+            QMessageBox.information(self, "Compare With File", "Choose a file to compare against.")
+            return
+        try:
+            encoding = self._encoding_for_path(str(selected))
+            right_text, _encrypted, _password = self._load_text_from_path(str(selected), encoding=encoding)
+        except Exception as exc:
+            QMessageBox.warning(self, "Compare With File", f"Could not load comparison file:\n{exc}")
+            return
+        merged = CompareDialog.run_for_sources(
+            self,
+            left=CompareSource(label=self._tab_display_name(tab), text=tab.text_edit.get_text()),
+            right=CompareSource(label=selected.name, text=right_text),
+        )
+        if merged is None:
+            return
+        if tab.text_edit.is_read_only():
+            self.add_new_tab(text=merged, make_current=True)
+            self.show_status_message("Current tab is read-only. Opened merged result in a new tab instead.", 3200)
+            return
+        tab.text_edit.set_text(merged)
+        tab.text_edit.set_modified(True)
+        self.show_status_message("Comparison result applied to the current tab.", 3000)
+
+    def _open_path_read_only(self, selected: Path) -> None:
+        """Open the selected file in a read-only editor tab."""
+
+        if not selected.is_file():
+            return
+        tab = self._open_path_in_tab(str(selected), make_current=True)
+        if tab is None:
+            return
+        tab.read_only = True
+        tab.text_edit.set_read_only(True)
+        self._refresh_tab_title(tab)
+        self.update_action_states()
+        self.show_status_message("Opened selected file in read-only mode.", 2600)
+
+    def _open_path_in_other_view(self, selected: Path) -> None:
+        """Open a file and immediately clone it into the other split view."""
+
+        if not selected.is_file():
+            return
+        tab = self._open_path_in_tab(str(selected), make_current=True)
+        if tab is None:
+            return
+        self.clone_to_other_view()
+
+    def _pin_path_in_tabs(self, selected: Path) -> None:
+        """Open a file if needed and toggle its pinned state."""
+
+        if not selected.is_file():
+            return
+        tab = self._open_path_in_tab(str(selected), make_current=True)
+        if tab is None:
+            return
+        self.toggle_pin_active_tab()
+
+    def _favorite_path_in_tabs(self, selected: Path) -> None:
+        """Open a file if needed and toggle its favorite state."""
+
+        if not selected.is_file():
+            return
+        tab = self._open_path_in_tab(str(selected), make_current=True)
+        if tab is None:
+            return
+        self.toggle_favorite_active_tab()
+
+    def _open_related_paths(self, selected: Path) -> list[Path]:
+        """Collect a small set of related sibling or counterpart files for quick opening."""
+
+        if not selected.is_file():
+            return []
+        related: list[Path] = []
+        stem = selected.stem
+        suffix = selected.suffix
+        for sibling in sorted(selected.parent.iterdir()):
+            if sibling == selected or not sibling.is_file():
+                continue
+            if sibling.stem == stem or sibling.stem.startswith(stem) or stem.startswith(sibling.stem):
+                related.append(sibling)
+            elif sibling.name.startswith(f"test_{stem}") or sibling.name == f"{stem}_test{suffix}":
+                related.append(sibling)
+            elif selected.name.startswith("test_") and sibling.stem == stem.removeprefix("test_"):
+                related.append(sibling)
+        deduped: list[Path] = []
+        seen: set[str] = set()
+        for path in related:
+            key = str(path)
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(path)
+        return deduped[:10]
+
+    def _search_in_scope(self, selected: Path) -> None:
+        """Run a lightweight plain-text search inside the selected file or folder."""
+
+        query, ok = QInputDialog.getText(self, "Search in Scope", "Find text:")
+        if not ok or not query.strip():
+            return
+        query = query.strip()
+        candidates = [selected] if selected.is_file() else [p for p in selected.rglob("*") if p.is_file()]
+        rows: list[str] = []
+        for path in candidates[:5000]:
+            try:
+                text = path.read_text(encoding="utf-8", errors="replace")
+            except Exception:
+                continue
+            for line_number, line in enumerate(text.splitlines(), start=1):
+                if query.lower() in line.lower():
+                    rows.append(f"{self._workspace_relative_path_text(path)}:{line_number} | {line.strip()}")
+        self._show_text_output_dialog(
+            "Search in Scope",
+            "\n".join(rows) if rows else f"No matches found for '{query}' in {selected}.",
+        )
+
+    def _replace_in_scope(self, selected: Path) -> None:
+        """Run a lightweight plain-text replace inside the selected file or folder."""
+
+        find_text, ok = QInputDialog.getText(self, "Replace in Scope", "Find text:")
+        if not ok or not find_text:
+            return
+        replace_text, ok = QInputDialog.getText(self, "Replace in Scope", "Replace with:")
+        if not ok:
+            return
+        candidates = [selected] if selected.is_file() else [p for p in selected.rglob("*") if p.is_file()]
+        previews: list[tuple[Path, str, str]] = []
+        total_hits = 0
+        for path in candidates[:5000]:
+            try:
+                before = path.read_text(encoding="utf-8", errors="replace")
+            except Exception:
+                continue
+            hit_count = before.count(find_text)
+            if hit_count <= 0:
+                continue
+            previews.append((path, before, before.replace(find_text, replace_text)))
+            total_hits += hit_count
+        if not previews:
+            QMessageBox.information(self, "Replace in Scope", "No matches were found.")
+            return
+        answer = QMessageBox.question(
+            self,
+            "Replace in Scope",
+            f"Replace {total_hits} occurrence(s) across {len(previews)} file(s)?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if answer != QMessageBox.Yes:
+            return
+        changed = 0
+        for path, _before, after in previews:
+            try:
+                path.write_text(after, encoding="utf-8")
+                changed += 1
+            except Exception as exc:
+                QMessageBox.warning(self, "Replace in Scope", f"Could not update {path.name}:\n{exc}")
+        self._refresh_workspace_dock()
+        self.show_status_message(f"Replace in scope updated {changed} file(s).", 3200)
+
+    def _show_scope_insights(self, selected: Path) -> None:
+        """Open workspace insights filtered to the selected folder or file."""
+
+        from pypad.ui.workspace.workspace_insights import WorkspaceInsightsDialog, collect_workspace_insights
+
+        selected_resolved = str(selected.resolve()) if selected.exists() else str(selected)
+        filtered = []
+        for item in collect_workspace_insights(self):
+            try:
+                item_path = str(Path(item.file_path).resolve())
+            except Exception:
+                item_path = str(item.file_path)
+            if selected.is_dir():
+                if item_path.startswith(selected_resolved):
+                    filtered.append(item)
+            elif item_path == selected_resolved:
+                filtered.append(item)
+        dialog = WorkspaceInsightsDialog(self, filtered)
+        if dialog.exec() == QDialog.Accepted and dialog.selected_item is not None:
+            self._open_path_in_tab(dialog.selected_item.file_path, make_current=True)
+
+    def _open_structured_data_for_path(self, selected: Path) -> None:
+        """Open the structured-data dialog for the selected file."""
+
+        if not selected.is_file():
+            return
+        self._open_path_in_tab(str(selected), make_current=True)
+        self.open_structured_data_tools()
+
+    def _git_action_for_path(self, selected: Path, action: str) -> None:
+        """Run a Git helper command for the selected file or folder."""
+
+        args_map = {
+            "blame": ["blame", "--", str(selected)],
+            "history": ["log", "--oneline", "--decorate", "--graph", "--", str(selected)],
+            "compare_head": ["diff", "HEAD", "--", str(selected)],
+            "stage": ["add", "--", str(selected)],
+            "unstage": ["restore", "--staged", "--", str(selected)],
+        }
+        args = args_map.get(action)
+        if not args:
+            return
+        rc, out, err = self._run_git_capture(args, timeout=10.0)
+        if action in {"stage", "unstage"}:
+            if rc != 0:
+                QMessageBox.warning(self, "Git", err or "Git action failed.")
+                return
+            self._refresh_git_dock()
+            self._refresh_workspace_dock()
+            self.show_status_message(f"Git {action} completed for {selected.name}.", 2500)
+            return
+        title_map = {
+            "blame": "Git Blame",
+            "history": "Git History",
+            "compare_head": "Compare with HEAD",
+        }
+        self._show_text_output_dialog(title_map.get(action, "Git"), out if rc == 0 else err)
+
+    def _open_terminal_here(self, selected: Path) -> None:
+        """Open a terminal rooted at the selected folder or the parent of a file."""
+
+        folder = selected if selected.is_dir() else selected.parent
+        try:
+            creation_flags = int(getattr(subprocess, "CREATE_NEW_CONSOLE", 0))
+            subprocess.Popen(["cmd.exe", "/K", f'cd /d "{folder}"'], creationflags=creation_flags)
+        except Exception as exc:
+            QMessageBox.warning(self, "Explorer", f"Could not open terminal:\n{exc}")
+
     def _on_workspace_tree_context_menu(self, pos: QPoint) -> None:
         """Show the context menu for the workspace tree at the requested position."""
         if not hasattr(self, "workspace_tree"):
@@ -8122,11 +8874,13 @@ class MiscMixin(
         rename_action = menu.addAction("Rename...")
         delete_action = menu.addAction("Delete")
         menu.addSeparator()
+        timeline_action = menu.addAction("Open Timeline")
         copy_path_action = menu.addAction("Copy Path")
         open_explorer_action = menu.addAction("Open in Explorer")
         refresh_action = menu.addAction("Refresh")
         rename_action.setEnabled(selected.exists())
         delete_action.setEnabled(selected.exists() and selected != Path(workspace_root))
+        timeline_action.setEnabled(selected.exists())
         copy_path_action.setEnabled(selected.exists())
         open_explorer_action.setEnabled(selected.exists())
 
@@ -8194,6 +8948,9 @@ class MiscMixin(
         if chosen == copy_path_action:
             QApplication.clipboard().setText(str(selected))
             return
+        if chosen == timeline_action:
+            self._show_explorer_timeline_for_path(selected)
+            return
         if chosen == open_explorer_action:
             try:
                 os.startfile(str(selected if selected.is_dir() else selected.parent))
@@ -8215,42 +8972,156 @@ class MiscMixin(
         if not selected_path:
             selected_path = workspace_root
         selected = Path(selected_path)
+        open_tab = self._find_open_tab_for_path(str(selected)) if selected.is_file() else None
 
         menu = QMenu(self)
         edit_action = menu.addAction(self._svg_icon("document-open"), "Edit/Open")
+        read_only_action = menu.addAction("Open Read-Only")
+        split_view_action = menu.addAction("Open in Other View")
         reveal_action = menu.addAction(self._standard_style_icon("SP_DirOpenIcon"), "Reveal in File Explorer")
         shell_menu_action = menu.addAction(self._standard_style_icon("SP_DirOpenIcon"), "Open Shell Menu")
+        terminal_here_action = menu.addAction("Open Terminal Here")
+        menu.addSeparator()
+        timeline_action = menu.addAction("Open Timeline")
+        restore_previous_action = menu.addAction("Restore Previous Version...")
+        compare_menu = menu.addMenu("Compare With")
+        compare_current_action = compare_menu.addAction("Compare with Current Tab")
+        compare_clipboard_action = compare_menu.addAction("Compare with Clipboard")
+        compare_saved_action = compare_menu.addAction("Compare with Saved / Timeline")
+        menu.addSeparator()
+        pin_action = menu.addAction("Unpin File" if open_tab is not None and open_tab.pinned else "Pin File")
+        favorite_action = menu.addAction("Unfavorite File" if open_tab is not None and open_tab.favorite else "Favorite File")
+        related_menu = menu.addMenu("Reveal Related")
+        related_files = self._open_related_paths(selected)
+        related_actions: dict[QAction, Path] = {}
+        if related_files:
+            for path in related_files:
+                related_actions[related_menu.addAction(path.name)] = path
+        else:
+            related_placeholder = related_menu.addAction("No related files found")
+            related_placeholder.setEnabled(False)
+        menu.addSeparator()
+        workspace_menu = menu.addMenu("Workspace")
+        search_scope_action = workspace_menu.addAction("Search in This Folder" if selected.is_dir() else "Search in This File")
+        replace_scope_action = workspace_menu.addAction("Replace in This Folder" if selected.is_dir() else "Replace in This File")
+        insights_scope_action = workspace_menu.addAction("Workspace Insights for This Scope")
+        todo_scope_action = workspace_menu.addAction("TODO / FIXME Scan")
+        structured_menu = menu.addMenu("Structured Data")
+        structured_tools_action = structured_menu.addAction("Open Structured Data Tools")
+        copy_menu = menu.addMenu("Copy Useful Paths")
+        copy_action = copy_menu.addAction(self._svg_icon("edit-copy"), "Copy")
+        cut_action = copy_menu.addAction(self._svg_icon("edit-cut"), "Cut")
+        paste_action = copy_menu.addAction(self._svg_icon("edit-paste"), "Paste")
+        copy_path_action = copy_menu.addAction("Copy Full Path")
+        copy_relative_action = copy_menu.addAction("Copy Relative Workspace Path")
+        copy_name_action = copy_menu.addAction("Copy File/Folder Name")
+        copy_markdown_action = copy_menu.addAction("Copy as Markdown Link")
+        copy_portable_action = copy_menu.addAction("Copy Portable Relative Path")
+        safety_menu = menu.addMenu("Safety")
+        safety_open_normal_action = safety_menu.addAction("Open Normally")
+        safety_open_read_only_action = safety_menu.addAction("Open Read-Only")
+        git_menu = menu.addMenu("Git / Review")
+        git_blame_action = git_menu.addAction("Blame")
+        git_history_action = git_menu.addAction("File History")
+        git_compare_head_action = git_menu.addAction("Compare with HEAD")
+        git_stage_action = git_menu.addAction("Stage")
+        git_unstage_action = git_menu.addAction("Unstage")
         menu.addSeparator()
         new_file_action = menu.addAction(self._svg_icon("document-new"), "New File")
         new_folder_action = menu.addAction(self._svg_icon("document-list"), "New Folder")
         rename_action = menu.addAction(self._svg_icon("edit-find-replace"), "Rename")
         delete_action = menu.addAction(self._standard_style_icon("SP_TrashIcon"), "Delete")
         menu.addSeparator()
-        copy_action = menu.addAction(self._svg_icon("edit-copy"), "Copy")
-        cut_action = menu.addAction(self._svg_icon("edit-cut"), "Cut")
-        paste_action = menu.addAction(self._svg_icon("edit-paste"), "Paste")
-        copy_path_action = menu.addAction("Copy Path")
-        menu.addSeparator()
         refresh_action = menu.addAction("Refresh")
         edit_action.setEnabled(selected.exists() and selected.is_file())
+        read_only_action.setEnabled(selected.exists() and selected.is_file())
+        split_view_action.setEnabled(selected.exists() and selected.is_file())
         rename_action.setEnabled(selected.exists())
         delete_action.setEnabled(selected.exists() and selected != Path(workspace_root))
         copy_action.setEnabled(selected.exists())
         cut_action.setEnabled(selected.exists() and selected != Path(workspace_root))
         paste_action.setEnabled(bool(getattr(self, "_explorer_clipboard", {}).get("paths")))
         copy_path_action.setEnabled(selected.exists())
+        copy_relative_action.setEnabled(selected.exists())
+        copy_name_action.setEnabled(selected.exists())
+        copy_markdown_action.setEnabled(selected.exists())
+        copy_portable_action.setEnabled(selected.exists() and bool(getattr(getattr(self, "portable_mode_state", None), "enabled", False)))
         reveal_action.setEnabled(selected.exists())
         shell_menu_action.setEnabled(selected.exists())
+        terminal_here_action.setEnabled(selected.exists())
+        timeline_action.setEnabled(selected.exists())
+        restore_previous_action.setEnabled(selected.exists() and selected.is_file())
+        compare_current_action.setEnabled(selected.exists() and selected.is_file())
+        compare_clipboard_action.setEnabled(selected.exists() and selected.is_file())
+        compare_saved_action.setEnabled(selected.exists() and selected.is_file())
+        pin_action.setEnabled(selected.exists() and selected.is_file())
+        favorite_action.setEnabled(selected.exists() and selected.is_file())
+        structured_tools_action.setEnabled(selected.exists() and selected.is_file() and selected.suffix.lower() in {".json", ".xml", ".yaml", ".yml", ".csv"})
+        git_blame_action.setEnabled(selected.exists() and selected.is_file())
+        git_history_action.setEnabled(selected.exists())
+        git_compare_head_action.setEnabled(selected.exists())
+        git_stage_action.setEnabled(selected.exists())
+        git_unstage_action.setEnabled(selected.exists())
+        safety_open_normal_action.setEnabled(selected.exists() and selected.is_file())
+        safety_open_read_only_action.setEnabled(selected.exists() and selected.is_file())
 
         chosen = menu.exec(self.explorer_tree.viewport().mapToGlobal(pos))
         if chosen is None:
             return
         if chosen == edit_action:
             self.explorer_edit_selected()
+        elif chosen == read_only_action:
+            self._open_path_read_only(selected)
+        elif chosen == split_view_action:
+            self._open_path_in_other_view(selected)
         elif chosen == reveal_action:
             self.explorer_reveal_selected()
         elif chosen == shell_menu_action:
             self.explorer_open_shell_menu()
+        elif chosen == terminal_here_action:
+            self._open_terminal_here(selected)
+        elif chosen == timeline_action:
+            self._show_explorer_timeline_for_path(selected)
+        elif chosen == restore_previous_action:
+            tab = self._open_path_in_tab(str(selected), make_current=True)
+            if tab is not None:
+                self.show_local_history_timeline()
+        elif chosen == compare_current_action:
+            self._compare_current_tab_with_path(selected)
+        elif chosen == compare_clipboard_action:
+            clip = QApplication.clipboard()
+            clip_text = clip.text() if clip is not None else ""
+            if not clip_text.strip():
+                QMessageBox.information(self, "Compare with Clipboard", "Clipboard is empty.")
+            else:
+                try:
+                    selected_text = selected.read_text(encoding="utf-8", errors="replace")
+                except Exception as exc:
+                    QMessageBox.warning(self, "Compare with Clipboard", f"Could not read selected file:\n{exc}")
+                    return
+                merged = CompareDialog.run_for_sources(
+                    self,
+                    left=CompareSource(label=selected.name, text=selected_text),
+                    right=CompareSource(label="Clipboard", text=clip_text),
+                )
+                if merged is not None:
+                    self.add_new_tab(text=merged, make_current=True)
+        elif chosen == compare_saved_action:
+            self._show_explorer_timeline_for_path(selected)
+        elif chosen == pin_action:
+            self._pin_path_in_tabs(selected)
+        elif chosen == favorite_action:
+            self._favorite_path_in_tabs(selected)
+        elif chosen in related_actions:
+            self._open_path_in_tab(str(related_actions[chosen]), make_current=True)
+        elif chosen == search_scope_action:
+            self._search_in_scope(selected)
+        elif chosen == replace_scope_action:
+            self._replace_in_scope(selected)
+        elif chosen == insights_scope_action or chosen == todo_scope_action:
+            self._show_scope_insights(selected)
+        elif chosen == structured_tools_action:
+            self._open_structured_data_for_path(selected)
         elif chosen == new_file_action:
             self.explorer_new_file()
         elif chosen == new_folder_action:
@@ -8267,6 +9138,28 @@ class MiscMixin(
             self.explorer_paste()
         elif chosen == copy_path_action:
             QApplication.clipboard().setText(str(selected))
+        elif chosen == copy_relative_action:
+            QApplication.clipboard().setText(self._workspace_relative_path_text(selected))
+        elif chosen == copy_name_action:
+            QApplication.clipboard().setText(selected.name)
+        elif chosen == copy_markdown_action:
+            QApplication.clipboard().setText(f"[{selected.name}]({selected.as_posix()})")
+        elif chosen == copy_portable_action:
+            QApplication.clipboard().setText(self._portable_relative_path_text(selected))
+        elif chosen == safety_open_normal_action:
+            self._open_path_in_tab(str(selected), make_current=True)
+        elif chosen == safety_open_read_only_action:
+            self._open_path_read_only(selected)
+        elif chosen == git_blame_action:
+            self._git_action_for_path(selected, "blame")
+        elif chosen == git_history_action:
+            self._git_action_for_path(selected, "history")
+        elif chosen == git_compare_head_action:
+            self._git_action_for_path(selected, "compare_head")
+        elif chosen == git_stage_action:
+            self._git_action_for_path(selected, "stage")
+        elif chosen == git_unstage_action:
+            self._git_action_for_path(selected, "unstage")
         elif chosen == refresh_action:
             self._refresh_explorer_dock()
 
@@ -10077,10 +10970,18 @@ class MiscMixin(
             self.workspace_panel_action.blockSignals(True)
             self.workspace_panel_action.setChecked(self.workspace_dock.isVisible())
             self.workspace_panel_action.blockSignals(False)
+        if hasattr(self, "file_timeline_panel_action") and hasattr(self, "file_timeline_dock"):
+            self.file_timeline_panel_action.blockSignals(True)
+            self.file_timeline_panel_action.setChecked(self.file_timeline_dock.isVisible())
+            self.file_timeline_panel_action.blockSignals(False)
         if hasattr(self, "explorer_panel_action") and hasattr(self, "explorer_dock"):
             self.explorer_panel_action.blockSignals(True)
             self.explorer_panel_action.setChecked(self.explorer_dock.isVisible())
             self.explorer_panel_action.blockSignals(False)
+        if hasattr(self, "timeline_panel_action") and hasattr(self, "workspace_timeline_dock"):
+            self.timeline_panel_action.blockSignals(True)
+            self.timeline_panel_action.setChecked(self.workspace_timeline_dock.isVisible())
+            self.timeline_panel_action.blockSignals(False)
         if hasattr(self, "search_results_panel_action") and hasattr(self, "search_results_dock"):
             self.search_results_panel_action.blockSignals(True)
             self.search_results_panel_action.setChecked(self.search_results_dock.isVisible())
@@ -10355,6 +11256,24 @@ class MiscMixin(
         if checked:
             self._refresh_git_dock()
 
+    def toggle_timeline_panel(self, checked: bool) -> None:
+        """Show or hide the docked folder and workspace timeline panel."""
+
+        if not hasattr(self, "workspace_timeline_dock"):
+            self._build_workspace_timeline_dock()
+        self.workspace_timeline_dock.setVisible(bool(checked))
+        if checked and self.workspace_timeline_panel.list_widget.count() <= 0:
+            self.open_scope_timeline()
+
+    def toggle_file_timeline_panel(self, checked: bool) -> None:
+        """Show or hide the docked current-file timeline panel."""
+
+        if not hasattr(self, "file_timeline_dock"):
+            self._build_file_timeline_dock()
+        self.file_timeline_dock.setVisible(bool(checked))
+        if checked and self.file_timeline_panel.list_widget.count() <= 0:
+            self.show_local_history_timeline()
+
     def toggle_productivity_hub_panel(self, checked: bool) -> None:
         """Show or hide the productivity hub dialog."""
         if not hasattr(self, "productivity_hub_dialog"):
@@ -10390,6 +11309,8 @@ class MiscMixin(
             "editor_dock",
             "ai_chat_dock",
             "workspace_dock",
+            "file_timeline_dock",
+            "workspace_timeline_dock",
             "explorer_dock",
             "search_results_dock",
             "terminal_tasks_dock",
@@ -11390,7 +12311,8 @@ class MiscMixin(
                 if clicks >= target:
                     if link == "devmode":
                         self._developer_mode_link_clicks = 0
-                        self.toggle_developer_mode_enabled()
+                        about_box.done(0)
+                        QTimer.singleShot(0, self._start_windows_hello_for_developer_mode)
                     else:
                         self._easter_egg_link_clicks = 0
                         about_box.done(0)
@@ -12800,17 +13722,19 @@ Pypad User Guide
     def enforce_privacy_lock(self) -> None:
         """Show the privacy lock dialog when privacy lock is enabled.
 
-        The user can unlock with either the configured password or PIN.
-        This is intentionally lightweight and not cryptographically secure.
+        When both password and PIN are configured, both are required.
+        Repeated failures trigger escalating cooldowns to make brute-force retries harder.
         """
         if not self.settings.get("privacy_lock", False):
             return
 
         stored_password = (self.settings.get("lock_password") or "").strip()
         stored_pin = (self.settings.get("lock_pin") or "").strip()
+        require_password = bool(stored_password)
+        require_pin = bool(stored_pin)
 
         # If no credentials are configured, don't block the user.
-        if not stored_password and not stored_pin:
+        if not require_password and not require_pin:
             return
 
         class LockDialog(QDialog):
@@ -12819,30 +13743,108 @@ Pypad User Guide
                 """Build the privacy lock dialog and initialize its password and PIN inputs."""
                 super().__init__(parent)
                 self.setWindowTitle("Unlock Pypad")
+                self.setModal(True)
+                self.setWindowFlag(Qt.WindowType.WindowCloseButtonHint, False)
                 layout = QFormLayout(self)
 
                 self.password_edit: QLineEdit | None = None
                 self.pin_edit: QLineEdit | None = None
+                self.status_label = QLabel(self)
+                self.status_label.setWordWrap(True)
+                self._lockout_deadline = 0.0
+                self._lockout_timer = QTimer(self)
+                self._lockout_timer.setInterval(250)
+                self._lockout_timer.timeout.connect(self._update_lockout_state)
+
+                if want_password and want_pin:
+                    self.status_label.setText("Enter both your password and PIN to unlock.")
+                elif want_password:
+                    self.status_label.setText("Enter your password to unlock.")
+                else:
+                    self.status_label.setText("Enter your PIN to unlock.")
+                layout.addRow(self.status_label)
 
                 if want_password:
                     self.password_edit = QLineEdit(self)
-                    self.password_edit.setEchoMode(QLineEdit.Password)
+                    self.password_edit.setEchoMode(QLineEdit.EchoMode.Password)
+                    self.password_edit.setPlaceholderText("Required")
                     layout.addRow("Password:", self.password_edit)
 
                 if want_pin:
                     self.pin_edit = QLineEdit(self)
                     self.pin_edit.setMaxLength(10)
                     self.pin_edit.setPlaceholderText("Digits only")
+                    self.pin_edit.setEchoMode(QLineEdit.EchoMode.Password)
                     layout.addRow("PIN:", self.pin_edit)
 
-                buttons = QDialogButtonBox(
+                self.buttons = QDialogButtonBox(
                     QDialogButtonBox.Ok | QDialogButtonBox.Cancel,
                     Qt.Horizontal,
                     self,
                 )
-                buttons.accepted.connect(self.accept)
-                buttons.rejected.connect(self.reject)
-                layout.addRow(buttons)
+                self.buttons.button(QDialogButtonBox.StandardButton.Ok).setText("Unlock")
+                self.buttons.button(QDialogButtonBox.StandardButton.Cancel).setText("Close App")
+                self.buttons.accepted.connect(self.accept)
+                self.buttons.rejected.connect(self.reject)
+                layout.addRow(self.buttons)
+
+            def _set_input_enabled(self, enabled: bool) -> None:
+                """Enable or disable the credential inputs and unlock button together."""
+                ok_button = self.buttons.button(QDialogButtonBox.StandardButton.Ok)
+                if ok_button is not None:
+                    ok_button.setEnabled(enabled)
+                if self.password_edit is not None:
+                    self.password_edit.setEnabled(enabled)
+                if self.pin_edit is not None:
+                    self.pin_edit.setEnabled(enabled)
+
+            def _update_lockout_state(self) -> None:
+                """Refresh the cooldown banner and restore input when the timer expires."""
+                remaining = int(math.ceil(self._lockout_deadline - time.monotonic()))
+                if remaining > 0:
+                    self.status_label.setText(
+                        f"Too many failed attempts. Try again in {remaining} second(s)."
+                    )
+                    self._set_input_enabled(False)
+                    return
+                self._lockout_deadline = 0.0
+                self._lockout_timer.stop()
+                self.clear_locked_out()
+
+            def arm_lockout(self, seconds_remaining: int) -> None:
+                """Start or extend a cooldown window after repeated failures."""
+                seconds_remaining = max(0, int(seconds_remaining))
+                if seconds_remaining <= 0:
+                    self.clear_locked_out()
+                    return
+                self._lockout_deadline = time.monotonic() + seconds_remaining
+                self._update_lockout_state()
+                if not self._lockout_timer.isActive():
+                    self._lockout_timer.start()
+
+            def clear_locked_out(self) -> None:
+                """Re-enable inputs after cooldown expiry and restore guidance text."""
+                self._lockout_deadline = 0.0
+                if self._lockout_timer.isActive():
+                    self._lockout_timer.stop()
+                if want_password and want_pin:
+                    self.status_label.setText("Enter both your password and PIN to unlock.")
+                elif want_password:
+                    self.status_label.setText("Enter your password to unlock.")
+                else:
+                    self.status_label.setText("Enter your PIN to unlock.")
+                self._set_input_enabled(True)
+                if self.password_edit is not None:
+                    self.password_edit.setFocus()
+                elif self.pin_edit is not None:
+                    self.pin_edit.setFocus()
+
+            def reset_inputs(self) -> None:
+                """Clear entered secrets after a failed attempt."""
+                if self.password_edit is not None:
+                    self.password_edit.clear()
+                if self.pin_edit is not None:
+                    self.pin_edit.clear()
 
             def get_values(self) -> tuple[str, str]:
                 """Return the password and PIN currently entered in the lock dialog."""
@@ -12852,9 +13854,20 @@ Pypad User Guide
 
         dlg = LockDialog(
             self,
-            want_password=bool(stored_password),
-            want_pin=bool(stored_pin),
+            want_password=require_password,
+            want_pin=require_pin,
         )
+        failed_attempts = 0
+
+        def _cooldown_seconds(attempts: int) -> int:
+            """Return the cooldown duration for the given consecutive failure count."""
+            if attempts < 3:
+                return 0
+            if attempts == 3:
+                return 5
+            if attempts == 4:
+                return 15
+            return min(60, 15 * (attempts - 3))
 
         while True:
             result = dlg.exec()
@@ -12864,17 +13877,31 @@ Pypad User Guide
                 return
 
             entered_password, entered_pin = dlg.get_values()
-            ok_password = bool(stored_password) and entered_password == stored_password
-            ok_pin = bool(stored_pin) and entered_pin == stored_pin
+            if require_pin and entered_pin and not entered_pin.isdigit():
+                QMessageBox.warning(self, "Unlock Failed", "PIN must contain digits only.")
+                if dlg.pin_edit is not None:
+                    dlg.pin_edit.clear()
+                    dlg.pin_edit.setFocus()
+                continue
+            ok_password = (not require_password) or hmac.compare_digest(entered_password, stored_password)
+            ok_pin = (not require_pin) or hmac.compare_digest(entered_pin, stored_pin)
 
-            if ok_password or ok_pin:
+            if ok_password and ok_pin:
                 # Successfully unlocked.
+                self.showNormal()
+                self.raise_()
+                self.activateWindow()
                 return
 
+            failed_attempts += 1
+            dlg.reset_inputs()
+            cooldown = _cooldown_seconds(failed_attempts)
+            if cooldown > 0:
+                dlg.arm_lockout(cooldown)
             QMessageBox.warning(
                 self,
                 "Unlock Failed",
-                "Incorrect password or PIN. Please try again.",
+                "Incorrect unlock credentials. Please try again.",
             )
 
     def _easter_egg_ball_state(self) -> dict[str, Any]:

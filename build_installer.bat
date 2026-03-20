@@ -27,6 +27,7 @@ if exist "assets\version.txt" (
 )
 :version_read_done
 
+echo [INFO] Packaging PyPad %APP_VERSION% installer...
 echo [1/1] Building installer with Inno Setup...
 "%ISCC_EXE%" "/DMyAppVersion=%APP_VERSION%" "installer\PyPad.iss"
 if errorlevel 1 (

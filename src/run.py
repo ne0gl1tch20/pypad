@@ -142,14 +142,19 @@ def _bootstrap_import_paths() -> None:
 
 
 _bootstrap_import_paths()
-
-from pypad.app import main
-from pypad.app_settings import get_crash_logs_file_path, get_settings_file_path
+from pypad.app_settings import get_crash_logs_file_path, get_portable_mode_state, get_settings_file_path
 from pypad.logging_utils import configure_app_logging, get_logger, resolve_persisted_log_level
 from pypad.ui.theme.asset_paths import resolve_asset_path
 
 configure_app_logging(resolve_persisted_log_level(get_settings_file_path(), default="INFO"))
 LOGGER = get_logger(__name__)
+PORTABLE_MODE_STATE = get_portable_mode_state()
+
+
+def _load_app_main():
+    from pypad.app import main
+
+    return main
 
 
 def _build_shell_open_command() -> str:
@@ -230,6 +235,10 @@ def _startup_log(message: str) -> None:
     # Small wrapper used for startup-focused messages so the call sites stay concise.
     """Write a startup-focused message to the application logger."""
     LOGGER.debug(message)
+
+
+if PORTABLE_MODE_STATE.enabled and PORTABLE_MODE_STATE.root is not None:
+    _startup_log(f"[Startup] Portable mode enabled using local storage at: {PORTABLE_MODE_STATE.root}")
 
 
 def _install_startup_exception_hooks() -> None:
@@ -454,7 +463,7 @@ if __name__ == "__main__":
         try:
             # Reuse the existing QApplication instead of letting the app module create
             # a second instance.
-            window = main(existing_app=app)
+            window = _load_app_main()(existing_app=app)
         except Exception:
             trace_text = traceback.format_exc()
             _save_startup_traceback(trace_text)

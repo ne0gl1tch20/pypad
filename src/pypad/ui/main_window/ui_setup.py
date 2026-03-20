@@ -85,7 +85,7 @@ from pypad.ui.security.security_profile import profile_setting
 from pypad.ui.editor.syntax_highlighter import CodeSyntaxHighlighter
 from pypad.ui.editor.spellcheck import spellcheck_available
 from pypad.ui.system.updater_controller import UpdaterController
-from pypad.ui.system.version_history import LocalHistoryTimelineDialog, VersionHistoryDialog
+from pypad.ui.system.version_history import VersionHistoryDialog
 from pypad.ui.tools import BuiltInToolsController
 from pypad.ui.workspace.workspace_controller import WorkspaceController
 from pypad.logging_utils import (
@@ -307,6 +307,8 @@ class UiSetupMixin:
         """
         for attr_name in (
             "workspace_dock_title_bar",
+            "file_timeline_dock_title_bar",
+            "workspace_timeline_dock_title_bar",
             "editor_dock_title_bar",
             "markdown_preview_dock_title_bar",
             "explorer_dock_title_bar",
@@ -1464,7 +1466,8 @@ class UiSetupMixin:
             return
         if tab is self.active_tab():
             self._sync_tab_modified_state_with_current_file(tab)
-        if tab is self.active_tab() and tab.markdown_mode_enabled:
+        dock = getattr(self, "markdown_preview_dock", None)
+        if tab is self.active_tab() and (tab.markdown_mode_enabled or bool(dock is not None and dock.isVisible())):
             self.update_markdown_preview()
         self._maybe_snapshot_version(tab)
         if hasattr(self, "_record_change_history_line"):
@@ -1687,13 +1690,16 @@ class UiSetupMixin:
         tab = self.active_tab()
         if tab is None:
             return
-        dialog = LocalHistoryTimelineDialog(self, tab.version_history, tab.text_edit.get_text())
-        if dialog.exec():
-            selected_text = dialog.selected_text
-            if selected_text is not None:
-                tab.text_edit.set_text(selected_text)
-                self._seed_version_history(tab, label="Restored from Timeline")
-                self.update_status_bar()
+        from pypad.ui.system.timeline_controller import TimelineController
+
+        entries = TimelineController(self).entries_for_tab(tab)
+        if not hasattr(self, "file_timeline_dock"):
+            self._build_file_timeline_dock()
+        file_label = f"Timeline: {self._tab_display_name(tab)}"
+        self.file_timeline_panel.set_timeline(file_label, entries=entries, current_text=tab.text_edit.get_text())
+        self.file_timeline_dock.show()
+        self.file_timeline_dock.raise_()
+        self.show_status_message("Opened current-file timeline.", 2200)
 
     def show_reminders(self) -> None:
         """Show reminders."""
@@ -1996,13 +2002,23 @@ class UiSetupMixin:
                     self.markdown_preview.clear()
                 except Exception:
                     pass
+            if hasattr(self, "update_status_bar"):
+                self.update_status_bar()
+            if hasattr(self, "update_window_title"):
+                self.update_window_title()
+            if hasattr(self, "_update_note_trust_banner"):
+                self._update_note_trust_banner()
+            if hasattr(self, "_refresh_file_timeline_for_active_tab"):
+                self._refresh_file_timeline_for_active_tab()
+            return
         if hasattr(self, "update_status_bar"):
             self.update_status_bar()
         if hasattr(self, "update_window_title"):
             self.update_window_title()
         if hasattr(self, "_update_note_trust_banner"):
             self._update_note_trust_banner()
-        return
+        if hasattr(self, "_refresh_file_timeline_for_active_tab"):
+            self._refresh_file_timeline_for_active_tab()
         self._sync_tab_modified_state_with_current_file(tab)
         self.log_event("Debug", f'Active tab: "{self._tab_display_name(tab)}"')
         if hasattr(self, "md_toggle_preview_action"):
@@ -2287,6 +2303,7 @@ class UiSetupMixin:
             "Open Workspace Folder": "Choose a workspace folder",
             "Workspace Files": "Browse files in the active workspace",
             "Search Workspace": "Search text across workspace files",
+            "Workspace Insights": "Review TODO and FIXME markers across the current workspace",
             "Enable Note Encryption": "Enable encrypted saves for the active note",
             "Disable Note Encryption": "Disable encrypted saves for the active note",
             "Change Note Password": "Change encryption password for the active note",
@@ -2670,6 +2687,8 @@ class UiSetupMixin:
             self.save_all_action.setEnabled(False)
         self.save_session_action.setEnabled(True)
         self.save_session_as_action.setEnabled(True)
+        self.save_named_session_action.setEnabled(True)
+        self.named_sessions_action.setEnabled(bool(isinstance(self.settings.get("named_sessions_store", {}), dict) and self.settings.get("named_sessions_store", {})))
         self.load_session_action.setEnabled(True)
         self.close_tab_action.setEnabled(has_tab)
         self.close_all_action.setEnabled(has_tab)
@@ -2856,8 +2875,12 @@ class UiSetupMixin:
         self.search_panel_action.setEnabled(has_tab)
         if hasattr(self, "workspace_panel_action"):
             self.workspace_panel_action.setEnabled(True)
+        if hasattr(self, "file_timeline_panel_action"):
+            self.file_timeline_panel_action.setEnabled(has_tab and not is_large_file)
         if hasattr(self, "explorer_panel_action"):
             self.explorer_panel_action.setEnabled(True)
+        if hasattr(self, "timeline_panel_action"):
+            self.timeline_panel_action.setEnabled(True)
         if hasattr(self, "search_results_panel_action"):
             self.search_results_panel_action.setEnabled(True)
         if hasattr(self, "terminal_panel_action"):
@@ -2921,9 +2944,16 @@ class UiSetupMixin:
         self.save_current_macro_action.setEnabled(macro_has_events and not macro_recording)
         self.run_macro_multiple_times_action.setEnabled(has_tab and macro_has_events and not macro_recording and not is_read_only)
         self.trim_trailing_spaces_and_save_action.setEnabled(has_tab and not is_read_only)
-        saved_macros = self.settings.get("saved_macros", {})
-        has_saved_macros = isinstance(saved_macros, dict) and bool(saved_macros)
+        normalized_saved_macros = {}
+        normalize_saved_macros = getattr(self, "_normalized_saved_macros", None)
+        if callable(normalize_saved_macros):
+            try:
+                normalized_saved_macros = normalize_saved_macros()
+            except Exception:
+                normalized_saved_macros = {}
+        has_saved_macros = isinstance(normalized_saved_macros, dict) and bool(normalized_saved_macros)
         self.modify_macro_shortcut_delete_action.setEnabled(has_saved_macros)
+        self.macro_library_action.setEnabled(has_saved_macros)
         self.toggle_bookmark_action.setEnabled(has_tab)
         self.next_bookmark_action.setEnabled(has_tab)
         self.prev_bookmark_action.setEnabled(has_tab)
@@ -3018,6 +3048,7 @@ class UiSetupMixin:
         self.side_by_side_diff_action.setEnabled(has_tab)
         self.three_way_merge_action.setEnabled(True)
         self.apply_patch_file_action.setEnabled(has_tab and not is_read_only)
+        self.structured_data_tools_action.setEnabled(has_tab)
         self.load_full_large_file_action.setEnabled(has_tab and bool(tab and getattr(tab, "partial_large_preview", False)))
         self.snippet_engine_action.setEnabled(has_tab and not is_read_only)
         self.template_packs_action.setEnabled(True)
@@ -3140,6 +3171,10 @@ class UiSetupMixin:
 
         self.save_session_as_action = QAction("Save Session As...", self)
         self.save_session_as_action.triggered.connect(self.save_session_as)
+        self.save_named_session_action = QAction("Save Named Session...", self)
+        self.save_named_session_action.triggered.connect(self.save_named_session)
+        self.named_sessions_action = QAction("Named Sessions...", self)
+        self.named_sessions_action.triggered.connect(self.open_named_sessions_manager)
 
         self.load_session_action = QAction("Load Session...", self)
         self.load_session_action.setShortcut(QKeySequence("Ctrl+Alt+Shift+O"))
@@ -3278,6 +3313,10 @@ class UiSetupMixin:
         self.workspace_files_action.triggered.connect(self.show_workspace_files)
         self.workspace_search_action = QAction("Search Workspace...", self)
         self.workspace_search_action.triggered.connect(self.search_workspace)
+        self.workspace_insights_action = QAction("Workspace Insights...", self)
+        self.workspace_insights_action.triggered.connect(self.open_workspace_insights)
+        self.scope_timeline_action = QAction("Scope Timeline...", self)
+        self.scope_timeline_action.triggered.connect(lambda: self.open_scope_timeline())
         self.workspace_save_profile_action = QAction("Save Current Workspace as Profile...", self)
         self.workspace_save_profile_action.triggered.connect(self.save_workspace_profile)
         self.workspace_load_profile_action = QAction("Load Workspace Profile...", self)
@@ -3352,6 +3391,12 @@ class UiSetupMixin:
         self.explorer_panel_action = QAction("Explorer Panel", self)
         self.explorer_panel_action.setCheckable(True)
         self.explorer_panel_action.triggered.connect(self.toggle_explorer_panel)
+        self.file_timeline_panel_action = QAction("File Timeline Panel", self)
+        self.file_timeline_panel_action.setCheckable(True)
+        self.file_timeline_panel_action.triggered.connect(self.toggle_file_timeline_panel)
+        self.timeline_panel_action = QAction("Timeline Panel", self)
+        self.timeline_panel_action.setCheckable(True)
+        self.timeline_panel_action.triggered.connect(self.toggle_timeline_panel)
         self.search_results_panel_action = QAction("Search Results Panel", self)
         self.search_results_panel_action.setCheckable(True)
         self.search_results_panel_action.triggered.connect(self.toggle_search_results_panel)
@@ -3760,6 +3805,8 @@ class UiSetupMixin:
 
         self.modify_macro_shortcut_delete_action = QAction("Modify Shortcut/Delete Macro...", self)
         self.modify_macro_shortcut_delete_action.triggered.connect(self.modify_macro_shortcut_or_delete)
+        self.macro_library_action = QAction("Macro Library...", self)
+        self.macro_library_action.triggered.connect(self.open_macro_library)
 
         self.toggle_bookmark_action = QAction("Toggle &Bookmark", self)
         self.toggle_bookmark_action.setShortcut(QKeySequence("Ctrl+F2"))
@@ -4343,6 +4390,9 @@ class UiSetupMixin:
         self.apply_patch_file_action = QAction("Apply Patch File to Active Tab...", self)
         self.apply_patch_file_action.setShortcut(QKeySequence("Ctrl+Alt+P"))
         self.apply_patch_file_action.triggered.connect(self.apply_patch_file_to_active_tab)
+        self.structured_data_tools_action = QAction("Structured Data Tools...", self)
+        self.structured_data_tools_action.setShortcut(QKeySequence("Ctrl+Alt+Shift+J"))
+        self.structured_data_tools_action.triggered.connect(self.open_structured_data_tools)
         self.load_full_large_file_action = QAction("Load Full Large File", self)
         self.load_full_large_file_action.triggered.connect(self.load_full_large_file)
 
@@ -4765,6 +4815,8 @@ class UiSetupMixin:
         self.workspace_menu.addAction(self.open_workspace_action)
         self.workspace_menu.addAction(self.workspace_files_action)
         self.workspace_menu.addAction(self.workspace_search_action)
+        self.workspace_menu.addAction(self.workspace_insights_action)
+        self.workspace_menu.addAction(self.scope_timeline_action)
         self.workspace_menu.addSeparator()
         self.workspace_menu.addAction(self.workspace_save_profile_action)
         self.workspace_menu.addAction(self.workspace_load_profile_action)
@@ -4772,6 +4824,8 @@ class UiSetupMixin:
         self.session_menu = file_more_menu.addMenu("Session")
         self.session_menu.addAction(self.save_session_action)
         self.session_menu.addAction(self.save_session_as_action)
+        self.session_menu.addAction(self.save_named_session_action)
+        self.session_menu.addAction(self.named_sessions_action)
         self.session_menu.addAction(self.load_session_action)
         self.security_menu = file_more_menu.addMenu("Security")
         self.security_menu.addAction(self.trust_note_action)
@@ -5157,6 +5211,8 @@ class UiSetupMixin:
         project_panels_menu.addAction(self.symbol_outline_action)
         project_panels_menu.addSeparator()
         project_panels_menu.addAction(self.explorer_panel_action)
+        project_panels_menu.addAction(self.file_timeline_panel_action)
+        project_panels_menu.addAction(self.timeline_panel_action)
         project_panels_menu.addAction(self.search_results_panel_action)
         project_panels_menu.addAction(self.terminal_panel_action)
         project_panels_menu.addAction(self.git_panel_action)
@@ -5235,28 +5291,31 @@ class UiSetupMixin:
         self.play_menu.addAction(self.mark_plugin_use_action)
 
         self.tools_menu = menu_bar.addMenu("&Tools")
-        self.tools_menu.addAction(self.goto_definition_action)
-        self.tools_menu.addAction(self.lsp_hover_action)
-        self.tools_menu.addAction(self.lsp_references_action)
-        self.tools_menu.addAction(self.lsp_rename_action)
-        self.tools_menu.addAction(self.lsp_completion_action)
-        self.tools_menu.addAction(self.lsp_format_action)
-        self.tools_menu.addAction(self.lsp_diagnostics_action)
-        self.tools_menu.addSeparator()
-        self.tools_menu.addAction(self.spell_check_document_action)
-        self.tools_menu.addAction(self.spell_check_word_action)
-        self.tools_menu.addAction(self.offline_writing_studio_action)
-        self.tools_menu.addAction(self.side_by_side_diff_action)
-        self.tools_menu.addAction(self.three_way_merge_action)
-        self.tools_menu.addAction(self.apply_patch_file_action)
-        self.tools_menu.addAction(self.load_full_large_file_action)
-        self.tools_menu.addSeparator()
-        self.tools_menu.addAction(self.snippet_engine_action)
-        self.tools_menu.addAction(self.template_packs_action)
-        self.tools_menu.addAction(self.terminal_tasks_action)
-        self.tools_menu.addAction(self.git_panel_action_open)
-        self.tools_menu.addSeparator()
-        self.tools_menu.addAction(self.task_workflow_action)
+        code_tools_menu = self.tools_menu.addMenu("Code Intelligence")
+        code_tools_menu.addAction(self.goto_definition_action)
+        code_tools_menu.addAction(self.lsp_hover_action)
+        code_tools_menu.addAction(self.lsp_references_action)
+        code_tools_menu.addAction(self.lsp_rename_action)
+        code_tools_menu.addAction(self.lsp_completion_action)
+        code_tools_menu.addAction(self.lsp_format_action)
+        code_tools_menu.addAction(self.lsp_diagnostics_action)
+        writing_tools_menu = self.tools_menu.addMenu("Writing && Review")
+        writing_tools_menu.addAction(self.spell_check_document_action)
+        writing_tools_menu.addAction(self.spell_check_word_action)
+        writing_tools_menu.addAction(self.offline_writing_studio_action)
+        compare_tools_menu = self.tools_menu.addMenu("Compare && Data")
+        compare_tools_menu.addAction(self.side_by_side_diff_action)
+        compare_tools_menu.addAction(self.three_way_merge_action)
+        compare_tools_menu.addAction(self.apply_patch_file_action)
+        compare_tools_menu.addAction(self.structured_data_tools_action)
+        compare_tools_menu.addAction(self.load_full_large_file_action)
+        workspace_tools_menu = self.tools_menu.addMenu("Workspace && Automation")
+        workspace_tools_menu.addAction(self.snippet_engine_action)
+        workspace_tools_menu.addAction(self.template_packs_action)
+        workspace_tools_menu.addAction(self.terminal_tasks_action)
+        workspace_tools_menu.addAction(self.git_panel_action_open)
+        workspace_tools_menu.addSeparator()
+        workspace_tools_menu.addAction(self.task_workflow_action)
         self.tools_menu.addSeparator()
         built_in_tools_menu = self.tools_menu.addMenu("Built-in Tools")
         if hasattr(self, "built_in_tools"):
@@ -5287,6 +5346,7 @@ class UiSetupMixin:
         self.macros_menu.addSeparator()
         self.macros_menu.addAction(self.trim_trailing_spaces_and_save_action)
         self.macros_menu.addSeparator()
+        self.macros_menu.addAction(self.macro_library_action)
         self.macros_menu.addAction(self.modify_macro_shortcut_delete_action)
         self.macros_menu.aboutToShow.connect(self._sync_saved_macro_actions)
         self._sync_saved_macro_actions()
@@ -5303,6 +5363,7 @@ class UiSetupMixin:
 
         # Window
         self.window_menu = menu_bar.addMenu("&Window")
+        self.window_menu.aboutToShow.connect(self._refresh_window_menu_entries)
         sort_by_menu = self.window_menu.addMenu("Sort By")
         sort_by_menu.addAction(self.window_sort_name_asc_action)
         sort_by_menu.addAction(self.window_sort_name_desc_action)

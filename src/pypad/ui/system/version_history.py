@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QPushButton,
@@ -148,6 +149,10 @@ class LocalHistoryTimelineDialog(QDialog):
 
         left = QVBoxLayout()
         left.addWidget(QLabel("Timeline (newest first)", self))
+        self.filter_edit = QLineEdit(self)
+        self.filter_edit.setPlaceholderText("Filter timeline entries...")
+        self.filter_edit.setAccessibleName("Timeline filter")
+        left.addWidget(self.filter_edit)
         self.list_widget = QListWidget(self)
         left.addWidget(self.list_widget, 1)
 
@@ -168,30 +173,50 @@ class LocalHistoryTimelineDialog(QDialog):
         button_row = QHBoxLayout()
         self.restore_btn = QPushButton("Restore Selected", self)
         self.restore_btn.setEnabled(False)
+        self.restore_new_tab_btn = QPushButton("Restore to New Tab", self)
+        self.restore_new_tab_btn.setEnabled(False)
         self.close_btn = QPushButton("Close", self)
         button_row.addWidget(self.restore_btn)
+        button_row.addWidget(self.restore_new_tab_btn)
         button_row.addWidget(self.close_btn)
         right.addLayout(button_row)
 
+        self._all_rows: list[tuple[str, str, str]] = []
         self._populate(history)
+        self.filter_edit.textChanged.connect(self._apply_filter)
         self.list_widget.currentRowChanged.connect(self._update_views)
         self.restore_btn.clicked.connect(self._accept_restore)
+        self.restore_new_tab_btn.clicked.connect(self._accept_restore_new_tab)
         self.close_btn.clicked.connect(self.reject)
         if self.list_widget.count() > 0:
             self.list_widget.setCurrentRow(0)
 
     def _populate(self, history: VersionHistory) -> None:
         """Populate."""
-        current_item = QListWidgetItem("Current (unsaved)", self.list_widget)
-        current_item.setData(Qt.UserRole, self._current_text)
-        current_item.setData(Qt.UserRole + 1, "current")
-        self.list_widget.addItem(current_item)
+        self._all_rows = [("Current (unsaved)", self._current_text, "current")]
         for entry in reversed(history.entries):
             label = f"{entry.timestamp} - {entry.label}"
+            self._all_rows.append((label, entry.text, "snapshot"))
+        self._apply_filter("")
+
+    def _apply_filter(self, text: str) -> None:
+        """Filter timeline entries using plain-text matching on labels."""
+        query = str(text or "").strip().lower()
+        self.list_widget.clear()
+        for label, value, kind in self._all_rows:
+            if query and query not in label.lower():
+                continue
             item = QListWidgetItem(label, self.list_widget)
-            item.setData(Qt.UserRole, entry.text)
-            item.setData(Qt.UserRole + 1, "snapshot")
+            item.setData(Qt.UserRole, value)
+            item.setData(Qt.UserRole + 1, kind)
             self.list_widget.addItem(item)
+        if self.list_widget.count() > 0:
+            self.list_widget.setCurrentRow(0)
+        else:
+            self.preview.clear()
+            self.diff_view.clear()
+            self.restore_btn.setEnabled(False)
+            self.restore_new_tab_btn.setEnabled(False)
 
     def _update_views(self, row: int) -> None:
         """Update views."""
@@ -205,6 +230,7 @@ class LocalHistoryTimelineDialog(QDialog):
         selected_kind = str(item.data(Qt.UserRole + 1) or "")
         self.preview.setPlainText(selected_text)
         self.restore_btn.setEnabled(selected_kind == "snapshot")
+        self.restore_new_tab_btn.setEnabled(selected_kind == "snapshot")
 
         if selected_kind == "current":
             baseline_text = ""
@@ -235,6 +261,17 @@ class LocalHistoryTimelineDialog(QDialog):
         if str(item.data(Qt.UserRole + 1) or "") != "snapshot":
             return
         self._selected_text = item.data(Qt.UserRole) or ""
+        self.accept()
+
+    def _accept_restore_new_tab(self) -> None:
+        """Accept restore and mark that the caller should place the content in a new tab."""
+        item = self.list_widget.currentItem()
+        if item is None:
+            return
+        if str(item.data(Qt.UserRole + 1) or "") != "snapshot":
+            return
+        self._selected_text = item.data(Qt.UserRole) or ""
+        self.setProperty("restore_to_new_tab", True)
         self.accept()
 
     @property

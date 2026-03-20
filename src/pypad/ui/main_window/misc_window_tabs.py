@@ -38,6 +38,16 @@ class MiscWindowTabsMixin:
         widget = self.tab_widget.widget(index)
         return widget if isinstance(widget, EditorTab) else None
 
+    def _window_menu_tab_label(self, index: int, tab: EditorTab) -> str:
+        """Return the live tab label shown to users for the Window menu."""
+        try:
+            live_text = str(self.tab_widget.tabText(index) or "").strip()
+        except Exception:
+            live_text = ""
+        if live_text:
+            return live_text.lstrip("*").strip() or self._tab_display_name(tab)
+        return self._tab_display_name(tab)
+
     def _close_tabs_by_indices(self, indices: list[int]) -> None:
         """Close tabs by indices."""
         for index in sorted(indices, reverse=True):
@@ -228,7 +238,7 @@ class MiscWindowTabsMixin:
             tab = self._tab_at_index(i)
             if tab is None:
                 continue
-            action = QAction(f"{i + 1}: {self._tab_display_name(tab)}", self)
+            action = QAction(f"{i + 1}: {self._window_menu_tab_label(i, tab)}", self)
             action.setCheckable(True)
             action.setChecked(i == current_index)
             action.triggered.connect(lambda _checked=False, idx=i: self.tab_widget.setCurrentIndex(idx))

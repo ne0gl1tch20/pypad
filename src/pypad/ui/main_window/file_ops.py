@@ -453,9 +453,16 @@ class FileOpsMixin:
             return False
 
         active = preferred_tab if preferred_tab is not None else self.active_tab()
+        can_reuse_active_placeholder = bool(
+            open_origin != "recent_file"
+            and active is not None
+            and not active.current_file
+            and not active.text_edit.is_modified()
+            and not active.text_edit.get_text().strip()
+        )
         if active and (
             preferred_tab is not None
-            or (not active.current_file and not active.text_edit.is_modified() and not active.text_edit.get_text().strip())
+            or can_reuse_active_placeholder
         ):
             tab = active
             if hasattr(tab, "clear_media_mode"):
@@ -521,6 +528,8 @@ class FileOpsMixin:
             self._watch_file(path)
         if tab.partial_large_preview:
             self._apply_trust_state_to_tab(tab)
+            if hasattr(self, "_update_large_file_banner"):
+                self._update_large_file_banner()
             self.show_status_message(
                 "Large file preview mode loaded (partial). Use Tools > Load Full Large File to edit.",
                 7000,
@@ -701,6 +710,8 @@ class FileOpsMixin:
             self._sync_markdown_preview_for_active_tab()
         self._apply_syntax_highlighting(tab)
         self._refresh_tab_title(tab)
+        if hasattr(self, "_update_large_file_banner"):
+            self._update_large_file_banner()
         self.show_status_message("Full large file loaded.", 3000)
 
     def file_save_as(self) -> bool:

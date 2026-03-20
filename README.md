@@ -93,7 +93,7 @@ Saved settings are merged with these defaults so the app can add new options wit
 
 ## Project Status
 
-PyPad is currently at version `1.8.4` and remains under active development. The app now includes a larger first-party local tools surface alongside its editor, workspace, AI, recovery, and productivity features, including calculators, converters, reminders/taskers, reader mode, annotations, graphing, a currency converter with cached/live refresh, and QR generation/scanning.
+PyPad is currently at version `2.0.0` and this release is positioned as a major upgrade. The app now combines a broader local-first tools surface with more serious editor workflows, including compare/merge, structured data tools, large-file UX, named sessions, workspace insights, plugin health reporting, and stronger accessibility-focused desktop layout polish.
 
 Development happens during free time, so updates may be irregular and some newer surfaces may continue evolving between releases.
 

@@ -11,6 +11,7 @@ if exist "assets\version.txt" (
 )
 :version_read_done
 
+echo [INFO] Preparing PyPad %APP_VERSION% major release build...
 echo [1/2] Building app with PyInstaller...
 call "%~dp0compile.bat"
 if errorlevel 1 (
@@ -25,7 +26,7 @@ if errorlevel 1 (
     exit /b %errorlevel%
 )
 
-echo [DONE] Full build completed (PyInstaller + Inno Setup).
+echo [DONE] Full build completed for PyPad %APP_VERSION% (PyInstaller + Inno Setup).
 echo [INFO] EXE: dist\run\run.exe
 echo [INFO] Installer: dist\installer\PyPad-Setup-%APP_VERSION%.exe
 exit /b 0

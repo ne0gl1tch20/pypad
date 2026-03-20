@@ -8,3 +8,5 @@ language-tool-python>=2.8,<3
 forex-python>=1.8,<2
 pywinpty>=2.0.15; platform_system == "Windows"
 zxing-cpp>=2.2,<3
+winrt-runtime>=3.0.0; platform_system == "Windows"
+winrt-Windows.Security.Credentials.UI>=3.0.0; platform_system == "Windows"

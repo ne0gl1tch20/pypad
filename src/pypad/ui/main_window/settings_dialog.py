@@ -1344,7 +1344,13 @@ class SettingsDialog(QDialog):
         )
         self.developer_hub_settings_hint.setWordWrap(True)
         diagnostics_layout.addRow(self.developer_hub_settings_hint)
+        self.open_developer_hub_controls_btn = QPushButton("Open Developer Hub Controls", advanced)
+        self.open_developer_hub_controls_btn.clicked.connect(
+            lambda: getattr(self.window, "open_developer_hub", lambda *_args, **_kwargs: None)("Controls", force=True)
+        )
+        diagnostics_layout.addRow("", self.open_developer_hub_controls_btn)
         self._register_search(idx, "Developer Hub logging debug controls", self.developer_hub_settings_hint)
+        self._register_search(idx, "Open Developer Hub Controls", self.open_developer_hub_controls_btn)
         meta_box = QGroupBox("Metadata", advanced)
         meta_box.setObjectName("settingsSectionGroup")
         meta_layout = QFormLayout(meta_box)

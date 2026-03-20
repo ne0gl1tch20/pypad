@@ -9,6 +9,7 @@
 AppId={{4E6E3EFA-6F45-4D8F-BF1E-7AFD4382202A}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
+AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
@@ -18,6 +19,8 @@ OutputBaseFilename=PyPad-Setup-{#MyAppVersion}
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
+VersionInfoVersion={#MyAppVersion}
+VersionInfoProductVersion={#MyAppVersion}
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible and x86compatible
 ArchitecturesInstallIn64BitMode=x64compatible

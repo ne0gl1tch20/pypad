@@ -215,7 +215,7 @@ class MiscTabActionsMixin:
             self.settings["recent_files"] = [p for p in self.settings.get("recent_files", []) if p != path]
             self._refresh_recent_files_menu()
             return
-        self._open_file_path(path)
+        self._open_file_path(path, open_origin="recent_file")
 
     def toggle_pin_active_tab(self) -> None:
         """Pin or unpin the active tab."""

@@ -185,6 +185,7 @@ class UIThemeTokens:
     text_on_accent: str
     window_bg: str
     editor_bg: str
+    preview_bg: str
     chrome_bg: str
     panel_bg: str
     surface_bg: str
@@ -334,6 +335,14 @@ def build_tokens_from_settings(settings: dict[str, Any]) -> UIThemeTokens:
     dock_button_hover_bg = base["dock_button_hover_bg"]
     dock_button_pressed_bg = base["dock_button_pressed_bg"]
 
+    editor_bg = window_bg
+    preview_bg = surface_bg
+
+    if dark:
+        panel_bg = _darken(panel_bg, 0.06)
+        editor_bg = _lighten(window_bg, 0.04)
+        preview_bg = _mix(editor_bg, panel_bg, 0.42)
+
     if bool(s.get("use_custom_colors", False)):
         custom_editor_bg = _normalize_hex(s.get("custom_editor_bg", ""), "")
         custom_editor_fg = _normalize_hex(s.get("custom_editor_fg", ""), "")
@@ -342,6 +351,8 @@ def build_tokens_from_settings(settings: dict[str, Any]) -> UIThemeTokens:
             window_bg = custom_editor_bg
             surface_bg = _mix(window_bg, "#ffffff" if not dark else "#000000", 0.06)
             input_bg = surface_bg
+            editor_bg = window_bg
+            preview_bg = surface_bg
         if custom_editor_fg:
             text = custom_editor_fg
             text_muted = _mix(text, window_bg, 0.5)
@@ -379,7 +390,8 @@ def build_tokens_from_settings(settings: dict[str, Any]) -> UIThemeTokens:
         text_muted=text_muted,
         text_on_accent=text_on_accent,
         window_bg=window_bg,
-        editor_bg=window_bg,
+        editor_bg=editor_bg,
+        preview_bg=preview_bg,
         chrome_bg=chrome_bg,
         panel_bg=panel_bg,
         surface_bg=surface_bg,
@@ -555,6 +567,81 @@ def build_tool_dialog_qss(tokens: UIThemeTokens) -> str:
         QTabBar::tab {{
             border-top-left-radius: {tokens.radius_md}px;
             border-top-right-radius: {tokens.radius_md}px;
+        }}
+    """
+
+
+def build_timeline_panel_qss(tokens: UIThemeTokens, *, panel_object_name: str) -> str:
+    """Build QSS for docked timeline panels using the shared theme token policy."""
+    selected_bg = _mix(tokens.accent, tokens.surface_bg, 0.18 if tokens.dark_mode else 0.28)
+    group_bg = _mix(tokens.chrome_bg, tokens.panel_bg, 0.45 if tokens.dark_mode else 0.25)
+    diff_bg = _mix(tokens.editor_bg, tokens.preview_bg, 0.55)
+    return f"""
+        QWidget#{panel_object_name} {{
+            background: {tokens.panel_bg};
+            color: {tokens.text};
+        }}
+        QWidget#{panel_object_name} QLabel {{
+            color: {tokens.text};
+        }}
+        QWidget#{panel_object_name} QLineEdit,
+        QWidget#{panel_object_name} QComboBox,
+        QWidget#{panel_object_name} QTextEdit,
+        QWidget#{panel_object_name} QListWidget {{
+            background: {tokens.input_bg};
+            color: {tokens.text};
+            border: 1px solid {tokens.border};
+            border-radius: {tokens.radius_md}px;
+            selection-background-color: {selected_bg};
+            selection-color: {tokens.text};
+        }}
+        QWidget#{panel_object_name} QListWidget {{
+            background: {tokens.surface_bg};
+            outline: none;
+        }}
+        QWidget#{panel_object_name} QListWidget::item {{
+            padding: {tokens.space_xs}px {tokens.space_sm}px;
+            margin: 1px {tokens.space_xs}px;
+            border-radius: {tokens.radius_sm}px;
+        }}
+        QWidget#{panel_object_name} QListWidget::item:selected {{
+            background: {selected_bg};
+            color: {tokens.text};
+        }}
+        QWidget#{panel_object_name} QListWidget::item:disabled {{
+            background: {group_bg};
+            color: {tokens.text_muted};
+            border: 1px solid {tokens.border_soft};
+            font-weight: 600;
+        }}
+        QWidget#{panel_object_name} QPushButton {{
+            min-height: {tokens.input_height}px;
+            background: {tokens.button_bg};
+            color: {tokens.text};
+            border: 1px solid {tokens.border};
+            border-radius: {tokens.radius_md}px;
+            padding: {tokens.space_xs}px {tokens.space_md}px;
+        }}
+        QWidget#{panel_object_name} QPushButton:hover {{
+            background: {tokens.accent};
+            color: {tokens.text_on_accent};
+            border-color: {tokens.accent};
+        }}
+        QWidget#{panel_object_name} QPushButton:disabled {{
+            color: {tokens.text_muted};
+            border-color: {tokens.border_soft};
+        }}
+        QWidget#{panel_object_name} QSplitter::handle {{
+            background: {tokens.border_soft};
+        }}
+        QWidget#{panel_object_name} QTextEdit#timelineDiffView {{
+            background: {diff_bg};
+        }}
+        QWidget#{panel_object_name} QTextEdit#timelinePreviewView {{
+            background: {tokens.preview_bg};
+        }}
+        QWidget#{panel_object_name} QTextEdit#workspaceTimelinePreviewView {{
+            background: {tokens.preview_bg};
         }}
     """
 
@@ -1062,6 +1149,10 @@ def build_main_window_qss(*, tokens: UIThemeTokens, tab_close_icon_url: str, clo
             border: 1px solid {tokens.border};
             border-radius: {tokens.radius_md}px;
         }}
+        QWidget#markdownPreviewPane, QTextEdit#markdownPreviewText {{
+            background-color: {tokens.preview_bg};
+            color: {tokens.text};
+        }}
         QMenuBar, QMenu, QStatusBar, QToolBar {{
             background-color: {tokens.chrome_bg};
             color: {tokens.text};
@@ -1254,6 +1345,40 @@ def build_main_window_qss(*, tokens: UIThemeTokens, tab_close_icon_url: str, clo
             background: {tokens.toolbar_checked_bg};
             color: {tokens.text};
             border: 1px solid {tokens.accent};
+        }}
+        QWidget#largeFileBanner, QWidget#pypadBannerWidget {{
+            background: {tokens.surface_bg};
+            border-bottom: 1px solid {tokens.border};
+        }}
+        QLabel#pypadBannerTitle {{
+            color: {tokens.text};
+            font-weight: 700;
+        }}
+        QLabel#pypadBannerMessage {{
+            color: {tokens.text_muted};
+        }}
+        QWidget#largeFileBanner QPushButton, QWidget#pypadBannerWidget QPushButton {{
+            background: {tokens.button_bg};
+            color: {tokens.text};
+            border: 1px solid {tokens.border};
+            border-radius: {tokens.radius_lg}px;
+            min-height: {tokens.input_height}px;
+            padding: 3px 12px;
+        }}
+        QWidget#largeFileBanner QPushButton:hover, QWidget#pypadBannerWidget QPushButton:hover {{
+            background: {tokens.accent};
+            color: {tokens.text_on_accent};
+            border: 1px solid {tokens.accent};
+        }}
+        QWidget#largeFileBanner QPushButton:pressed, QWidget#pypadBannerWidget QPushButton:pressed {{
+            background: {tokens.toolbar_checked_bg};
+            color: {tokens.text};
+            border: 1px solid {tokens.accent};
+        }}
+        QTextEdit[splitActivePane="true"], QPlainTextEdit[splitActivePane="true"],
+        QWidget[splitActivePane="true"] {{
+            border: 2px solid {focus_ring};
+            border-radius: {tokens.radius_sm}px;
         }}
         QTabWidget::pane {{
             border: 1px solid {tokens.border_soft};

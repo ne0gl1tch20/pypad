@@ -410,6 +410,9 @@ class ViewOpsMixin:
             return
         if tab.clone_editor is not None and tab.clone_editor.widget.isVisible():
             tab.clone_editor.widget.setFocus()
+            controller = getattr(self, "split_view_controller", None)
+            if controller is not None:
+                controller.set_active_pane(tab, tab.clone_editor.widget)
             return
         dock = getattr(self, "markdown_preview_dock", None)
         pane = getattr(self, "markdown_preview_pane", None)
@@ -831,6 +834,9 @@ class ViewOpsMixin:
         tab._split_clone_handler = split_clone_handler
         tab.text_edit.textChanged.connect(split_main_handler)  # type: ignore[arg-type]
         clone_editor.textChanged.connect(split_clone_handler)  # type: ignore[arg-type]
+        controller = getattr(self, "split_view_controller", None)
+        if controller is not None:
+            controller.install_for_tab(tab)
 
     def clone_to_other_view(self) -> None:
         """Clone to other view."""
@@ -859,12 +865,23 @@ class ViewOpsMixin:
         if dock is not None:
             dock.hide()
         self._apply_split_scroll_sync(tab)
+        controller = getattr(self, "split_view_controller", None)
+        if controller is not None:
+            controller.install_for_tab(tab)
+            controller.set_active_pane(tab, tab.text_edit.widget)
+            self.show_status_message(
+                f"{controller.orientation_label(orientation)} enabled for the current tab.",
+                2800,
+            )
 
     def close_split_view(self) -> None:
         """Tear down the cloned editor and restore the tab to single-editor mode."""
         tab = self.active_tab()
         if tab is None or tab.clone_editor is None:
             return
+        controller = getattr(self, "split_view_controller", None)
+        if controller is not None:
+            controller.teardown_for_tab(tab)
         self._disconnect_split_scroll_sync(tab)
         split_main_handler = getattr(tab, "_split_main_handler", None)
         split_clone_handler = getattr(tab, "_split_clone_handler", None)
@@ -883,6 +900,8 @@ class ViewOpsMixin:
         tab.split_mode = None
         tab.clone_editor.widget.setParent(None)
         tab.clone_editor = None
+        if hasattr(self, "split_status_label"):
+            self.split_status_label.setText("Single view")
         if tab.markdown_mode_enabled:
             self._sync_markdown_preview_for_active_tab()
 
@@ -1864,6 +1883,14 @@ class ViewOpsMixin:
 
     def update_status_bar(self) -> None:
         """Refresh the full status bar to reflect the active tab's editor and document state."""
+        portable_state = getattr(self, "portable_mode_state", None)
+        if hasattr(self, "portable_mode_label"):
+            if portable_state is not None and getattr(portable_state, "enabled", False):
+                self.portable_mode_label.setText("Portable")
+                self.portable_mode_label.setToolTip(str(getattr(portable_state, "root", "")))
+            else:
+                self.portable_mode_label.setText("")
+                self.portable_mode_label.setToolTip("")
         tab = self.active_tab()
         if tab is None:
             lang_code = getattr(self, "_ui_language_code", "en")
@@ -1889,6 +1916,8 @@ class ViewOpsMixin:
                 self.status_panel_ruler_label.setVisible(False)
             if hasattr(self, "_apply_status_layout_visibility"):
                 self._apply_status_layout_visibility()
+            if hasattr(self, "split_status_label"):
+                self.split_status_label.setText("Single view")
             self.update_action_states()
             return
 
@@ -1943,6 +1972,12 @@ class ViewOpsMixin:
                 self.status_panel_breadcrumb_label.setText(self.breadcrumb_label.text())
             if hasattr(self, "_selection_stats_text") and hasattr(self, "status_panel_selection_stats_label"):
                 self.status_panel_selection_stats_label.setText(self._selection_stats_text(tab))
+        if hasattr(self, "split_status_label"):
+            if tab.clone_editor is not None and tab.clone_editor.widget.isVisible():
+                orientation_text = "Vertical Split" if tab.editor_splitter.orientation() == Qt.Horizontal else "Horizontal Split"
+                self.split_status_label.setText(orientation_text)
+            else:
+                self.split_status_label.setText("Single view")
             if hasattr(self, "ai_usage_label") and hasattr(self, "status_panel_ai_usage_label"):
                 self.status_panel_ai_usage_label.setText(self.ai_usage_label.text())
         if hasattr(self, "full_screen_action"):

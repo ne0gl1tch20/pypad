@@ -71,6 +71,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtPrintSupport import QPrintDialog, QPrintPreviewDialog, QPrinter
 
+from pypad.ui.components import BannerWidget
 from pypad.ui.debug.debug_logs_dialog import DebugLogsDialog
 from pypad.ui.editor.detachable_tab_bar import DetachableTabBar
 from pypad.ui.editor.editor_tab import EditorTab, MarkdownPreviewPane
@@ -89,6 +90,8 @@ from pypad.ui.workspace.workspace_controller import WorkspaceController
 from pypad.ui.features.advanced_features import AdvancedFeaturesController
 from pypad.ui.features.gamification_widgets import CompactGamificationWidget, GamificationToast, MomentumBannerWidget
 from pypad.i18n.translator import AppTranslator
+from pypad.app_settings import get_portable_mode_state
+from pypad.ui.editor.split_view_controller import SplitViewController
 
 from .ui_setup import UiSetupMixin
 from .file_ops import FileOpsMixin
@@ -227,6 +230,7 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
         self.tab_widget.setTabsClosable(True)
         self.tab_widget.setMovable(True)
         self.tab_widget.currentChanged.connect(self.on_tab_changed)
+        self.tab_widget.currentChanged.connect(lambda _index: self._update_large_file_banner())
         self.tab_widget.tabCloseRequested.connect(self.close_tab)
         self.empty_tabs_widget = self._build_empty_tabs_widget()
         self.central_stack = QStackedWidget(self)
@@ -270,6 +274,23 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
         self.setTabOrder(self.note_trust_banner_session_btn, self.note_trust_banner_keep_btn)
         self.note_trust_banner.hide()
         self.editor_host_layout.addWidget(self.note_trust_banner)
+        self.large_file_banner = BannerWidget(self.editor_host)
+        self.large_file_banner.setObjectName("largeFileBanner")
+        self.large_file_banner.setAccessibleName("Large file mode banner")
+        self.large_file_banner.setAccessibleDescription(
+            "Explains when the active document is open in large file mode and provides actions for reviewing the file safely."
+        )
+        self.large_file_load_btn = QPushButton("Load Full", self.large_file_banner)
+        self.large_file_compare_btn = QPushButton("Compare", self.large_file_banner)
+        self.large_file_structure_btn = QPushButton("Structured Tools", self.large_file_banner)
+        self.large_file_load_btn.setAccessibleDescription("Load the full contents of the current large file.")
+        self.large_file_compare_btn.setAccessibleDescription("Compare the large-file preview against another source.")
+        self.large_file_structure_btn.setAccessibleDescription("Open structured data tools for the active tab.")
+        self.large_file_banner.set_actions(
+            [self.large_file_load_btn, self.large_file_compare_btn, self.large_file_structure_btn]
+        )
+        self.large_file_banner.hide()
+        self.editor_host_layout.addWidget(self.large_file_banner)
         self.editor_host_layout.addWidget(self.central_stack, 1)
         placeholder = QWidget(self)
         placeholder.setFixedSize(0, 0)
@@ -294,6 +315,9 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
         self.note_trust_banner_keep_btn.clicked.connect(
             lambda: self.active_tab() and self.show_status_message("Note remains read-only.", 2000)
         )
+        self.large_file_load_btn.clicked.connect(self.load_full_large_file)
+        self.large_file_compare_btn.clicked.connect(self.open_side_by_side_diff)
+        self.large_file_structure_btn.clicked.connect(self.open_structured_data_tools)
         self.markdown_preview_dock = QDockWidget("Markdown Preview", self)
         self.markdown_preview_dock.setObjectName("markdownPreviewDock")
         self.markdown_preview_dock.setAllowedAreas(Qt.AllDockWidgetAreas)
@@ -360,6 +384,7 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
         self._editor_refresh_timer.setSingleShot(True)
         self._editor_refresh_timer.setInterval(90)
         self._editor_refresh_timer.timeout.connect(self.update_status_bar)
+        self._editor_refresh_timer.timeout.connect(lambda: hasattr(self, "_refresh_file_timeline_for_active_tab") and self._refresh_file_timeline_for_active_tab())
         self._gamification_refresh_timer = QTimer(self)
         self._gamification_refresh_timer.setSingleShot(True)
         self._gamification_refresh_timer.setInterval(120)
@@ -425,6 +450,20 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
         self.ai_usage_label = QLabel("AI 0", self)
         self.ai_usage_label.setMargin(0)
         self.status.addPermanentWidget(self.ai_usage_label)
+        self.portable_mode_label = QLabel("", self)
+        self.portable_mode_label.setMargin(0)
+        self.portable_mode_label.setAccessibleName("Portable mode status")
+        self.portable_mode_label.setAccessibleDescription(
+            "Shows whether the application is using portable local storage."
+        )
+        self.status.addPermanentWidget(self.portable_mode_label)
+        self.split_status_label = QLabel("Single view", self)
+        self.split_status_label.setMargin(0)
+        self.split_status_label.setAccessibleName("Split view status")
+        self.split_status_label.setAccessibleDescription(
+            "Shows whether the current tab is using single-view or split-view editing."
+        )
+        self.status.addPermanentWidget(self.split_status_label)
         self.autosave_status_label = QLabel("Save idle", self)
         self.autosave_status_label.setMargin(0)
         self.status.addPermanentWidget(self.autosave_status_label)
@@ -449,6 +488,8 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
         self.status.addPermanentWidget(self.typing_test_quit_button)
         self.log_event("Info", "[Startup] Status bar widgets attached")
         self.advanced_features = AdvancedFeaturesController(self)
+        self.split_view_controller = SplitViewController(self)
+        self.portable_mode_state = get_portable_mode_state()
         if hasattr(self, "_init_gamification_system"):
             self._init_gamification_system()
         _mark_startup_stage("advanced_features_ready")

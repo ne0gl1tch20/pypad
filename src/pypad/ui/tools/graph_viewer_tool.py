@@ -140,15 +140,21 @@ class GraphViewerToolDialog(ToolDialogBase):
 
     def plot(self) -> None:
         source = self.expr_edit.text().strip()
-        if "," in source and "x" not in source and not any(ch.isalpha() for ch in source):
-            values = [float(part.strip()) for part in source.split(",") if part.strip()]
-            points = [(float(index), value) for index, value in enumerate(values)]
-        else:
-            x_min, x_max = -10.0, 10.0
-            if "," in self.range_edit.text():
-                left, right = self.range_edit.text().split(",", 1)
-                x_min, x_max = float(left.strip()), float(right.strip())
-            points = sample_expression_points(source, x_min, x_max)
+        try:
+            if "," in source and "x" not in source and not any(ch.isalpha() for ch in source):
+                values = [float(part.strip()) for part in source.split(",") if part.strip()]
+                points = [(float(index), value) for index, value in enumerate(values)]
+            else:
+                x_min, x_max = -10.0, 10.0
+                if "," in self.range_edit.text():
+                    left, right = self.range_edit.text().split(",", 1)
+                    x_min, x_max = float(left.strip()), float(right.strip())
+                points = sample_expression_points(source, x_min, x_max)
+        except Exception as exc:
+            self.canvas.set_points([])
+            self.output.setPlainText(f"{type(exc).__name__}: {exc}")
+            return
+
         self.canvas.set_points(points)
         self.output.setPlainText(f"Rendered {len(points)} points.")
 

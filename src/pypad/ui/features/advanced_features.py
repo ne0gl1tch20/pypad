@@ -70,6 +70,7 @@ from pypad.ui.workspace.project_workflow import (
     build_unified_diff_text,
     diff_stats_from_patch,
 )
+from pypad.ui.features.plugin_manager_presenters import summarize_plugin_health
 from pypad.ui.theme.theme_tokens import build_tokens_from_settings
 
 PLUGIN_API_VERSION = "1.0"
@@ -2367,6 +2368,13 @@ class PluginManagerDialog(QDialog):
         self.search_input.textChanged.connect(self._populate)
         v.addWidget(self.search_input)
         self._visible_plugin_ids: list[str] = []
+        self.health_summary_label = QLabel("", self)
+        self.health_summary_label.setWordWrap(True)
+        self.health_summary_label.setAccessibleName("Plugin health summary")
+        self.health_summary_label.setAccessibleDescription(
+            "Summarizes how many plugins are loaded, blocked, incompatible, quarantined, or failing."
+        )
+        v.addWidget(self.health_summary_label)
         self.unsafe_ui_bridge_check = QCheckBox(
             "Allow unsafe plugin UI bridge (exposes raw app window/tab objects)",
             self,
@@ -2550,6 +2558,7 @@ class PluginManagerDialog(QDialog):
         self._visible_plugin_ids = []
         query = self.search_input.text().strip().lower()
         records = self.host.discover()
+        self.health_summary_label.setText(summarize_plugin_health(records))
         for rec in records:
             hay = " ".join(
                 [
@@ -5632,6 +5641,27 @@ class AdvancedFeaturesController:
             except Exception:
                 pass
 
+    def open_workspace_insights(self) -> None:
+        """Open the lightweight workspace-insights dialog for TODO and FIXME markers."""
+
+        from pypad.ui.workspace.workspace_insights import WorkspaceInsightsDialog, collect_workspace_insights
+
+        items = collect_workspace_insights(self.window)
+        dlg = WorkspaceInsightsDialog(self.window, items)
+        if dlg.exec() != QDialog.DialogCode.Accepted or dlg.selected_item is None:
+            return
+        selected = dlg.selected_item
+        if not self.window._open_file_path(selected.file_path):
+            return
+        tab = self.window.active_tab()
+        if tab is None:
+            return
+        try:
+            tab.text_edit.set_cursor_position(max(0, selected.line_number - 1), 0)
+            tab.text_edit.widget.setFocus()
+        except Exception:
+            pass
+
     def backup_now(self, *, prompt_for_destination: bool = False) -> None:
         """Create a backup archive now, optionally prompting for the destination file."""
         default_name = f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
@@ -5746,21 +5776,21 @@ class AdvancedFeaturesController:
         self.window.settings["theme"] = "High Contrast"
         self.window.settings["dark_mode"] = True
         self.window.settings["accessibility_preset"] = "high_contrast"
-        self.window.apply_settings()
+        self._apply_accessibility_preset_runtime("Applied accessibility preset: High Contrast.")
 
     def apply_accessibility_dyslexic(self) -> None:
         """Switch the editor to a dyslexia-friendly font preset."""
         self.window.settings["font_family"] = "OpenDyslexic"
         self.window.settings["font_size"] = max(13, int(self.window.settings.get("font_size", 11)))
         self.window.settings["accessibility_preset"] = "dyslexic_font"
-        self.window.apply_settings()
+        self._apply_accessibility_preset_runtime("Applied accessibility preset: Dyslexic Font.")
 
     def apply_accessibility_large_text(self) -> None:
         """Apply a larger-text preset with stronger keyboard focus."""
         self.window.settings["font_size"] = max(15, int(self.window.settings.get("font_size", 11)))
         self.window.settings["keyboard_only_mode"] = True
         self.window.settings["accessibility_preset"] = "large_text"
-        self.window.apply_settings()
+        self._apply_accessibility_preset_runtime("Applied accessibility preset: Large Text.")
 
     def apply_accessibility_low_stimulation(self) -> None:
         """Apply a lower-motion preset for distraction-sensitive workflows."""
@@ -5768,7 +5798,40 @@ class AdvancedFeaturesController:
         self.window.settings["accessibility_cursor_blink"] = False
         self.window.settings["ui_density"] = "comfortable"
         self.window.settings["accessibility_preset"] = "low_stimulation"
-        self.window.apply_settings()
+        self._apply_accessibility_preset_runtime("Applied accessibility preset: Low Stimulation.")
+
+    def _apply_accessibility_preset_runtime(self, status_message: str) -> None:
+        """Apply accessibility preset changes immediately without letting the main window disappear."""
+        app = QApplication.instance()
+        prev_quit_on_last: bool | None = None
+        was_visible = bool(self.window.isVisible()) if hasattr(self.window, "isVisible") else False
+        was_minimized = bool(self.window.isMinimized()) if hasattr(self.window, "isMinimized") else False
+        was_fullscreen = bool(self.window.windowState() & Qt.WindowState.WindowFullScreen) if hasattr(self.window, "windowState") else False
+        was_maximized = bool(self.window.windowState() & Qt.WindowState.WindowMaximized) if hasattr(self.window, "windowState") else False
+        try:
+            if app is not None:
+                prev_quit_on_last = app.quitOnLastWindowClosed()
+                app.setQuitOnLastWindowClosed(False)
+            self.window.apply_settings()
+            if hasattr(self.window, "save_settings_to_disk"):
+                self.window.save_settings_to_disk()
+            if was_visible and not self.window.isVisible():
+                if was_minimized:
+                    self.window.showMinimized()
+                elif was_fullscreen:
+                    self.window.showFullScreen()
+                elif was_maximized:
+                    self.window.showMaximized()
+                else:
+                    self.window.showNormal()
+                if not was_minimized:
+                    self.window.raise_()
+                    self.window.activateWindow()
+            if hasattr(self.window, "show_status_message"):
+                self.window.show_status_message(status_message, 3000)
+        finally:
+            if app is not None and prev_quit_on_last is not None:
+                app.setQuitOnLastWindowClosed(prev_quit_on_last)
 
     def open_collaboration(self) -> None:
         """Open the collaboration server dialog."""

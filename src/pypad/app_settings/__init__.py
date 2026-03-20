@@ -17,6 +17,7 @@ from .paths import (
     get_themes_file_path,
     get_translation_cache_path,
 )
+from .portable_mode import PortableModeState, get_portable_mode_state
 
 __all__ = [
     "build_default_settings",
@@ -36,4 +37,6 @@ __all__ = [
     "get_spellcheck_dictionaries_dir_path",
     "get_themes_file_path",
     "get_translation_cache_path",
+    "PortableModeState",
+    "get_portable_mode_state",
 ]
