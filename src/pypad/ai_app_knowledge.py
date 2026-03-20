@@ -124,7 +124,7 @@ Core editor capabilities (high-level):
   - unit converter
   - equation solver
   - offline graph viewer
-  - cached currency converter
+  - currency converter
   - QR generator and scanner
   - color picking
   - world clocks

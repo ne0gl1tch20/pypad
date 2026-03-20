@@ -290,6 +290,7 @@ def migrate_settings(settings: dict) -> dict:
         current["task_lists"] = dict(current.get("task_lists", {})) if isinstance(current.get("task_lists", {}), dict) else {}
         current["currency_rates_cache"] = dict(current.get("currency_rates_cache", {})) if isinstance(current.get("currency_rates_cache", {}), dict) else {}
         current["currency_rates_last_sync"] = str(current.get("currency_rates_last_sync", "") or "").strip()
+        current["currency_rates_source"] = str(current.get("currency_rates_source", "bundled") or "bundled").strip().lower() or "bundled"
         current["reader_mode_defaults"] = _coerce_str_dict(current.get("reader_mode_defaults"))
         closed_tab_history = current.get("closed_tab_history", [])
         current["closed_tab_history"] = closed_tab_history if isinstance(closed_tab_history, list) else []
@@ -499,6 +500,7 @@ def migrate_settings(settings: dict) -> dict:
     current["task_lists"] = dict(current.get("task_lists", {})) if isinstance(current.get("task_lists", {}), dict) else {}
     current["currency_rates_cache"] = dict(current.get("currency_rates_cache", {})) if isinstance(current.get("currency_rates_cache", {}), dict) else {}
     current["currency_rates_last_sync"] = str(current.get("currency_rates_last_sync", "") or "").strip()
+    current["currency_rates_source"] = str(current.get("currency_rates_source", "bundled") or "bundled").strip().lower() or "bundled"
     current["reader_mode_defaults"] = _coerce_str_dict(current.get("reader_mode_defaults"))
     current["accessibility_preset"] = coerce_str(current.get("accessibility_preset", "none"), "none").strip().lower() or "none"
     current["accessibility_reduce_motion"] = coerce_bool(current.get("accessibility_reduce_motion", False), False)

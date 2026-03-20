@@ -820,6 +820,20 @@ def build_settings_dialog_qss(tokens: UIThemeTokens) -> str:
         QWidget#settingsPageHost QGroupBox::title {{
             color: {page_text};
         }}
+        QWidget[searchMatch="true"] {{
+            border: 1px solid {tokens.accent};
+            border-radius: {tokens.radius_md}px;
+            background: {_mix(tokens.accent, tokens.surface_bg, 0.14 if tokens.dark_mode else 0.08)};
+            color: {page_text};
+        }}
+        QWidget[searchMatch="true"] QLabel,
+        QWidget[searchMatch="true"] QCheckBox,
+        QWidget[searchMatch="true"] QRadioButton,
+        QWidget[searchMatch="true"] QGroupBox,
+        QWidget[searchMatch="true"] QPushButton {{
+            color: {page_text};
+            background: transparent;
+        }}
         QGroupBox#settingsSectionGroup {{
             background: {page_card_bg};
             border: 1px solid {tokens.border};

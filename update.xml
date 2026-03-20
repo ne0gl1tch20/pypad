@@ -1,20 +1,20 @@
 ﻿<?xml version="1.0" encoding="UTF-8"?>
 <updates>
   <item>
-    <title>PyPad 1.8.3</title>
-    <version>1.8.3</version>
+    <title>PyPad 1.8.4</title>
+    <version>1.8.4</version>
     <pubDate>2026-03-19</pubDate>
     <description>
-      - PyPad 1.8.3 expands the built-in local tools framework under Tools with calculators, converters, reminders/taskers, reader mode, annotations, offline graphing, cached currency tools, and QR generation/scanning.
-      - Built-in utilities now include Random Number Generator, Password Generator, Percentage / Finance Calculator, Scientific Calculator, Unit Converter, Equation Solver, Offline Graph Viewer, Cached Currency Tools, Timer / Stopwatch, Color Picker, World Clock, Reminders, Taskers, Clean Reader Mode, Highlights + Notes, and QR Generator / Scanner.
-      - QR scanning now supports bundled general-purpose decoding through zxing-cpp, with a PyPad-local fallback path for generated matrix codes.
-      - Editor right-click selection menus now expose built-in tools directly and auto-seed relevant dialogs from the current selection.
-      - Tool dialogs continue to share help, copy, insert, save, and persisted local tool state.
+      - PyPad 1.8.4 improves reliability across Offline Writing Studio, QR generation, settings search highlighting, and hidden developer-mode activation.
+      - Offline Writing Studio now times out slow local LanguageTool warmup and falls back to rule-based analysis instead of hanging the app.
+      - Currency Converter replaces the older cached-currency naming and now supports manual live-rate refresh with offline-safe fallback.
+      - QR generation now emits scanner-friendly output with a proper quiet zone and cleaner saved-image scaling.
+      - The Windows uninstaller now asks whether to preserve or delete PyPad-managed local settings and app data.
       - Detailed changelog: CHANGELOG.md
     </description>
     <sha256>0000000000000000000000000000000000000000000000000000000000000000</sha256>
     <enclosure
-      url="https://github.com/ne0gl1tch20/pypad/releases/download/1.8.3/PyPad-Setup-1.8.3.exe"
+      url="https://github.com/ne0gl1tch20/pypad/releases/download/1.8.4/PyPad-Setup-1.8.4.exe"
       type="application/octet-stream" />
   </item>
 </updates>

@@ -4,6 +4,28 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, and this project uses Semantic Versioning.
 
+## [1.8.4] - 2026-03-19
+
+### Please Note!
+- Because the team has any other responsibilities, please expect the app to be take longer to update as we're gonna test and find for more bugs, similar from any other production apps.
+
+### Added
+- Currency Converter now supports manual live-rate refresh via `forex-python` while keeping offline cached/default conversion available.
+- The Windows installer/uninstaller now prompts whether PyPad-managed user settings and local app data should be removed during uninstall.
+
+### Changed
+- App/version metadata has been aligned to the `1.8.4` release line across release files, summaries, and update feed metadata.
+- `Cached Currency Tools...` has been renamed to `Currency Converter...` across the built-in tools surface, docs, and app knowledge.
+- Currency status messaging now distinguishes bundled defaults, cached rates, and live rates, while preserving existing settings compatibility.
+- PyInstaller packaging now explicitly bundles `zxing-cpp` runtime pieces plus the packaged `online_plugins` catalog so QR tooling and packaged plugin metadata remain available in frozen builds.
+
+### Fixed
+- Offline Writing Studio now bounds local LanguageTool warmup and falls back to rule-based analysis instead of hanging the app when the local grammar backend is slow or unavailable.
+- QR generation now emits standards-compliant QR images when `zxing-cpp` is available, improving phone-scanner compatibility while preserving the local fallback path.
+- Settings search highlighting now uses theme-safe property styling instead of per-widget stylesheet overrides that could produce ghost black text artifacts.
+- Hidden developer mode in the About dialog now requires 10 clicks instead of 3.
+- Frozen builds now continue to install and execute `plugin.py` files from the writable plugins directory, including plugins installed through Online Plugins mode.
+
 ## [1.8.3] - 2026-03-19
 
 ### Please Note!

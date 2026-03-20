@@ -67,10 +67,11 @@ def decode_matrix_payload(matrix: list[list[int]]) -> str:
     return payload.decode("utf-8", errors="replace")
 
 
-def matrix_to_image(matrix: list[list[int]], cell_size: int = 8) -> QImage:
-    """Render the matrix into an image."""
+def matrix_to_image(matrix: list[list[int]], cell_size: int = 12, quiet_zone: int = 4) -> QImage:
+    """Render the matrix into an image with a scanner-friendly quiet zone."""
     size = len(matrix)
-    image = QImage(size * cell_size, size * cell_size, QImage.Format_RGB32)
+    total_cells = size + (quiet_zone * 2)
+    image = QImage(total_cells * cell_size, total_cells * cell_size, QImage.Format_RGB32)
     image.fill(Qt.white)
     painter = QPainter(image)
     painter.setPen(Qt.NoPen)
@@ -78,14 +79,34 @@ def matrix_to_image(matrix: list[list[int]], cell_size: int = 8) -> QImage:
     for row, values in enumerate(matrix):
         for col, bit in enumerate(values):
             if bit:
-                painter.drawRect(col * cell_size, row * cell_size, cell_size, cell_size)
+                painter.drawRect(
+                    (col + quiet_zone) * cell_size,
+                    (row + quiet_zone) * cell_size,
+                    cell_size,
+                    cell_size,
+                )
     painter.end()
     return image
 
 
 def image_to_matrix(image: QImage, size: int = 29) -> list[list[int]]:
     """Sample a saved image back into matrix form."""
-    scaled = image.convertToFormat(QImage.Format_RGB32).scaled(size, size)
+    converted = image.convertToFormat(QImage.Format_RGB32)
+    min_x = converted.width()
+    min_y = converted.height()
+    max_x = -1
+    max_y = -1
+    for row in range(converted.height()):
+        for col in range(converted.width()):
+            color = QColor(converted.pixel(col, row))
+            if color.value() < 200:
+                min_x = min(min_x, col)
+                min_y = min(min_y, row)
+                max_x = max(max_x, col)
+                max_y = max(max_y, row)
+    if max_x >= min_x and max_y >= min_y:
+        converted = converted.copy(min_x, min_y, max_x - min_x + 1, max_y - min_y + 1)
+    scaled = converted.scaled(size, size, Qt.IgnoreAspectRatio, Qt.FastTransformation)
     matrix: list[list[int]] = []
     for row in range(size):
         values: list[int] = []
@@ -107,6 +128,22 @@ def qimage_to_zxing_buffer(image: QImage):
         start = row * stride
         packed.extend(raw[start : start + row_width])
     return memoryview(bytes(packed)).cast("B", shape=(gray.height(), gray.width()))
+
+
+def create_qr_image(payload: str, scale: int = 8) -> QImage:
+    """Create a standards-compliant QR image when zxing-cpp is available."""
+    if zxingcpp is not None:
+        barcode = zxingcpp.create_barcode(payload, zxingcpp.BarcodeFormat.QRCode)
+        source = zxingcpp.write_barcode_to_image(barcode, scale)
+        source_bytes = memoryview(source).tobytes()
+        return QImage(
+            source_bytes,
+            source.shape[1],
+            source.shape[0],
+            source.shape[1],
+            QImage.Format_Grayscale8,
+        ).copy()
+    return matrix_to_image(encode_matrix_payload(payload))
 
 
 def decode_any_qr_image(image: QImage) -> str:
@@ -157,11 +194,11 @@ class QRToolDialog(ToolDialogBase):
             self.payload_edit.setText(seed)
 
     def generate(self) -> None:
-        matrix = encode_matrix_payload(self.payload_edit.text().strip())
-        image = matrix_to_image(matrix)
+        payload = self.payload_edit.text().strip()
+        image = create_qr_image(payload)
         self._current_image = image
-        self.preview_label.setPixmap(QPixmap.fromImage(image).scaled(180, 180, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-        self.output.setPlainText(self.payload_edit.text().strip())
+        self.preview_label.setPixmap(QPixmap.fromImage(image).scaled(220, 220, Qt.KeepAspectRatio, Qt.FastTransformation))
+        self.output.setPlainText(payload)
 
     def scan_image(self) -> None:
         path, _ = QFileDialog.getOpenFileName(self, "Open PyPad QR Image", str(Path.cwd()), "Images (*.png *.bmp *.jpg)")

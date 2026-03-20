@@ -2,9 +2,15 @@
 
 from importlib.util import find_spec
 
+from PyInstaller.utils.hooks import collect_dynamic_libs, collect_submodules
+
+binaries = []
 hiddenimports = []
 if find_spec("PySide6.Qsci") is not None:
     hiddenimports.append("PySide6.Qsci")
+if find_spec("zxingcpp") is not None:
+    hiddenimports += collect_submodules("zxingcpp")
+    binaries += collect_dynamic_libs("zxingcpp")
 
 # Exclude heavyweight optional/dev stacks that are not required at runtime.
 # They can be pulled in transitively by optional AI SDK dependencies.
@@ -33,10 +39,11 @@ excludes = [
 a = Analysis(
     ['src\\run.py'],
     pathex=['src'],
-    binaries=[],
+    binaries=binaries,
     datas=[
         ('assets', 'assets'),
         ('plugins', 'plugins'),
+        ('online_plugins', 'online_plugins'),
     ],
     hiddenimports=hiddenimports,
     hookspath=[],

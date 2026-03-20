@@ -56,3 +56,37 @@ Root: HKCU; Subkey: "Software\Classes\pypad.txtfile\shell\open\command"; ValueTy
 Root: HKCU; Subkey: "Software\Classes\*\shell\Open with PyPad"; ValueType: string; ValueName: ""; ValueData: "Open with PyPad"; Flags: uninsdeletekey; Tasks: ctx_openwith
 Root: HKCU; Subkey: "Software\Classes\*\shell\Open with PyPad"; ValueType: string; ValueName: "Icon"; ValueData: "{app}\{#MyAppExeName},0"; Flags: uninsdeletekey; Tasks: ctx_openwith
 Root: HKCU; Subkey: "Software\Classes\*\shell\Open with PyPad\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyAppExeName}"" ""%1"""; Flags: uninsdeletekey; Tasks: ctx_openwith
+
+[Code]
+procedure RemovePyPadUserData();
+var
+  LegacyDir: string;
+  PypadDir: string;
+begin
+  LegacyDir := ExpandConstant('{userappdata}\notepadclone');
+  PypadDir := ExpandConstant('{userappdata}\pypad');
+
+  if DirExists(LegacyDir) then
+    DelTree(LegacyDir, True, True, True);
+  if DirExists(PypadDir) then
+    DelTree(PypadDir, True, True, True);
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  Response: Integer;
+begin
+  if CurUninstallStep <> usPostUninstall then
+    exit;
+
+  Response := MsgBox(
+    'Do you want to remove PyPad settings and local app data?' + #13#10#13#10 +
+    'Choose No to keep your settings, caches, reminders, and plugins for a future reinstall.' + #13#10 +
+    'Choose Yes to delete only PyPad-managed data in your user AppData folders.',
+    mbConfirmation,
+    MB_YESNO or MB_DEFBUTTON2
+  );
+
+  if Response = IDYES then
+    RemovePyPadUserData();
+end;

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass
 import importlib
 import re
@@ -73,6 +74,8 @@ class WritingAnalysis:
     ai_score: int
     ai_signals: list[str]
     stats: dict[str, int]
+    grammar_backend: str = "rule-based"
+    grammar_backend_status: str = ""
 
 
 def offline_writing_tools_available() -> bool:
@@ -105,6 +108,22 @@ def get_or_create_language_tool(language: str):
             tool = language_tool_python.LanguageTool(language)
             _LANGUAGE_TOOL_CACHE[language] = tool
     return tool
+
+
+def warm_language_tool(language: str, *, timeout_sec: float = 8.0) -> tuple[bool, str]:
+    """Warm the optional LanguageTool backend with a timeout so UI flows fail open."""
+    if language_tool_python is None:
+        return False, "language_tool_python is unavailable."
+    timeout = max(0.5, float(timeout_sec or 8.0))
+    with ThreadPoolExecutor(max_workers=1, thread_name_prefix="lt-warmup") as executor:
+        future = executor.submit(get_or_create_language_tool, language)
+        try:
+            future.result(timeout=timeout)
+        except FuturesTimeoutError:
+            return False, f"Local LanguageTool initialization exceeded {timeout:.1f}s."
+        except Exception as exc:
+            return False, str(exc) or "Local LanguageTool initialization failed."
+    return True, ""
 
 
 def _stats(text: str) -> dict[str, int]:
@@ -214,11 +233,22 @@ def analyze_writing(text: str, *, settings: dict[str, Any] | None = None, langua
     probe = str(text or "")
     stats = _stats(probe)
     suggestions = _rule_based_suggestions(probe, settings)
+    grammar_backend = "rule-based"
+    grammar_backend_status = ""
     if bool((settings or {}).get("writing_tools_use_language_tool", True)):
         suggestions.extend(_language_tool_suggestions(probe, language))
+        if supports_language_tool():
+            grammar_backend = "language-tool"
     ai_score, ai_signals = estimate_ai_likelihood(probe, settings=settings)
     suggestions.sort(key=lambda row: (row.start, row.end, row.category))
-    return WritingAnalysis(suggestions=suggestions, ai_score=ai_score, ai_signals=ai_signals, stats=stats)
+    return WritingAnalysis(
+        suggestions=suggestions,
+        ai_score=ai_score,
+        ai_signals=ai_signals,
+        stats=stats,
+        grammar_backend=grammar_backend,
+        grammar_backend_status=grammar_backend_status,
+    )
 
 
 def estimate_ai_likelihood(text: str, *, settings: dict[str, Any] | None = None) -> tuple[int, list[str]]:

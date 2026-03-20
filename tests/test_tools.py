@@ -17,12 +17,12 @@ from pypad.app_settings.defaults import build_default_settings
 from pypad.ui.system.reminders import ReminderStore
 from pypad.ui.tools.annotations_tool import AnnotationsToolDialog
 from pypad.ui.tools.color_picker_tool import ColorPickerToolDialog, color_to_hsl_string
-from pypad.ui.tools.currency_tool import CurrencyToolDialog, convert_currency
+from pypad.ui.tools.currency_tool import CurrencyToolDialog, _normalize_rates, convert_currency
 from pypad.ui.tools.equation_solver_tool import EquationSolverToolDialog, solve_linear_equation, solve_quadratic
 from pypad.ui.tools.finance_tool import FinanceToolDialog, calculate_finance_result
 from pypad.ui.tools.graph_viewer_tool import GraphViewerToolDialog, sample_expression_points
 from pypad.ui.tools.password_tool import PasswordToolDialog, build_password, password_strength
-from pypad.ui.tools.qr_tool import decode_any_qr_image, decode_matrix_payload, encode_matrix_payload, matrix_to_image, qimage_to_zxing_buffer
+from pypad.ui.tools.qr_tool import create_qr_image, decode_any_qr_image, decode_matrix_payload, encode_matrix_payload, image_to_matrix, matrix_to_image, qimage_to_zxing_buffer
 from pypad.ui.tools.random_number_tool import RandomNumberToolDialog, generate_random_numbers
 from pypad.ui.tools.reader_mode_tool import ReaderModeToolDialog
 from pypad.ui.tools.reminders_tool import RemindersToolDialog, summarize_reminders
@@ -112,6 +112,7 @@ class BuiltInToolTests(unittest.TestCase):
 
     def test_currency_converter_uses_cached_rates(self) -> None:
         self.assertAlmostEqual(convert_currency(10.0, "USD", "EUR", {"USD": 1.0, "EUR": 0.5}), 5.0, places=6)
+        self.assertEqual(_normalize_rates({"eur": "0.5"}), {"EUR": 0.5, "USD": 1.0})
 
     def test_graph_sampler_produces_points(self) -> None:
         points = sample_expression_points("x^2", -2.0, 2.0, steps=5)
@@ -125,6 +126,16 @@ class BuiltInToolTests(unittest.TestCase):
     def test_qr_decoder_falls_back_to_pypad_matrix_images(self) -> None:
         payload = "offline-fallback"
         image = matrix_to_image(encode_matrix_payload(payload))
+        self.assertEqual(decode_any_qr_image(image), payload)
+
+    def test_qr_sampler_trims_quiet_zone_before_decoding(self) -> None:
+        matrix = encode_matrix_payload("quiet-zone")
+        image = matrix_to_image(matrix, cell_size=10, quiet_zone=5)
+        self.assertEqual(image_to_matrix(image), matrix)
+
+    def test_create_qr_image_round_trips_through_decoder(self) -> None:
+        payload = "Hello!"
+        image = create_qr_image(payload)
         self.assertEqual(decode_any_qr_image(image), payload)
 
     def test_qimage_to_zxing_buffer_matches_general_decoder_contract(self) -> None:
@@ -186,6 +197,7 @@ class BuiltInToolTests(unittest.TestCase):
         self.assertIn("equation_solver", controller.actions)
         self.assertIn("graph_viewer", controller.actions)
         self.assertIn("currency_converter", controller.actions)
+        self.assertEqual(controller.actions["currency_converter"].text(), "Currency Converter...")
         self.assertIn("reminders_hub", controller.actions)
         self.assertIn("taskers", controller.actions)
         self.assertIn("reader_mode", controller.actions)

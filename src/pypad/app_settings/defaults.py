@@ -200,6 +200,7 @@ def build_default_settings(*, default_style: str, font_family: str, font_size: i
         "task_lists": {},
         "currency_rates_cache": {},
         "currency_rates_last_sync": "",
+        "currency_rates_source": "bundled",
         "reader_mode_defaults": {},
         "snippets": {},
         "template_packs": {},

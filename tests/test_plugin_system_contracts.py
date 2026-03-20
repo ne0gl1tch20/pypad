@@ -369,6 +369,114 @@ class PluginScaffoldTests(unittest.TestCase):
             except Exception:
                 pass
 
+    def test_frozen_build_loads_online_installed_plugin_from_writable_plugins_dir(self) -> None:
+        tmp_root = ROOT / "tests_tmp"
+        meipass_root = tmp_root / f"meipass_plugins_{time.time_ns()}"
+        writable_plugins = tmp_root / f"plugins_frozen_{time.time_ns()}"
+        packaged_online = meipass_root / "online_plugins"
+        meipass_root.mkdir(parents=True, exist_ok=True)
+        writable_plugins.mkdir(parents=True, exist_ok=True)
+        packaged_online.mkdir(parents=True, exist_ok=True)
+        (packaged_online / "catalog.json").write_text(
+            json.dumps(
+                {
+                    "plugins": [
+                        {
+                            "id": "online_demo",
+                            "name": "Online Demo",
+                            "description": "Frozen-mode online plugin",
+                            "source": "online_plugins/online_demo",
+                            "repo": "https://github.com/example/repo",
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        plugin_payloads = {
+            "plugin.json": json.dumps(
+                {
+                    "id": "online_demo",
+                    "name": "Online Demo",
+                    "version": "1.0.0",
+                    "plugin_api_version": "1.0",
+                    "permissions": ["menu"],
+                }
+            ),
+            "plugin.py": (
+                "class Plugin:\n"
+                "    def __init__(self, api) -> None:\n"
+                "        self.api = api\n"
+                "    def on_load(self) -> None:\n"
+                "        self.api.show_status('online loaded')\n"
+            ),
+        }
+
+        class _FakeResponse:
+            def __init__(self, payload: bytes) -> None:
+                self._payload = payload
+
+            def read(self) -> bytes:
+                return self._payload
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb) -> bool:
+                return False
+
+        def _fake_urlopen(url: str, timeout: float = 0.0):
+            _ = timeout
+            name = str(url).rsplit("/", 1)[-1]
+            if name not in plugin_payloads:
+                raise RuntimeError(f"unexpected url {url}")
+            return _FakeResponse(plugin_payloads[name].encode("utf-8"))
+
+        window = _PluginTestWindow()
+        old_frozen = getattr(sys, "frozen", None)
+        old_meipass = getattr(sys, "_MEIPASS", None)
+        try:
+            with patch("pypad.ui.features.advanced_features.get_plugins_dir_path", return_value=writable_plugins):
+                host = PluginHost(window)
+                sys.frozen = True
+                sys._MEIPASS = str(meipass_root)
+                rows = host.load_online_plugin_catalog()
+                self.assertEqual(len(rows), 1)
+                self.assertEqual(rows[0]["id"], "online_demo")
+                with patch("pypad.ui.features.advanced_features.urlopen", side_effect=_fake_urlopen):
+                    installed = host.install_online_plugin(rows[0])
+                self.assertTrue((installed / "plugin.py").exists())
+                discovered = host.discover()
+                rec = next((x for x in discovered if x.plugin_id == "online_demo"), None)
+                self.assertIsNotNone(rec)
+                assert rec is not None
+                window.settings["enabled_plugins"] = ["online_demo"]
+                window.settings["trusted_plugin_hashes"] = {"online_demo": rec.digest.lower()}
+                with patch.object(PluginHost, "_trust_prompt", return_value=True):
+                    host.reload()
+                runtime = next((x for x in host.records if x.plugin_id == "online_demo"), None)
+                self.assertIsNotNone(runtime)
+                assert runtime is not None
+                self.assertIsNotNone(runtime.instance)
+                self.assertTrue(any("online loaded" in msg for msg in window.messages))
+        finally:
+            if old_frozen is None:
+                try:
+                    delattr(sys, "frozen")
+                except Exception:
+                    pass
+            else:
+                sys.frozen = old_frozen
+            if old_meipass is None:
+                try:
+                    delattr(sys, "_MEIPASS")
+                except Exception:
+                    pass
+            else:
+                sys._MEIPASS = old_meipass
+            shutil.rmtree(meipass_root, ignore_errors=True)
+            shutil.rmtree(writable_plugins, ignore_errors=True)
+
 
 class PluginCompatibilityTests(unittest.TestCase):
     @classmethod

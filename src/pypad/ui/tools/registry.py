@@ -42,7 +42,7 @@ class BuiltInToolsController:
         ToolDescriptor("unit_converter", "Unit Converter...", "toolUnitConverterAction", "open_unit_converter_tool"),
         ToolDescriptor("equation_solver", "Equation Solver...", "toolEquationSolverAction", "open_equation_solver_tool"),
         ToolDescriptor("graph_viewer", "Offline Graph Viewer...", "toolGraphViewerAction", "open_graph_viewer_tool"),
-        ToolDescriptor("currency_converter", "Cached Currency Tools...", "toolCurrencyConverterAction", "open_currency_converter_tool"),
+        ToolDescriptor("currency_converter", "Currency Converter...", "toolCurrencyConverterAction", "open_currency_converter_tool"),
         ToolDescriptor("timer_stopwatch", "Timer / Stopwatch...", "toolTimerStopwatchAction", "open_timer_stopwatch_tool"),
         ToolDescriptor("color_picker", "Color Picker...", "toolColorPickerAction", "open_color_picker_tool"),
         ToolDescriptor("world_clock", "World Clock...", "toolWorldClockAction", "open_world_clock_tool"),

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -11,7 +12,7 @@ if str(SRC) not in sys.path:
 
 from pypad.app_settings.coercion import migrate_settings
 from pypad.app_settings.defaults import build_default_settings
-from pypad.ui.editor.offline_writing_tools import analyze_writing, estimate_ai_likelihood, humanize_text, paraphrase_text
+from pypad.ui.editor.offline_writing_tools import analyze_writing, estimate_ai_likelihood, humanize_text, paraphrase_text, warm_language_tool
 
 
 class OfflineWritingToolsTests(unittest.TestCase):
@@ -42,6 +43,13 @@ class OfflineWritingToolsTests(unittest.TestCase):
         messages = [row.message for row in result.suggestions]
         self.assertTrue(any("Repeated word" in row for row in messages))
         self.assertTrue(any("capitalization" in row.lower() for row in messages))
+        self.assertEqual(result.grammar_backend, "rule-based")
+
+    def test_warm_language_tool_fails_open_when_dependency_missing(self) -> None:
+        with patch("pypad.ui.editor.offline_writing_tools.language_tool_python", None):
+            warmed, message = warm_language_tool("en-US", timeout_sec=0.5)
+        self.assertFalse(warmed)
+        self.assertIn("unavailable", message)
 
     def test_paraphrase_and_humanize_transform_text(self) -> None:
         self.assertIn("to", paraphrase_text("In order to improve, we use data."))

@@ -1375,17 +1375,19 @@ class SettingsDialog(QDialog):
     def _apply_search_filter(self, text: str) -> None:
         """Filter the navigation list and highlight matching controls based on the search query."""
         query = text.strip().lower()
-        preview_settings = self._theme_probe_preview_settings()
-        tokens = build_tokens_from_settings(preview_settings)
         for widget in self._highlighted_widgets:
-            widget.setStyleSheet("")
+            widget.setProperty("searchMatch", False)
+            widget.style().unpolish(widget)
+            widget.style().polish(widget)
         self._highlighted_widgets.clear()
         counts = [0] * len(self._nav_base_labels)
         if query:
             for idx, label, widget in self._search_entries:
                 if query in label:
                     counts[idx] += 1
-                    widget.setStyleSheet(f"border: 1px solid {tokens.accent};")
+                    widget.setProperty("searchMatch", True)
+                    widget.style().unpolish(widget)
+                    widget.style().polish(widget)
                     self._highlighted_widgets.append(widget)
             matching = [i for i, c in enumerate(counts) if c > 0]
             if len(matching) == 1:

@@ -93,7 +93,7 @@ Saved settings are merged with these defaults so the app can add new options wit
 
 ## Project Status
 
-PyPad is currently at version `1.8.3` and remains under active development. The app now includes a larger first-party local tools surface alongside its editor, workspace, AI, recovery, and productivity features, including calculators, converters, reminders/taskers, reader mode, annotations, graphing, cached currency tools, and QR generation/scanning.
+PyPad is currently at version `1.8.4` and remains under active development. The app now includes a larger first-party local tools surface alongside its editor, workspace, AI, recovery, and productivity features, including calculators, converters, reminders/taskers, reader mode, annotations, graphing, a currency converter with cached/live refresh, and QR generation/scanning.
 
 Development happens during free time, so updates may be irregular and some newer surfaces may continue evolving between releases.
 
@@ -102,7 +102,7 @@ Development happens during free time, so updates may be irregular and some newer
 - Fast multi-tab editing
 - Quick Open (`Ctrl+Alt+P`) for files, symbols, and commands
 - Command Palette (`Ctrl+Shift+P`) for quick commands
-- Built-in offline tools for random numbers, passwords, finance math, scientific calculation, unit conversion, equation solving, offline graphing, cached currency conversion, color picking, world clocks, timer/stopwatch workflows, reminders, taskers, reader mode, highlights/notes, and QR generation/scanning
+- Built-in offline tools for random numbers, passwords, finance math, scientific calculation, unit conversion, equation solving, offline graphing, currency conversion with offline fallback, color picking, world clocks, timer/stopwatch workflows, reminders, taskers, reader mode, highlights/notes, and QR generation/scanning
 - General-purpose QR scanning now uses bundled `zxing-cpp` decoding when available, with a local fallback path for PyPad-generated codes
 - Editor right-click selection menus now surface built-in tools and can auto-seed relevant dialogs from the current selection
 - AI assistant dock with apply actions

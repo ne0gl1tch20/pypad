@@ -114,10 +114,20 @@ class _OfflineWritingAnalysisWorker(QObject):
     def run(self) -> None:
         """Analyze the current text and emit the result back to the UI thread."""
         try:
+            grammar_backend_status = ""
             if bool(self._settings.get("writing_tools_use_language_tool", True)) and supports_language_tool():
                 self.progress.emit("Initializing local LanguageTool server...")
-                get_or_create_language_tool(self._language)
-                self.progress.emit("Analyzing with local LanguageTool...")
+                warmed, message = warm_language_tool(self._language, timeout_sec=8.0)
+                if warmed:
+                    self.progress.emit("Analyzing with local LanguageTool...")
+                else:
+                    grammar_backend_status = str(message or "Local LanguageTool initialization failed.")
+                    self.progress.emit("LanguageTool startup timed out; continuing with rule-based analysis...")
+                    self._settings["writing_tools_use_language_tool"] = False
+                    _LOGGER.warning(
+                        "Offline Writing Studio falling back to rule-based analysis: %s",
+                        grammar_backend_status,
+                    )
             else:
                 self.progress.emit("Analyzing writing...")
             analysis = analyze_writing(
@@ -125,6 +135,8 @@ class _OfflineWritingAnalysisWorker(QObject):
                 settings=self._settings,
                 language=self._language,
             )
+            if grammar_backend_status:
+                analysis.grammar_backend_status = grammar_backend_status
         except Exception as exc:
             self.failed.emit(str(exc) or "Unknown writing analysis error.")
             return
@@ -263,12 +275,12 @@ from pypad.ui.editor.quick_open_dialog import QuickOpenDialog, QuickOpenEntry, e
 from pypad.ui.editor.offline_writing_tools import (
     analyze_writing,
     apply_suggestion,
-    get_or_create_language_tool,
     humanize_text,
     offline_writing_tools_available,
     paraphrase_text,
     refresh_language_tool_support,
     supports_language_tool,
+    warm_language_tool,
 )
 from pypad.ui.editor.language_tool_installer import (
     LOCAL_SERVER_ESTIMATE_MB,
@@ -11361,19 +11373,21 @@ class MiscMixin(
                 if link == "devmode":
                     last = float(getattr(self, "_developer_mode_link_ts", 0.0))
                     clicks = int(getattr(self, "_developer_mode_link_clicks", 0))
+                    target = 10
                 else:
                     last = float(getattr(self, "_easter_egg_link_ts", 0.0))
                     clicks = int(getattr(self, "_easter_egg_link_clicks", 0))
+                    target = 3
                 clicks = clicks + 1 if now - last <= 2.5 else 1
                 if link == "devmode":
                     self._developer_mode_link_ts = now
                     self._developer_mode_link_clicks = clicks
-                    self.log_event("Info", f"About dialog developer mode link clicked ({clicks}/3)")
+                    self.log_event("Info", f"About dialog developer mode link clicked ({clicks}/{target})")
                 else:
                     self._easter_egg_link_ts = now
                     self._easter_egg_link_clicks = clicks
-                    self.log_event("Info", f"About dialog easter egg link clicked ({clicks}/3)")
-                if clicks >= 3:
+                    self.log_event("Info", f"About dialog easter egg link clicked ({clicks}/{target})")
+                if clicks >= target:
                     if link == "devmode":
                         self._developer_mode_link_clicks = 0
                         self.toggle_developer_mode_enabled()
@@ -12645,7 +12659,12 @@ Pypad User Guide
         apply_dialog_theme_from_window(self, dlg)
         layout = QVBoxLayout(dlg)
         summary = QLabel(dlg)
-        backend_label = "LanguageTool local grammar enabled" if supports_language_tool() else "Rule-based grammar only"
+        backend_name = str(getattr(analysis, "grammar_backend", "rule-based") or "rule-based")
+        if backend_name == "language-tool":
+            backend_label = "LanguageTool local grammar enabled"
+        else:
+            backend_label = "Rule-based grammar only"
+        backend_status = str(getattr(analysis, "grammar_backend_status", "") or "").strip()
         summary.setText(
             f"Scope: {'Selection' if target_is_selection else 'Document'} | "
             f"Words: {analysis.stats['words']} | Suggestions: {len(analysis.suggestions)} | "
@@ -12653,6 +12672,11 @@ Pypad User Guide
         )
         summary.setWordWrap(True)
         layout.addWidget(summary)
+        if backend_status:
+            backend_note = QLabel(backend_status, dlg)
+            backend_note.setWordWrap(True)
+            backend_note.setProperty("status", "warning")
+            layout.addWidget(backend_note)
         transform_row = QHBoxLayout()
         mode_combo = QComboBox(dlg)
         mode_combo.addItems(["Analyze only", "Paraphrase", "Humanize"])
