@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QComboBox,
@@ -140,8 +140,11 @@ class KeyCaptureDialog(QDialog):
         self.accept()
 
 
-class ShortcutMapperDialog(QDialog):
-    """Represent the shortcut mapper dialog."""
+class ShortcutMapperWidget(QWidget):
+    """Reusable shortcut mapper surface."""
+
+    saved = Signal()
+
     def __init__(
         self,
         parent: "Notepad",
@@ -149,16 +152,15 @@ class ShortcutMapperDialog(QDialog):
         default_shortcuts: dict[str, list[str]],
         settings: dict,
     ) -> None:
-        """Build the shortcut mapper dialog and initialize its editable shortcut table."""
+        """Build the shortcut mapper widget and initialize its editable shortcut table."""
         super().__init__(parent)
-        self.setWindowTitle("Shortcut Mapper")
-        self.resize(860, 620)
         self._window = parent
         self._actions = actions
         self._defaults = default_shortcuts
         self._settings = settings
         self._action_by_id = {row.action_id: row for row in actions}
         self._working_map: dict[str, str | list[str]] = dict(settings.get("shortcut_map", {}))
+        self._original_settings = dict(settings)
 
         root = QVBoxLayout(self)
         top = QHBoxLayout()
@@ -200,13 +202,18 @@ class ShortcutMapperDialog(QDialog):
             self.table.setCellWidget(row_idx, 2, set_btn)
             self.table.setCellWidget(row_idx, 3, reset_btn)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, self)
         self.apply_btn = QPushButton("Apply", self)
-        buttons.addButton(self.apply_btn, QDialogButtonBox.ButtonRole.ApplyRole)
-        root.addWidget(buttons)
-        buttons.accepted.connect(self._accept_with_apply)
-        buttons.rejected.connect(self.reject)
+        self.save_btn = QPushButton("Save", self)
+        self.revert_btn = QPushButton("Revert", self)
+        actions_row = QHBoxLayout()
+        actions_row.addWidget(self.save_btn)
+        actions_row.addWidget(self.revert_btn)
+        actions_row.addWidget(self.apply_btn)
+        actions_row.addStretch(1)
+        root.addLayout(actions_row)
         self.apply_btn.clicked.connect(self.apply_live)
+        self.save_btn.clicked.connect(self._save)
+        self.revert_btn.clicked.connect(self._handle_cancel)
 
         self.import_btn.clicked.connect(self._import_json)
         self.export_btn.clicked.connect(self._export_json)
@@ -346,8 +353,46 @@ class ShortcutMapperDialog(QDialog):
         self._window.apply_shortcut_settings()
         self._window.save_settings_to_disk()
 
-    def _accept_with_apply(self) -> None:
-        """Accept with apply."""
+    def _save(self) -> None:
+        """Persist the shortcut settings."""
         self.apply_live()
-        self.accept()
+        self.saved.emit()
+
+    def _handle_cancel(self) -> None:
+        """Restore the original shortcut mapping."""
+        self._working_map = dict(self._original_settings.get("shortcut_map", {}))
+        self.preset_combo.setCurrentText(str(self._original_settings.get("shortcut_profile", "vscode")))
+        self.conflict_combo.setCurrentText(str(self._original_settings.get("shortcut_conflict_policy", "warn")))
+        self._refresh_table()
+
+
+class ShortcutMapperDialog(QDialog):
+    """Modal wrapper for the reusable shortcut mapper widget."""
+
+    def __init__(
+        self,
+        parent: "Notepad",
+        actions: list[ShortcutActionRow],
+        default_shortcuts: dict[str, list[str]],
+        settings: dict,
+        *,
+        embedded_mode: bool = False,
+    ) -> None:
+        """Build the dialog wrapper around the reusable shortcut mapper widget."""
+        super().__init__(parent)
+        self.setWindowTitle("Shortcut Mapper")
+        self.resize(860, 620)
+
+        root = QVBoxLayout(self)
+        self.widget = ShortcutMapperWidget(parent, actions, default_shortcuts, settings)
+        root.addWidget(self.widget, 1)
+
+        if not embedded_mode:
+            buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, self)
+            buttons.rejected.connect(self.reject)
+            root.addWidget(buttons)
+
+    def apply_live(self) -> None:
+        """Proxy apply to the reusable widget."""
+        self.widget.apply_live()
 

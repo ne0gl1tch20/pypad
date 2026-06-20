@@ -17,11 +17,11 @@ VSVersionInfo(
         [
         StringStruct('CompanyName', 'ne0gl1tch20'),
         StringStruct('FileDescription', 'Pypad'),
-        StringStruct('FileVersion', '2.0.0.0'),
+        StringStruct('FileVersion', '2.0.1.0'),
         StringStruct('InternalName', 'pypad'),
         StringStruct('OriginalFilename', 'run.exe'),
         StringStruct('ProductName', 'Pypad'),
-        StringStruct('ProductVersion', '2.0.0.0')
+        StringStruct('ProductVersion', '2.0.1.0')
         ])
       ]),
     VarFileInfo([VarStruct('Translation', [0x0409, 1200])])

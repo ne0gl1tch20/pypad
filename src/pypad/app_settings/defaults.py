@@ -87,6 +87,7 @@ def build_default_settings(*, default_style: str, font_family: str, font_size: i
         "show_find_panel": False,
         "show_main_toolbar": True,
         "ui_density": "comfortable",
+        "app_zoom_scale_percent": 100,
         "icon_size_px": 18,
         "toolbar_label_mode": "icons_only",
         "simple_mode": False,

@@ -237,6 +237,30 @@ def _startup_log(message: str) -> None:
     LOGGER.debug(message)
 
 
+def _is_benign_qt_noise(message: str) -> bool:
+    """Return whether one Qt log line is known-benign startup/runtime noise."""
+    text = str(message or "").strip()
+    if not text:
+        return False
+    if text.startswith("OpenType support missing for ") and ", script " in text:
+        return True
+    benign_prefixes = (
+        "QWindowsWindow::setGeometry: Unable to set geometry",
+        "This plugin does not support propagateSizeHints()",
+        "Unknown property ",
+        "QPainter::begin: Paint device returned engine == 0, type: ",
+        "QPainter::setRenderHint: Painter must be active to set rendering hints",
+        "QPixmap::scaled: Pixmap is a null pixmap",
+    )
+    benign_substrings = (
+        "does not have a window handle",
+        "Cannot set parent, new parent is in a different thread",
+        "QBasicTimer::start: QBasicTimer can only be used with threads started with QThread",
+        "QSocketNotifier: Can only be used with threads started with QThread",
+    )
+    return text.startswith(benign_prefixes) or any(token in text for token in benign_substrings)
+
+
 if PORTABLE_MODE_STATE.enabled and PORTABLE_MODE_STATE.root is not None:
     _startup_log(f"[Startup] Portable mode enabled using local storage at: {PORTABLE_MODE_STATE.root}")
 
@@ -272,6 +296,9 @@ def _install_startup_exception_hooks() -> None:
         # Qt can pass either enum values or compatibility shims depending on bindings,
         # so normalize the mode into a readable label first.
         """Capture Qt log messages and persist warnings or worse during startup."""
+        text = str(message or "").strip()
+        if _is_benign_qt_noise(text):
+            return
         if isinstance(mode, QtMsgType):
             mode_name = mode.name
         else:
@@ -300,7 +327,7 @@ def _install_startup_exception_hooks() -> None:
                 parts.append(context.function)
             if parts:
                 location = " (" + ":".join(parts) + ")"
-        rendered = f"[Qt:{mode_name}]{location} {message}"
+        rendered = f"[Qt:{mode_name}]{location} {text}"
         if should_persist:
             _save_startup_traceback(rendered)
         else:
@@ -353,6 +380,10 @@ if __name__ == "__main__":
             print(f"Failed to unregister shell menu: {exc}")
             sys.exit(1)
         sys.exit(0)
+
+    # Ensure menu actions are allowed to render icons on platforms/styles that
+    # otherwise suppress them globally.
+    QApplication.setAttribute(Qt.ApplicationAttribute.AA_DontShowIconsInMenus, False)
 
     # Install crash and warning hooks before any substantial GUI work begins.
     _install_startup_exception_hooks()
@@ -438,14 +469,11 @@ if __name__ == "__main__":
     def mark_app_started(window) -> None:
         # Centralize startup completion so timing and splash teardown happen once no
         # matter which code path marks the app as ready.
-        """Record startup completion, close the splash screen, and update startup state."""
+        """Record startup completion and update startup state."""
         if startup_reported[0]:
             return
         startup_reported[0] = True
-        _startup_log("[Startup] App marked started; closing splash and releasing visibility gate.")
-        if splash.isVisible():
-            splash.hide()
-            splash.close()
+        _startup_log("[Startup] App marked started; main window is ready for gated reveal.")
         elapsed_ms = int((perf_counter() - startup_started_at) * 1000)
         elapsed_sec = elapsed_ms / 1000.0
         _startup_log(f"Took {elapsed_ms}ms (or {elapsed_sec:.2f} seconds) to initialize!")
@@ -540,6 +568,24 @@ if __name__ == "__main__":
                     _startup_log(f"Warning: failed to raise/activate main window: {exc}")
             QTimer.singleShot(0, _activate_main_window)
             QTimer.singleShot(0, window.enforce_privacy_lock)
+
+            def _close_splash_after_reveal() -> None:
+                """Dismiss the splash only after the main window has had time to activate."""
+                if not splash.isVisible():
+                    return
+                previous_quit_on_last = app.quitOnLastWindowClosed()
+                app.setQuitOnLastWindowClosed(False)
+                try:
+                    _startup_log("[Startup] Closing splash after main window reveal.")
+                    splash.hide()
+                    splash.close()
+                finally:
+                    QTimer.singleShot(
+                        250,
+                        lambda prev=previous_quit_on_last: app.setQuitOnLastWindowClosed(prev),
+                    )
+
+            QTimer.singleShot(250, _close_splash_after_reveal)
 
         def _check_window_visibility() -> None:
             # Record a delayed visibility snapshot because some startup failures only

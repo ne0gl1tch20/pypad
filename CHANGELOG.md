@@ -4,6 +4,41 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, and this project uses Semantic Versioning.
 
+## [2.0.1] - 2026-03-21
+
+### Changed
+- Settings, Developer Hub, Shortcut Mapper, Gamification Dashboard, Productivity Hub, and Offline Writing Studio can now open inside editor tabs through the new reusable tool-tab host flow instead of relying only on standalone dialogs.
+- Media/image tabs now use a more structured in-tab viewer layout with clearer fallback actions and reusable viewer widgets.
+- Online/offline plugin diagnostics now report clearer source classification for bundled, repo-dev, archive-installed, and online-installed plugins.
+- Preferences now expose an app-wide zoom scale setting in Appearance, and `Ctrl++`, `Ctrl+=`, `Ctrl+-`, and `Ctrl+0` now control live app UI zoom instead of only editor text zoom.
+- Toolbar-driven menus now use themed SVG action icons much more consistently across `Tools`, `Macro`, `Plugins`, `Window`, `Help`, `Play`, and their submenus instead of leaving many entries iconless.
+
+### Added
+- New reusable tool-tab infrastructure:
+  - `src/pypad/ui/editor/tool_tab_host.py`
+  - tool-mode support in `src/pypad/ui/editor/editor_tab.py`
+- New reusable media viewers in `src/pypad/ui/editor/media_viewers.py` for image and media tabs.
+- New reusable Offline Writing Studio widget in `src/pypad/ui/editor/offline_writing_tools.py`.
+- New dedicated themed SVG assets for migrated tool surfaces:
+  - `settings-workbench.svg`
+  - `developer-hub.svg`
+  - `offline-writing-studio.svg`
+  - `gamification-dashboard.svg`
+  - `productivity-hub.svg`
+  - `shortcut-mapper.svg`
+- New themed SVG icon assets for built-in tools and toolbar-menu action coverage, including calculators, converters, reminders, taskers, diagnostics, plugin/workspace tools, quiz/help, and submenu entry icons.
+
+### Fixed
+- Frozen builds now preserve writable plugin install behavior more reliably:
+  - online plugin installs are written into the writable plugins directory
+  - archive installs now normalize plugin manifest source metadata
+  - plugin discovery diagnostics now make frozen-vs-writable source issues easier to trace
+- Preferences no longer hide the `N++` settings pages behind an initial scope switch; N++ pages are now warmed and inserted into the nav consistently after the surface is created.
+- Preferences navigation now correctly recognizes `N++` category names even when they use the newer `N++ • ...` label format.
+- App zoom status labels no longer crash with `NameError: app_zoom_text is not defined`.
+- App zoom shortcuts no longer trigger the full heavyweight settings-apply pipeline, preventing the main window from disappearing/closing during live zoom updates.
+- Built-in Tools actions and other toolbar-menu entries now refresh through the same theme-aware SVG recolor path, fixing missing or stale icons after theme changes.
+
 ## [2.0.0] - 2026-03-20
 
 ### Please Note!

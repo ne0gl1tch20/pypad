@@ -27,15 +27,14 @@ from pypad.ui.features.gamification_system import GamificationSystem
 from pypad.ui.theme.dialog_theme import apply_dialog_theme_from_window
 
 
-class GamificationDashboardDialog(QDialog):
-    """Represent the gamification dashboard dialog."""
+class GamificationDashboardWidget(QWidget):
+    """Represent the reusable gamification dashboard surface."""
+
     def __init__(self, window, gamification: GamificationSystem) -> None:
-        """Build the gamification dashboard dialog and initialize its widgets."""
+        """Build the gamification dashboard widget and initialize its widgets."""
         super().__init__(window)
         self.window = window
         self.gamification = gamification
-        self.setWindowTitle("Gamification Dashboard")
-        self.resize(920, 620)
         apply_dialog_theme_from_window(window, self)
 
         root = QVBoxLayout(self)
@@ -62,9 +61,6 @@ class GamificationDashboardDialog(QDialog):
         self._build_secrets_tab()
         self._build_routines_tab()
 
-        buttons = QDialogButtonBox(QDialogButtonBox.Close, self)
-        buttons.rejected.connect(self.reject)
-        root.addWidget(buttons)
         self.refresh()
 
     def _build_quests_tab(self) -> None:
@@ -304,3 +300,27 @@ class GamificationDashboardDialog(QDialog):
             row for row in rows if not (isinstance(row, dict) and str(row.get("name", "")).strip() == name)
         ]
         self.refresh()
+
+
+class GamificationDashboardDialog(QDialog):
+    """Modal wrapper for the gamification dashboard widget."""
+
+    def __init__(self, window, gamification: GamificationSystem, *, embedded_mode: bool = False) -> None:
+        """Build the dialog wrapper around the reusable gamification dashboard widget."""
+        super().__init__(window)
+        self.setWindowTitle("Gamification Dashboard")
+        self.resize(920, 620)
+        apply_dialog_theme_from_window(window, self)
+
+        root = QVBoxLayout(self)
+        self.widget = GamificationDashboardWidget(window, gamification)
+        root.addWidget(self.widget, 1)
+
+        if not embedded_mode:
+            buttons = QDialogButtonBox(QDialogButtonBox.Close, self)
+            buttons.rejected.connect(self.reject)
+            root.addWidget(buttons)
+
+    def refresh(self) -> None:
+        """Proxy refresh to the reusable dashboard widget."""
+        self.widget.refresh()

@@ -549,20 +549,11 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
 
             if not self._startup_first_paint_ready:
                 self._startup_first_paint_ready = True
-                app = QApplication.instance()
-                startup_ready_cb = app.property("startup_ready_callback") if app is not None else None
-                if callable(startup_ready_cb):
-                    try:
-                        startup_ready_cb(self)
-                    except Exception:
-                        pass
             try:
                 self._offer_crash_recovery()
                 _mark_deferred("crash_recovery")
             except Exception as exc:  # noqa: BLE001
                 self.log_event("Error", f"[Startup] crash recovery offer failed: {exc!r}")
-            finally:
-                self._startup_hold_main_window_visible = False
 
             def _continue_startup_sequence() -> None:
                 """Run heavy startup work after the main window is eligible to show."""
@@ -613,6 +604,17 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
                             f"[Startup] restore_last_session dispatch elapsed={int((time.perf_counter() - restore_started) * 1000)}ms",
                         )
                         _mark_deferred("session_restore_dispatched")
+                if hasattr(self, "_restore_layout_from_settings"):
+                    try:
+                        # Session/workspace restore can change dock visibility after the
+                        # initial settings restore, so apply the saved layout again once
+                        # startup content has finished loading.
+                        self._restore_layout_from_settings()
+                        self._layout_restore_pending_after_show = False
+                        self.log_event("Info", "[Startup] Layout restored after session/workspace startup")
+                        _mark_deferred("layout_restored_final")
+                    except Exception as exc:  # noqa: BLE001
+                        self.log_event("Error", f"[Startup] final layout restore failed: {exc!r}")
                 self.log_event("Info", "[Startup] Session restore completed")
                 self.update_action_states()
                 self.log_event("Info", "Pypad initialized")
@@ -634,7 +636,15 @@ class Notepad(UiSetupMixin, FileOpsMixin, EditOpsMixin, ViewOpsMixin, MiscMixin,
                     # Optional: prewarm can improve first-open latency, but can be heavy
                     # on some systems. Keep it opt-in.
                     QTimer.singleShot(800, self._prewarm_settings_dialog_cache)
+                self._startup_hold_main_window_visible = False
                 self._startup_sequence_done = True
+                app = QApplication.instance()
+                startup_ready_cb = app.property("startup_ready_callback") if app is not None else None
+                if callable(startup_ready_cb):
+                    try:
+                        startup_ready_cb(self)
+                    except Exception:
+                        pass
 
             QTimer.singleShot(0, _continue_startup_sequence)
 

@@ -158,7 +158,7 @@ THEME_SETTINGS_KEYS: tuple[str, ...] = (
 )
 
 from pypad.ui.debug.debug_logs_dialog import DebugLogsDialog
-from pypad.ui.debug.developer_hub_dialog import DeveloperHubDialog
+from pypad.ui.debug.developer_hub_dialog import DeveloperHubDialog, DeveloperHubWidget
 from pypad.ui.debug.startup_recovery_dialog import StartupRecoveryDialog
 from pypad.ui.editor.detachable_tab_bar import DetachableTabBar
 from pypad.ui.editor.editor_tab import EditorTab
@@ -205,7 +205,7 @@ from pypad.ui.editor.advanced_text_tools import build_line_refs, export_line_ref
 from pypad.ui.document.document_fidelity import DocumentFidelityError, export_document_text, render_text_to_html
 from pypad.ui.features.extensibility_ops import discover_window_actions
 from pypad.ui.features.gamification_system import GamificationSystem, XPResult
-from pypad.ui.features.gamification_dashboard_dialog import GamificationDashboardDialog
+from pypad.ui.features.gamification_dashboard_dialog import GamificationDashboardDialog, GamificationDashboardWidget
 from pypad.ui.features.gamification_widgets import CompactGamificationWidget, ProductivityHubDialog, ProductivityHubWidget
 from .notepadpp_pref_runtime import (
     apply_notepadpp_runtime_settings,
@@ -277,10 +277,19 @@ class _TerminalOutputEdit(QTextEdit):
         super().keyPressEvent(event)
 from .settings_dialog import SettingsDialog as SidebarSettingsDialog
 from pypad.ui.features.tutorial_dialog import InteractiveTutorialDialog
-from pypad.ui.editor.shortcut_mapper import PRESET_SHORTCUTS, ShortcutActionRow, ShortcutMapperDialog, parse_shortcut_value, sequence_to_string
+from pypad.ui.editor.shortcut_mapper import (
+    PRESET_SHORTCUTS,
+    ShortcutActionRow,
+    ShortcutMapperDialog,
+    ShortcutMapperWidget,
+    parse_shortcut_value,
+    sequence_to_string,
+)
+from pypad.ui.editor.tool_tab_host import ToolTabDescriptor
 from pypad.ui.editor.command_palette import CommandPaletteDialog, PaletteItem
 from pypad.ui.editor.quick_open_dialog import QuickOpenDialog, QuickOpenEntry, extract_symbol_rows
 from pypad.ui.editor.offline_writing_tools import (
+    OfflineWritingStudioWidget,
     analyze_writing,
     apply_suggestion,
     humanize_text,
@@ -1480,12 +1489,13 @@ class MiscMixin(
         dlg.setWindowTitle(title)
         dlg.resize(760, 560)
         apply_dialog_theme_from_window(self, dlg)
+        tokens = build_tokens_from_settings(self.settings)
         layout = QVBoxLayout(dlg)
         layout.setContentsMargins(14, 14, 14, 14)
         layout.setSpacing(12)
 
         title_label = QLabel(title, dlg)
-        title_label.setStyleSheet("font-size: 18px; font-weight: 700;")
+        title_label.setStyleSheet(f"font-size: {max(16, tokens.space_lg + tokens.space_md)}px; font-weight: 700;")
         subtitle_label = QLabel(subtitle, dlg)
         subtitle_label.setWordWrap(True)
         layout.addWidget(title_label)
@@ -1776,8 +1786,15 @@ class MiscMixin(
             QMessageBox.information(self, "Gamification", "Gamification is disabled in settings.")
             return
         self._onboarding_mark_step("opened_gamification_dashboard")
-        dlg = GamificationDashboardDialog(self, self.gamification)
-        dlg.exec()
+        self.open_tool_tab(
+            ToolTabDescriptor(
+                tool_id="gamification_dashboard",
+                title="Gamification Dashboard",
+                icon_name="gamification-dashboard",
+                singleton=True,
+            ),
+            lambda: GamificationDashboardWidget(self, self.gamification),
+        )
         self._maybe_show_contextual_tip("after_gamification_dashboard")
 
     def start_focus_sprint_mode(self) -> bool:
@@ -3826,12 +3843,30 @@ class MiscMixin(
             "debug_log_count": len(list(getattr(self, "debug_logs", []) or [])),
         }
 
+    @staticmethod
+    def _embed_dialog_tool_widget(dialog: QDialog) -> QWidget:
+        """Retarget a dialog instance into a child widget suitable for a tool tab."""
+        dialog.setWindowFlags(Qt.WindowType.Widget)
+        dialog.setModal(False)
+        dialog.setWindowModality(Qt.WindowModality.NonModal)
+        dialog.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        return dialog
+
     def open_developer_hub(self, initial_tab: str | None = None, *, force: bool = False) -> None:
         """Open the developer diagnostics hub when developer mode is enabled or explicitly forced."""
         if not force and not bool(self.settings.get("developer_mode_enabled", False)):
             return
-        dialog = DeveloperHubDialog(self, initial_tab=initial_tab)
-        dialog.exec()
+        initial = str(initial_tab or "").strip()
+        self.open_tool_tab(
+            ToolTabDescriptor(
+                tool_id="developer_hub",
+                title="Developer Hub",
+                icon_name="developer-hub",
+                singleton=True,
+                preferred_tab_reuse_key=initial.lower(),
+            ),
+            lambda: DeveloperHubWidget(self, initial_tab=initial or None),
+        )
 
     def open_startup_recovery_dialog(self, *, force: bool = False) -> None:
         """Open the dedicated startup recovery dialog when explicitly requested."""
@@ -6069,6 +6104,8 @@ class MiscMixin(
                 app.setCursorFlashTime(desired_cursor_flash)
                 self._last_applied_cursor_flash_time = desired_cursor_flash
         _mark("app_style_cursor")
+        if hasattr(self, "_apply_live_app_zoom_scale"):
+            self._apply_live_app_zoom_scale()
 
         dock_options = QMainWindow.DockOption.AllowTabbedDocks | QMainWindow.DockOption.AllowNestedDocks
         if not bool(self.settings.get("accessibility_reduce_motion", False)):
@@ -6132,6 +6169,7 @@ class MiscMixin(
             tokens.icon_fg,
             tab_close_icon_url,
             int(self.settings.get("icon_size_px", 18)),
+            int(self.settings.get("app_zoom_scale_percent", 100)),
             str(self.settings.get("toolbar_label_mode", "icons_only")),
             bool(effective_dark),
         )
@@ -6149,6 +6187,8 @@ class MiscMixin(
                 self._apply_main_toolbar_icons()
                 self._apply_markdown_icons()
                 self._apply_format_icons()
+                if hasattr(self, "_apply_menu_action_icons"):
+                    self._apply_menu_action_icons()
                 if hasattr(self, "_apply_search_panel_theme"):
                     self._apply_search_panel_theme()
                 if hasattr(self, "_apply_custom_dock_title_bars_theme"):
@@ -6201,7 +6241,8 @@ class MiscMixin(
             else:
                 _apply_deferred_explorer_and_tab_title_refresh()
         _mark("qss_icons")
-        icon_px = int(self.settings.get("icon_size_px", 18))
+        zoom_factor = max(0.7, min(2.0, float(int(self.settings.get("app_zoom_scale_percent", 100) or 100)) / 100.0))
+        icon_px = max(12, int(round(int(self.settings.get("icon_size_px", 18)) * zoom_factor)))
         label_mode = str(self.settings.get("toolbar_label_mode", "icons_only"))
         style_map = {
             "icons_only": Qt.ToolButtonStyle.ToolButtonIconOnly,
@@ -6404,6 +6445,68 @@ class MiscMixin(
         apply_notepadpp_runtime_settings(self)
         _mark("finalize")
         _log_breakdown()
+
+    def _apply_live_app_zoom_scale(self) -> None:
+        """Apply only the current app zoom scale without re-running the full settings pipeline."""
+        requested_zoom = int(self.settings.get("app_zoom_scale_percent", 100) or 100)
+        app_zoom_text = f"{requested_zoom}%"
+        app = QApplication.instance()
+        if app is not None:
+            base_font = getattr(self, "_base_application_font_for_zoom", None)
+            if not isinstance(base_font, QFont):
+                base_font = QFont(app.font())
+                self._base_application_font_for_zoom = QFont(base_font)
+            scaled_font = QFont(base_font)
+            base_size = base_font.pointSizeF()
+            if base_size <= 0:
+                base_size = float(base_font.pointSize() or 9)
+            scaled_font.setPointSizeF(max(7.0, base_size * (requested_zoom / 100.0)))
+            app.setFont(scaled_font)
+        self._last_applied_app_zoom_scale_percent = requested_zoom
+
+        effective_dark = resolve_dark_mode_from_settings(self.settings)
+        tokens = build_tokens_from_settings(self.settings)
+        tab_close_icon_name = "tab-close-dark.svg" if effective_dark else "tab-close-light.svg"
+        tab_close_icon_path = resolve_asset_path("icons", tab_close_icon_name) or resolve_asset_path("icons", "tab-close.svg")
+        tab_close_icon_url = tab_close_icon_path.as_posix() if tab_close_icon_path else ""
+        close_button_visibility_qss = ""
+        if str(self.settings.get("tab_close_button_mode", "always")) == "hover":
+            close_button_visibility_qss = f"""
+            QTabBar::close-button {{
+                image: none;
+                background: transparent;
+                border: none;
+            }}
+            QTabBar::tab:hover QTabBar::close-button {{
+                image: url("{tab_close_icon_url}");
+                background: #d13438;
+                border: 1px solid #b72b2f;
+                border-radius: {tokens.radius_sm}px;
+            }}
+            """
+        qss = build_main_window_qss(
+            tokens=tokens,
+            tab_close_icon_url=tab_close_icon_url,
+            close_button_visibility_qss=close_button_visibility_qss,
+        )
+        if app is not None:
+            app.setStyleSheet(qss)
+        else:
+            self.setStyleSheet(qss)
+        self._last_applied_main_qss = qss
+
+        zoom_factor = max(0.7, min(2.0, float(requested_zoom) / 100.0))
+        icon_px = max(12, int(round(int(self.settings.get("icon_size_px", 18) or 18) * zoom_factor)))
+        for toolbar_name in ("main_toolbar", "markdown_toolbar", "search_toolbar"):
+            toolbar = getattr(self, toolbar_name, None)
+            if toolbar is not None:
+                toolbar.setIconSize(QSize(icon_px, icon_px))
+        if hasattr(self, "_layout_top_toolbars"):
+            self._layout_top_toolbars()
+        if hasattr(self, "zoom_label"):
+            self.zoom_label.setText(app_zoom_text)
+        if hasattr(self, "status_panel_zoom_label"):
+            self.status_panel_zoom_label.setText(app_zoom_text)
 
     def apply_language(self, *, force: bool = False) -> None:
         """Apply language."""
@@ -6644,6 +6747,20 @@ class MiscMixin(
 
     def open_settings(self, initial_section: str | None = None) -> None:
         """Open the settings dialog, optionally focusing a specific section."""
+        initial = str(initial_section or "").strip()
+        self.open_tool_tab(
+            ToolTabDescriptor(
+                tool_id="settings",
+                title="Preferences",
+                icon_name="settings-workbench",
+                singleton=True,
+                preferred_tab_reuse_key=initial.lower(),
+            ),
+            lambda: self._embed_dialog_tool_widget(
+                SidebarSettingsDialog(self, self.settings, initial_section=initial or None, embedded_mode=True)
+            ),
+        )
+        return
         open_started_at = time.perf_counter()
         dlg = getattr(self, "_settings_dialog_cached", None)
         dlg_prepare_started_at = time.perf_counter()
@@ -6726,6 +6843,8 @@ class MiscMixin(
                             self._apply_markdown_icons()
                         if hasattr(self, "_apply_format_icons"):
                             self._apply_format_icons()
+                        if hasattr(self, "_apply_menu_action_icons"):
+                            self._apply_menu_action_icons()
                         if hasattr(self, "_apply_ai_feature_icons"):
                             self._apply_ai_feature_icons()
                         ai_dock = getattr(self, "ai_chat_dock", None)
@@ -6974,8 +7093,20 @@ class MiscMixin(
         if not hasattr(self, "_default_shortcuts_by_action_id"):
             self._capture_default_shortcuts()
         rows = self.get_shortcut_action_rows()
-        dlg = ShortcutMapperDialog(self, rows, dict(getattr(self, "_default_shortcuts_by_action_id", {})), dict(self.settings))
-        dlg.exec()
+        self.open_tool_tab(
+            ToolTabDescriptor(
+                tool_id="shortcut_mapper",
+                title="Shortcut Mapper",
+                icon_name="shortcut-mapper",
+                singleton=True,
+            ),
+            lambda: ShortcutMapperWidget(
+                self,
+                rows,
+                dict(getattr(self, "_default_shortcuts_by_action_id", {})),
+                dict(self.settings),
+            ),
+        )
 
     def edit_settings_json_in_app(self) -> None:
         """Open the settings JSON file in the editor for manual inspection or editing."""
@@ -8052,6 +8183,7 @@ class MiscMixin(
         if getattr(self, "_layout_docks_ready", False):
             return
         self._layout_docks_ready = True
+        self._build_workspace_dock()
         self._build_explorer_dock()
         self._build_file_timeline_dock()
         self._build_workspace_timeline_dock()
@@ -11006,9 +11138,9 @@ class MiscMixin(
             self.gitlens_panel_action.blockSignals(True)
             self.gitlens_panel_action.setChecked(self.gitlens_dock.isVisible())
             self.gitlens_panel_action.blockSignals(False)
-        if hasattr(self, "productivity_hub_panel_action") and hasattr(self, "productivity_hub_dialog"):
+        if hasattr(self, "productivity_hub_panel_action"):
             self.productivity_hub_panel_action.blockSignals(True)
-            self.productivity_hub_panel_action.setChecked(self.productivity_hub_dialog.isVisible())
+            self.productivity_hub_panel_action.setChecked(self._find_existing_tool_tab("productivity_hub") is not None)
             self.productivity_hub_panel_action.blockSignals(False)
         if hasattr(self, "editor_panel_action") and hasattr(self, "editor_dock"):
             self.editor_panel_action.blockSignals(True)
@@ -11085,9 +11217,9 @@ class MiscMixin(
             f"""
             QLabel#closedWindowsHintLabel {{
                 color: {tokens.text_muted};
-                font-size: 18px;
+                font-size: {max(16, tokens.space_lg + tokens.space_md)}px;
                 font-weight: 600;
-                padding: 14px 20px;
+                padding: {max(10, tokens.space_lg + 2)}px {max(14, tokens.space_lg + tokens.space_sm + 2)}px;
                 background: transparent;
             }}
             """
@@ -11172,6 +11304,12 @@ class MiscMixin(
         """Persist the current dock and window layout snapshot to settings."""
         if getattr(self, "_layout_restore_in_progress", False):
             return
+        try:
+            snapshot = self._layout_snapshot() if hasattr(self, "_layout_snapshot") else {}
+            if isinstance(snapshot, dict) and snapshot:
+                self.settings["layout_snapshot"] = dict(snapshot)
+        except Exception as exc:  # noqa: BLE001
+            self.log_event("Error", f"Failed to build layout snapshot: {exc}")
         if hasattr(self, "save_current_layout"):
             try:
                 self.save_current_layout(persist=True, show_status=False)
@@ -11275,17 +11413,32 @@ class MiscMixin(
             self.show_local_history_timeline()
 
     def toggle_productivity_hub_panel(self, checked: bool) -> None:
-        """Show or hide the productivity hub dialog."""
-        if not hasattr(self, "productivity_hub_dialog"):
-            return
+        """Show or hide the Productivity Hub tool tab."""
         if checked:
             self._refresh_productivity_hub()
-            self.productivity_hub_dialog.show()
-            self.productivity_hub_dialog.raise_()
-            self.productivity_hub_dialog.activateWindow()
+            self.open_tool_tab(
+                ToolTabDescriptor(
+                    tool_id="productivity_hub",
+                    title="Productivity Hub",
+                    icon_name="productivity-hub",
+                    singleton=True,
+                ),
+                lambda: getattr(self, "productivity_hub_widget", None) or self._build_productivity_hub_tool_widget(),
+            )
         else:
-            self.productivity_hub_dialog.hide()
+            tab = self._find_existing_tool_tab("productivity_hub")
+            if tab is not None:
+                index = self.tab_widget.indexOf(tab)
+                if index >= 0:
+                    self.close_tab(index)
         self._sync_layout_panel_actions()
+
+    def _build_productivity_hub_tool_widget(self) -> ProductivityHubWidget:
+        """Build or return the reusable Productivity Hub widget hosted inside a tab."""
+        if hasattr(self, "productivity_hub_widget"):
+            return self.productivity_hub_widget
+        self._build_productivity_hub_dialog()
+        return self.productivity_hub_widget
 
     def toggle_editor_panel(self, checked: bool) -> None:
         """Show or hide the editor dock when layout controls expose it."""
@@ -11429,8 +11582,9 @@ class MiscMixin(
         normalized = str(mode or "normal").strip().lower()
         app = QApplication.instance()
         startup_hold = bool(getattr(self, "_startup_hold_main_window_visible", False))
+        startup_allow_show = bool(getattr(self, "_startup_allow_show", False))
         app_started = bool(app.property("app_started")) if app is not None else False
-        if startup_hold and not app_started:
+        if (startup_hold or not startup_allow_show) and not app_started:
             state = self.windowState() & ~Qt.WindowState.WindowMinimized
             if normalized == "fullscreen":
                 state = state & ~Qt.WindowState.WindowMaximized
@@ -11676,7 +11830,12 @@ class MiscMixin(
             return
         name = str(self.settings.get("layout_active", "") or "")
         layouts = self.settings.get("layout_presets", {})
-        if not isinstance(layouts, dict) or not name or name not in layouts:
+        payload = layouts.get(name, {}) if isinstance(layouts, dict) and name and name in layouts else None
+        if not isinstance(payload, dict) or not payload:
+            snapshot_payload = self.settings.get("layout_snapshot", {})
+            if isinstance(snapshot_payload, dict) and snapshot_payload:
+                payload = dict(snapshot_payload)
+        if not isinstance(payload, dict) or not payload:
             fallback_mode = str(self.settings.get("main_window_mode", "") or "")
             if fallback_mode:
                 try:
@@ -11685,32 +11844,45 @@ class MiscMixin(
                     pass
                 QTimer.singleShot(0, lambda m=fallback_mode: self._apply_window_mode(m))
             return
-        payload = layouts.get(name, {})
-        if not isinstance(payload, dict):
-            return
-        self._layout_restore_in_progress = True
-        try:
-            geo = self._decode_layout_bytes(str(payload.get("geometry", "") or ""))
-            state = self._decode_layout_bytes(str(payload.get("state", "") or ""))
-            if not geo.isEmpty():
-                self.restoreGeometry(geo)
-            if not state.isEmpty():
-                self.restoreState(state)
-            self._apply_primary_horizontal_dock_sizes(payload)
-            # Qt dock geometry can continue settling right after restoreState/show.
-            # Re-apply once more on the next cycle to avoid transient startup widths.
-            QTimer.singleShot(0, lambda p=dict(payload): self._apply_primary_horizontal_dock_sizes(p))
-            window_mode = str(payload.get("window_mode", "") or self.settings.get("main_window_mode", "") or "")
-            if window_mode:
-                try:
-                    self.log_event("Info", f"[Startup] Restoring window mode: {window_mode}")
-                except Exception:
-                    pass
-                QTimer.singleShot(0, lambda m=window_mode: self._apply_window_mode(m))
-        finally:
-            self._layout_restore_in_progress = False
-        self._ensure_main_window_on_screen()
-        self._sync_layout_panel_actions()
+        window_mode = str(payload.get("window_mode", "") or self.settings.get("main_window_mode", "") or "")
+
+        def _apply_payload_once(*, delayed: bool = False) -> None:
+            """Apply one pass of the saved layout payload."""
+            if getattr(self, "_layout_restore_in_progress", False):
+                return
+            self._layout_restore_in_progress = True
+            previous_suspend = bool(getattr(self, "_suspend_layout_autosave", False))
+            self._suspend_layout_autosave = True
+            try:
+                geo = self._decode_layout_bytes(str(payload.get("geometry", "") or ""))
+                state = self._decode_layout_bytes(str(payload.get("state", "") or ""))
+                if not geo.isEmpty():
+                    self.restoreGeometry(geo)
+                if not state.isEmpty():
+                    self.restoreState(state)
+                self._apply_primary_horizontal_dock_sizes(payload)
+                if window_mode:
+                    try:
+                        self.log_event(
+                            "Info",
+                            f"[Startup] Restoring window mode: {window_mode}{' (delayed)' if delayed else ''}",
+                        )
+                    except Exception:
+                        pass
+                    self._apply_window_mode(window_mode)
+            finally:
+                self._suspend_layout_autosave = previous_suspend
+                self._layout_restore_in_progress = False
+            self._ensure_main_window_on_screen()
+            self._sync_layout_panel_actions()
+
+        _apply_payload_once()
+        # Qt can keep reflowing docks across the first few event-loop turns after
+        # show/session restore. Re-apply the full saved state a few times so the
+        # persisted dock arrangement wins over transient startup layout churn.
+        QTimer.singleShot(0, lambda p=dict(payload): _apply_payload_once(delayed=True))
+        QTimer.singleShot(100, lambda p=dict(payload): _apply_payload_once(delayed=True))
+        QTimer.singleShot(300, lambda p=dict(payload): _apply_payload_once(delayed=True))
 
     def save_current_layout(self, *, persist: bool = True, show_status: bool = True) -> None:
         """Save the current layout into the active layout preset."""
@@ -11737,6 +11909,7 @@ class MiscMixin(
             return
         layouts[name] = snapshot
         self.settings["layout_presets"] = layouts
+        self.settings["layout_snapshot"] = dict(snapshot)
         self.settings["layout_active"] = name
         self.settings["main_window_mode"] = str(snapshot.get("window_mode", "normal"))
         if persist and hasattr(self, "save_settings_to_disk"):
@@ -11755,6 +11928,7 @@ class MiscMixin(
             layouts = {}
         layouts[name] = self._layout_snapshot()
         self.settings["layout_presets"] = layouts
+        self.settings["layout_snapshot"] = dict(layouts[name])
         self.settings["layout_active"] = name
         if hasattr(self, "save_settings_to_disk"):
             self.save_settings_to_disk()
@@ -13567,7 +13741,7 @@ Pypad User Guide
         self._start_offline_writing_analysis(source_text, target_is_selection)
 
     def _show_offline_writing_studio_dialog(self, analysis: object, source_text: str, target_is_selection: bool) -> None:
-        """Render the Offline Writing Studio dialog from a completed analysis payload."""
+        """Render the Offline Writing Studio surface from a completed analysis payload."""
         if not hasattr(analysis, "stats") or not hasattr(analysis, "suggestions") or not hasattr(analysis, "ai_score"):
             raise ValueError("Offline Writing Studio received an invalid analysis payload.")
         settings = self._writing_tools_settings()
@@ -13575,116 +13749,40 @@ Pypad User Guide
         if tab is None:
             QMessageBox.information(self, "Offline Writing Studio", "No active document.")
             return
-        dlg = QDialog(self)
-        dlg.setWindowTitle("Offline Writing Studio")
-        dlg.resize(920, 680)
-        apply_dialog_theme_from_window(self, dlg)
-        layout = QVBoxLayout(dlg)
-        summary = QLabel(dlg)
-        backend_name = str(getattr(analysis, "grammar_backend", "rule-based") or "rule-based")
-        if backend_name == "language-tool":
-            backend_label = "LanguageTool local grammar enabled"
-        else:
-            backend_label = "Rule-based grammar only"
-        backend_status = str(getattr(analysis, "grammar_backend_status", "") or "").strip()
-        summary.setText(
-            f"Scope: {'Selection' if target_is_selection else 'Document'} | "
-            f"Words: {analysis.stats['words']} | Suggestions: {len(analysis.suggestions)} | "
-            f"AI-likeness: {analysis.ai_score}/100 | {backend_label}"
+        source_key = str(tab.current_file or f"tab-{id(tab)}")
+
+        def _build_widget() -> QWidget:
+            widget = OfflineWritingStudioWidget(
+                analysis,
+                source_text,
+                target_is_selection=target_is_selection,
+                settings=settings,
+                parent=self,
+            )
+
+            def _commit_preview(updated: str) -> None:
+                target_tab = self.active_tab() or tab
+                if target_tab is None:
+                    return
+                if target_is_selection:
+                    target_tab.text_edit.replace_selection(updated)
+                else:
+                    target_tab.text_edit.set_text(updated)
+                self.show_status_message("Offline writing changes applied.", 3000)
+
+            widget.apply_requested.connect(_commit_preview)
+            return widget
+
+        self.open_tool_tab(
+            ToolTabDescriptor(
+                tool_id="offline_writing_studio",
+                title="Offline Writing Studio",
+                icon_name="offline-writing-studio",
+                singleton=True,
+                preferred_tab_reuse_key=source_key,
+            ),
+            _build_widget,
         )
-        summary.setWordWrap(True)
-        layout.addWidget(summary)
-        if backend_status:
-            backend_note = QLabel(backend_status, dlg)
-            backend_note.setWordWrap(True)
-            backend_note.setProperty("status", "warning")
-            layout.addWidget(backend_note)
-        transform_row = QHBoxLayout()
-        mode_combo = QComboBox(dlg)
-        mode_combo.addItems(["Analyze only", "Paraphrase", "Humanize"])
-        strength_spin = QSpinBox(dlg)
-        strength_spin.setRange(1, 3)
-        strength_spin.setValue(1)
-        transform_row.addWidget(QLabel("Transform", dlg))
-        transform_row.addWidget(mode_combo)
-        transform_row.addWidget(QLabel("Strength", dlg))
-        transform_row.addWidget(strength_spin)
-        transform_row.addStretch(1)
-        layout.addLayout(transform_row)
-        panes = QSplitter(Qt.Horizontal, dlg)
-        left = QWidget(panes)
-        left_layout = QVBoxLayout(left)
-        suggestion_list = QListWidget(left)
-        for row in analysis.suggestions:
-            item = QListWidgetItem(f"[{row.category}] {row.message}")
-            item.setData(Qt.ItemDataRole.UserRole, row)
-            suggestion_list.addItem(item)
-        left_layout.addWidget(QLabel("Suggestions", left))
-        left_layout.addWidget(suggestion_list, 1)
-        signals_view = QTextEdit(left)
-        signals_view.setReadOnly(True)
-        signals_view.setPlainText("\n".join(f"- {row}" for row in analysis.ai_signals))
-        left_layout.addWidget(QLabel("AI detector signals", left))
-        left_layout.addWidget(signals_view, 1)
-        right = QWidget(panes)
-        right_layout = QVBoxLayout(right)
-        original_view = QTextEdit(right)
-        original_view.setReadOnly(True)
-        original_view.setPlainText(source_text)
-        preview_view = QTextEdit(right)
-        preview_view.setPlainText(source_text)
-        right_layout.addWidget(QLabel("Original", right))
-        right_layout.addWidget(original_view, 1)
-        right_layout.addWidget(QLabel("Preview", right))
-        right_layout.addWidget(preview_view, 1)
-        panes.addWidget(left)
-        panes.addWidget(right)
-        panes.setStretchFactor(0, 0)
-        panes.setStretchFactor(1, 1)
-        layout.addWidget(panes, 1)
-
-        def _refresh_preview() -> None:
-            mode = mode_combo.currentText()
-            strength = int(strength_spin.value())
-            if mode == "Paraphrase":
-                preview_view.setPlainText(paraphrase_text(source_text, strength=strength, settings=settings))
-            elif mode == "Humanize":
-                preview_view.setPlainText(humanize_text(source_text, strength=strength, settings=settings))
-            else:
-                preview_view.setPlainText(source_text)
-
-        def _apply_selected_suggestion() -> None:
-            item = suggestion_list.currentItem()
-            if item is None:
-                return
-            suggestion = item.data(Qt.ItemDataRole.UserRole)
-            if suggestion is None:
-                return
-            preview_view.setPlainText(apply_suggestion(preview_view.toPlainText(), suggestion))
-
-        mode_combo.currentTextChanged.connect(lambda _text: _refresh_preview())
-        strength_spin.valueChanged.connect(lambda _value: _refresh_preview())
-        suggestion_list.itemDoubleClicked.connect(lambda _item: _apply_selected_suggestion())
-
-        buttons = QDialogButtonBox(QDialogButtonBox.Close, Qt.Horizontal, dlg)
-        apply_suggestion_btn = buttons.addButton("Apply Suggestion", QDialogButtonBox.ActionRole)
-        apply_transform_btn = buttons.addButton("Apply Preview", QDialogButtonBox.AcceptRole)
-        apply_suggestion_btn.clicked.connect(_apply_selected_suggestion)
-
-        def _commit_preview() -> None:
-            updated = preview_view.toPlainText()
-            if target_is_selection:
-                tab.text_edit.replace_selection(updated)
-            else:
-                tab.text_edit.set_text(updated)
-            dlg.accept()
-            self.show_status_message("Offline writing changes applied.", 3000)
-
-        apply_transform_btn.clicked.connect(_commit_preview)
-        buttons.rejected.connect(dlg.reject)
-        layout.addWidget(buttons)
-        _refresh_preview()
-        dlg.exec()
 
     def show_discoverability_guide(self) -> None:
         """Show a quick guide that highlights major features and how to find them."""

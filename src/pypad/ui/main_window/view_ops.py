@@ -130,7 +130,14 @@ class ViewOpsMixin:
         lang_code = getattr(self, "_ui_language_code", "en")
         ln_label = self._translate_text("Ln", lang_code)
         col_label = self._translate_text("Col", lang_code)
-        self.position_label.setText(f"{ln_label} {line}, {col_label} {column}")
+        selected_suffix = ""
+        try:
+            selected_text = str(tab.text_edit.selected_text() or "")
+            if selected_text:
+                selected_suffix = f" ({len(selected_text)} selected)"
+        except Exception:
+            selected_suffix = ""
+        self.position_label.setText(f"{ln_label} {line}, {col_label} {column}{selected_suffix}")
         if hasattr(self, "status_panel_position_label"):
             self.status_panel_position_label.setText(f"{ln_label} {line}, {col_label} {column}")
         if hasattr(self, "ruler_label"):
@@ -406,6 +413,7 @@ class ViewOpsMixin:
     def focus_on_another_view(self) -> None:
         """Move focus to on another view."""
         tab = self.active_tab()
+        app_zoom_text = f"{int(self.settings.get('app_zoom_scale_percent', 100) or 100)}%"
         if tab is None:
             return
         if tab.clone_editor is not None and tab.clone_editor.widget.isVisible():
@@ -1857,33 +1865,64 @@ class ViewOpsMixin:
         self.status.setVisible(checked)
 
     def view_zoom_in(self) -> None:
-        """Open zoom in."""
-        self.text_edit.zoom_in(1)
-        self.zoom_steps += 1
-        self.zoom_label.setText(f"{max(10, 100 + (self.zoom_steps * 10))}%")
+        """Increase the global app zoom scale and apply it live."""
+        current = int(self.settings.get("app_zoom_scale_percent", 100) or 100)
+        updated = min(200, current + 10)
+        if updated == current:
+            return
+        self.settings["app_zoom_scale_percent"] = updated
+        if hasattr(self, "_apply_live_app_zoom_scale"):
+            self._apply_live_app_zoom_scale()
+        else:
+            self.apply_settings()
+        self.save_settings_to_disk()
+        if hasattr(self, "zoom_label"):
+            self.zoom_label.setText(f"{updated}%")
         if hasattr(self, "status_panel_zoom_label"):
-            self.status_panel_zoom_label.setText(self.zoom_label.text())
+            self.status_panel_zoom_label.setText(f"{updated}%")
+        if hasattr(self, "show_status_message"):
+            self.show_status_message(f"App zoom: {updated}%", 1800)
 
     def view_zoom_out(self) -> None:
-        """Open zoom out."""
-        self.text_edit.zoom_in(-1)
-        self.zoom_steps -= 1
-        self.zoom_label.setText(f"{max(10, 100 + (self.zoom_steps * 10))}%")
+        """Decrease the global app zoom scale and apply it live."""
+        current = int(self.settings.get("app_zoom_scale_percent", 100) or 100)
+        updated = max(70, current - 10)
+        if updated == current:
+            return
+        self.settings["app_zoom_scale_percent"] = updated
+        if hasattr(self, "_apply_live_app_zoom_scale"):
+            self._apply_live_app_zoom_scale()
+        else:
+            self.apply_settings()
+        self.save_settings_to_disk()
+        if hasattr(self, "zoom_label"):
+            self.zoom_label.setText(f"{updated}%")
         if hasattr(self, "status_panel_zoom_label"):
-            self.status_panel_zoom_label.setText(self.zoom_label.text())
+            self.status_panel_zoom_label.setText(f"{updated}%")
+        if hasattr(self, "show_status_message"):
+            self.show_status_message(f"App zoom: {updated}%", 1800)
 
     def view_zoom_reset(self) -> None:
-        """Open zoom reset."""
-        if self.zoom_steps != 0:
-            self.text_edit.zoom_in(-self.zoom_steps)
-            self.zoom_steps = 0
-        self.zoom_label.setText("100%")
+        """Reset the global app zoom scale to 100% and apply it live."""
+        if int(self.settings.get("app_zoom_scale_percent", 100) or 100) == 100:
+            return
+        self.settings["app_zoom_scale_percent"] = 100
+        if hasattr(self, "_apply_live_app_zoom_scale"):
+            self._apply_live_app_zoom_scale()
+        else:
+            self.apply_settings()
+        self.save_settings_to_disk()
+        if hasattr(self, "zoom_label"):
+            self.zoom_label.setText("100%")
         if hasattr(self, "status_panel_zoom_label"):
-            self.status_panel_zoom_label.setText(self.zoom_label.text())
+            self.status_panel_zoom_label.setText("100%")
+        if hasattr(self, "show_status_message"):
+            self.show_status_message("App zoom reset to 100%", 1800)
 
     def update_status_bar(self) -> None:
         """Refresh the full status bar to reflect the active tab's editor and document state."""
         portable_state = getattr(self, "portable_mode_state", None)
+        app_zoom_text = f"{int(self.settings.get('app_zoom_scale_percent', 100) or 100)}%"
         if hasattr(self, "portable_mode_label"):
             if portable_state is not None and getattr(portable_state, "enabled", False):
                 self.portable_mode_label.setText("Portable")
@@ -1899,7 +1938,7 @@ class ViewOpsMixin:
             self.position_label.setText(f"{ln_label} -, {col_label} -")
             self.eol_label.setText("--")
             if hasattr(self, "zoom_label"):
-                self.zoom_label.setText("100%")
+                self.zoom_label.setText(app_zoom_text)
             if hasattr(self, "encoding_label"):
                 self.encoding_label.setText("UTF8")
             if hasattr(self, "selection_stats_label"):
@@ -1908,7 +1947,7 @@ class ViewOpsMixin:
                 self.ruler_label.setVisible(False)
             if hasattr(self, "status_panel_position_label"):
                 self.status_panel_position_label.setText(f"{ln_label} -, {col_label} -")
-                self.status_panel_zoom_label.setText("100%")
+                self.status_panel_zoom_label.setText(app_zoom_text)
                 self.status_panel_eol_label.setText("--")
                 self.status_panel_encoding_label.setText("UTF8")
                 if hasattr(self, "status_panel_selection_stats_label"):
@@ -1952,11 +1991,11 @@ class ViewOpsMixin:
         if hasattr(self, "encoding_label"):
             self.encoding_label.setText((tab.encoding or "UTF-8").upper().replace("-", ""))
         if hasattr(self, "status_panel_position_label"):
-            self.status_panel_position_label.setText(f"{ln_label} {line}, {col_label} {column}")
+            self.status_panel_position_label.setText(f"{ln_label} {line}, {col_label} {column}{selected_suffix}")
             self.status_panel_eol_label.setText(eol_text)
             self.status_panel_encoding_label.setText((tab.encoding or "UTF-8").upper().replace("-", ""))
             if hasattr(self, "status_panel_zoom_label"):
-                self.status_panel_zoom_label.setText(self.zoom_label.text() if hasattr(self, "zoom_label") else "100%")
+                self.status_panel_zoom_label.setText(self.zoom_label.text() if hasattr(self, "zoom_label") else app_zoom_text)
             if hasattr(self, "status_panel_ruler_label"):
                 show_ruler = bool(
                     self.settings.get("status_show_ruler", True)

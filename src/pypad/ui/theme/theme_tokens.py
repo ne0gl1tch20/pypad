@@ -227,6 +227,7 @@ def build_tokens_from_settings(settings: dict[str, Any]) -> UIThemeTokens:
     dark = resolve_dark_mode_from_settings(s)
     theme = str(s.get("theme", "Default") or "Default")
     density = str(s.get("ui_density", "comfortable") or "comfortable").lower()
+    zoom_scale = max(0.7, min(2.0, float(int(s.get("app_zoom_scale_percent", 100) or 100)) / 100.0))
     accent = _normalize_hex(s.get("accent_color", "#4a90e2"), "#4a90e2")
 
     palette_map = {
@@ -376,6 +377,12 @@ def build_tokens_from_settings(settings: dict[str, Any]) -> UIThemeTokens:
         toolbar_pad = (3, 6)
         input_height = 26
         tab_h = 20
+
+    radii = tuple(max(2, int(round(v * zoom_scale))) for v in radii)
+    spaces = tuple(max(2, int(round(v * zoom_scale))) for v in spaces)
+    toolbar_pad = tuple(max(1, int(round(v * zoom_scale))) for v in toolbar_pad)
+    input_height = max(18, int(round(input_height * zoom_scale)))
+    tab_h = max(16, int(round(tab_h * zoom_scale)))
 
     toolbar_hover_bg = accent
     text_on_accent = _contrast_fg(accent, threshold=0.52)
@@ -1166,9 +1173,12 @@ def build_main_window_qss(*, tokens: UIThemeTokens, tab_close_icon_url: str, clo
             padding: {tokens.space_xs}px;
         }}
         QMenu::item {{
-            padding: {tokens.space_xs + 1}px {tokens.space_lg}px {tokens.space_xs + 1}px {tokens.space_md}px;
+            padding: {tokens.space_xs + 1}px {tokens.space_lg}px {tokens.space_xs + 1}px {tokens.space_lg + 18}px;
             margin: 1px;
             border-radius: {tokens.radius_sm}px;
+        }}
+        QMenu::icon {{
+            padding-left: {tokens.space_sm}px;
         }}
         QMenu::separator {{
             height: 1px;

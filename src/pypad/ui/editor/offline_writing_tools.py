@@ -9,6 +9,21 @@ import re
 import threading
 from typing import Any
 
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import (
+    QComboBox,
+    QDialogButtonBox,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
+    QSplitter,
+    QSpinBox,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
+
 try:
     import language_tool_python
 except Exception:  # pragma: no cover - optional dependency
@@ -332,3 +347,133 @@ def _clean_transform_output(text: str) -> str:
     text = re.sub(r"\s+([,.!?;:])", r"\1", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip() if text.strip() else text
+
+
+class OfflineWritingStudioWidget(QWidget):
+    """Reusable Offline Writing Studio surface for dialogs or tool tabs."""
+
+    apply_requested = Signal(str)
+
+    def __init__(
+        self,
+        analysis: WritingAnalysis,
+        source_text: str,
+        *,
+        target_is_selection: bool,
+        settings: dict[str, Any] | None = None,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._analysis = analysis
+        self._source_text = str(source_text or "")
+        self._target_is_selection = bool(target_is_selection)
+        self._settings = settings or {}
+
+        layout = QVBoxLayout(self)
+        summary = QLabel(self)
+        backend_name = str(getattr(analysis, "grammar_backend", "rule-based") or "rule-based")
+        backend_label = "LanguageTool local grammar enabled" if backend_name == "language-tool" else "Rule-based grammar only"
+        backend_status = str(getattr(analysis, "grammar_backend_status", "") or "").strip()
+        summary.setText(
+            f"Scope: {'Selection' if self._target_is_selection else 'Document'} | "
+            f"Words: {analysis.stats['words']} | Suggestions: {len(analysis.suggestions)} | "
+            f"AI-likeness: {analysis.ai_score}/100 | {backend_label}"
+        )
+        summary.setWordWrap(True)
+        layout.addWidget(summary)
+        if backend_status:
+            backend_note = QLabel(backend_status, self)
+            backend_note.setWordWrap(True)
+            backend_note.setProperty("status", "warning")
+            layout.addWidget(backend_note)
+
+        transform_row = QHBoxLayout()
+        self.mode_combo = QComboBox(self)
+        self.mode_combo.addItems(["Analyze only", "Paraphrase", "Humanize"])
+        self.strength_spin = QSpinBox(self)
+        self.strength_spin.setRange(1, 3)
+        self.strength_spin.setValue(1)
+        transform_row.addWidget(QLabel("Transform", self))
+        transform_row.addWidget(self.mode_combo)
+        transform_row.addWidget(QLabel("Strength", self))
+        transform_row.addWidget(self.strength_spin)
+        transform_row.addStretch(1)
+        layout.addLayout(transform_row)
+
+        panes = QSplitter(Qt.Horizontal, self)
+        left = QWidget(panes)
+        left_layout = QVBoxLayout(left)
+        self.suggestion_list = QListWidget(left)
+        for row in analysis.suggestions:
+            item = QListWidgetItem(f"[{row.category}] {row.message}")
+            item.setData(Qt.ItemDataRole.UserRole, row)
+            self.suggestion_list.addItem(item)
+        left_layout.addWidget(QLabel("Suggestions", left))
+        left_layout.addWidget(self.suggestion_list, 1)
+        self.signals_view = QTextEdit(left)
+        self.signals_view.setReadOnly(True)
+        self.signals_view.setPlainText("\n".join(f"- {row}" for row in analysis.ai_signals))
+        left_layout.addWidget(QLabel("AI detector signals", left))
+        left_layout.addWidget(self.signals_view, 1)
+
+        right = QWidget(panes)
+        right_layout = QVBoxLayout(right)
+        self.original_view = QTextEdit(right)
+        self.original_view.setReadOnly(True)
+        self.original_view.setPlainText(self._source_text)
+        self.preview_view = QTextEdit(right)
+        self.preview_view.setPlainText(self._source_text)
+        right_layout.addWidget(QLabel("Original", right))
+        right_layout.addWidget(self.original_view, 1)
+        right_layout.addWidget(QLabel("Preview", right))
+        right_layout.addWidget(self.preview_view, 1)
+        panes.addWidget(left)
+        panes.addWidget(right)
+        panes.setStretchFactor(0, 0)
+        panes.setStretchFactor(1, 1)
+        layout.addWidget(panes, 1)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Close, Qt.Horizontal, self)
+        self.apply_suggestion_btn = buttons.addButton("Apply Suggestion", QDialogButtonBox.ActionRole)
+        self.apply_preview_btn = buttons.addButton("Apply Preview", QDialogButtonBox.AcceptRole)
+        layout.addWidget(buttons)
+
+        self.mode_combo.currentTextChanged.connect(lambda _text: self.refresh())
+        self.strength_spin.valueChanged.connect(lambda _value: self.refresh())
+        self.suggestion_list.itemDoubleClicked.connect(lambda _item: self.apply_selected_suggestion())
+        self.apply_suggestion_btn.clicked.connect(self.apply_selected_suggestion)
+        self.apply_preview_btn.clicked.connect(self._emit_apply_preview)
+        buttons.rejected.connect(self.close_requested)
+
+        self.refresh()
+
+    def refresh(self) -> None:
+        """Refresh the preview text for the current transform settings."""
+        mode = self.mode_combo.currentText()
+        strength = int(self.strength_spin.value())
+        if mode == "Paraphrase":
+            self.preview_view.setPlainText(paraphrase_text(self._source_text, strength=strength, settings=self._settings))
+        elif mode == "Humanize":
+            self.preview_view.setPlainText(humanize_text(self._source_text, strength=strength, settings=self._settings))
+        else:
+            self.preview_view.setPlainText(self._source_text)
+
+    def apply_selected_suggestion(self) -> None:
+        """Apply the currently selected suggestion into the preview pane."""
+        item = self.suggestion_list.currentItem()
+        if item is None:
+            return
+        suggestion = item.data(Qt.ItemDataRole.UserRole)
+        if suggestion is None:
+            return
+        self.preview_view.setPlainText(apply_suggestion(self.preview_view.toPlainText(), suggestion))
+
+    def _emit_apply_preview(self) -> None:
+        """Emit the current preview text so the owner can commit it into the editor."""
+        self.apply_requested.emit(self.preview_view.toPlainText())
+
+    def close_requested(self) -> None:
+        """Handle Close button presses in embedded mode."""
+        window = self.window()
+        if window is not None and hasattr(window, "close"):
+            window.close()

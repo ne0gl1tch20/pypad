@@ -31,7 +31,7 @@ from PySide6.QtWidgets import (
 from pypad.ui.theme.theme_tokens import build_dialog_theme_qss_from_tokens, build_tokens_from_settings
 
 
-class DeveloperHubDialog(QDialog):
+class DeveloperHubWidget(QWidget):
     """Multi-tab diagnostics workspace shown when developer mode is enabled."""
 
     TAB_ORDER = [
@@ -52,8 +52,6 @@ class DeveloperHubDialog(QDialog):
         """Build the developer hub and populate its tab content."""
         super().__init__(parent)
         self._window = parent
-        self.setWindowTitle("Developer Hub")
-        self.resize(1180, 800)
         self._tab_editors: dict[str, QTextEdit] = {}
         self._tab_copy_mode: dict[str, str] = {}
 
@@ -79,16 +77,15 @@ class DeveloperHubDialog(QDialog):
         self._build_text_tab("Plugins")
         self._build_text_tab("Recovery")
 
-        buttons = QDialogButtonBox(QDialogButtonBox.Close, Qt.Horizontal, self)
         self.refresh_btn = QPushButton("Refresh", self)
         self.copy_btn = QPushButton("Copy Current Tab", self)
         self.export_btn = QPushButton("Export Snapshot", self)
-        buttons.addButton(self.refresh_btn, QDialogButtonBox.ActionRole)
-        buttons.addButton(self.copy_btn, QDialogButtonBox.ActionRole)
-        buttons.addButton(self.export_btn, QDialogButtonBox.ActionRole)
-        buttons.rejected.connect(self.reject)
-        buttons.accepted.connect(self.accept)
-        layout.addWidget(buttons)
+        actions = QHBoxLayout()
+        actions.addWidget(self.refresh_btn)
+        actions.addWidget(self.copy_btn)
+        actions.addWidget(self.export_btn)
+        actions.addStretch(1)
+        layout.addLayout(actions)
 
         self.refresh_btn.clicked.connect(self.refresh)
         self.copy_btn.clicked.connect(self.copy_current_tab)
@@ -408,3 +405,30 @@ class DeveloperHubDialog(QDialog):
             os.startfile(str(target))  # type: ignore[attr-defined]
         except Exception as exc:
             QMessageBox.warning(self, "Open Path", f"Could not open path:\n{exc}")
+
+
+class DeveloperHubDialog(QDialog):
+    """Modal wrapper for the developer hub widget."""
+
+    def __init__(self, parent, *, initial_tab: str | None = None, embedded_mode: bool = False) -> None:
+        """Build the dialog wrapper around the reusable developer hub widget."""
+        super().__init__(parent)
+        self.setWindowTitle("Developer Hub")
+        self.resize(1180, 800)
+
+        layout = QVBoxLayout(self)
+        self.widget = DeveloperHubWidget(parent, initial_tab=initial_tab)
+        layout.addWidget(self.widget, 1)
+
+        if not embedded_mode:
+            buttons = QDialogButtonBox(QDialogButtonBox.Close, Qt.Horizontal, self)
+            buttons.rejected.connect(self.reject)
+            layout.addWidget(buttons)
+
+    def focus_tab(self, name: str) -> None:
+        """Proxy tab focusing to the reusable hub widget."""
+        self.widget.focus_tab(name)
+
+    def refresh(self) -> None:
+        """Proxy refresh to the reusable hub widget."""
+        self.widget.refresh()

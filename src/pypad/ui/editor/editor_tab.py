@@ -102,6 +102,10 @@ class EditorTab(QWidget):
         self._media_page_layout = QVBoxLayout(self._media_page)
         self._media_page_layout.setContentsMargins(0, 0, 0, 0)
         self._main_stack.addWidget(self._media_page)
+        self._tool_page = QWidget(self)
+        self._tool_page_layout = QVBoxLayout(self._tool_page)
+        self._tool_page_layout.setContentsMargins(0, 0, 0, 0)
+        self._main_stack.addWidget(self._tool_page)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -168,6 +172,11 @@ class EditorTab(QWidget):
         self.typing_test_result: dict[str, Any] | None = None
         self.media_mode_enabled = False
         self.media_path: str | None = None
+        self.tool_mode_enabled = False
+        self.tool_id: str | None = None
+        self.tool_title: str | None = None
+        self.tool_icon_name: str | None = None
+        self.tool_reuse_key: str | None = None
 
         self._setup_editor_context_menu()
 
@@ -184,11 +193,47 @@ class EditorTab(QWidget):
 
     def set_media_widget(self, widget: QWidget, path: str) -> None:
         """Replace editor mode with a media-view widget for the supplied file path."""
+        self.clear_tool_mode()
         self.clear_media_mode()
         self._media_page_layout.addWidget(widget)
         self.media_mode_enabled = True
         self.media_path = path
         self._main_stack.setCurrentWidget(self._media_page)
+
+    def clear_tool_mode(self) -> None:
+        """Remove any active tool widget and return the tab to normal editor mode."""
+        while self._tool_page_layout.count():
+            item = self._tool_page_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        self.tool_mode_enabled = False
+        self.tool_id = None
+        self.tool_title = None
+        self.tool_icon_name = None
+        self.tool_reuse_key = None
+        if not self.media_mode_enabled:
+            self._main_stack.setCurrentWidget(self.editor_splitter)
+
+    def set_tool_widget(
+        self,
+        widget: QWidget,
+        *,
+        tool_id: str,
+        title: str,
+        icon_name: str = "",
+        reuse_key: str = "",
+    ) -> None:
+        """Replace editor mode with a tool widget for the supplied logical tool id."""
+        self.clear_media_mode()
+        self.clear_tool_mode()
+        self._tool_page_layout.addWidget(widget)
+        self.tool_mode_enabled = True
+        self.tool_id = str(tool_id or "").strip() or None
+        self.tool_title = str(title or "").strip() or None
+        self.tool_icon_name = str(icon_name or "").strip() or None
+        self.tool_reuse_key = str(reuse_key or "").strip() or None
+        self._main_stack.setCurrentWidget(self._tool_page)
 
     def _setup_editor_context_menu(self) -> None:
         """Install the custom context-menu hook on the underlying editor widget."""

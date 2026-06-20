@@ -78,12 +78,20 @@ _LOGGER = get_logger(__name__)
 
 class SettingsDialog(QDialog):
     """Preferences dialog that maps persisted settings onto editable Qt controls."""
-    def __init__(self, parent: "Notepad", settings: dict, initial_section: str | None = None) -> None:
+    def __init__(
+        self,
+        parent: "Notepad",
+        settings: dict,
+        initial_section: str | None = None,
+        *,
+        embedded_mode: bool = False,
+    ) -> None:
         """Build the settings UI, load current values, and optionally focus a starting section."""
         super().__init__(parent)
         self.setWindowTitle("Preferences")
         self.resize(980, 700)
         self._parent_window = parent
+        self._embedded_mode = bool(embedded_mode)
         self._settings = migrate_settings(dict(settings))
         self._initial_section = str(initial_section or "").strip()
         self._search_entries: list[tuple[int, str, QWidget]] = []
@@ -99,6 +107,7 @@ class SettingsDialog(QDialog):
         self.reset_to_defaults_requested = False
         self._theme_probe_logged_open = False
         self._theme_probe_logged_first_paint = False
+        self._npp_lazy_build_scheduled = False
 
         root = QVBoxLayout(self)
         self.settings_search_input = QLineEdit(self)
@@ -137,11 +146,9 @@ class SettingsDialog(QDialog):
         header_layout.setSpacing(3)
         self.settings_page_title = QLabel("Preferences", self.settings_header_card)
         self.settings_page_title.setObjectName("settingsPageTitle")
-        self.settings_page_title.setStyleSheet("font-size: 31px; font-weight: 700;")
         self.settings_page_desc = QLabel("Customize PyPad and compatibility behavior.", self.settings_header_card)
         self.settings_page_desc.setObjectName("settingsPageDesc")
         self.settings_page_desc.setWordWrap(True)
-        self.settings_page_desc.setStyleSheet("font-size: 14px;")
         header_layout.addWidget(self.settings_page_title)
         header_layout.addWidget(self.settings_page_desc)
         right_layout.addWidget(self.settings_header_card)
@@ -152,7 +159,6 @@ class SettingsDialog(QDialog):
         splitter.setStretchFactor(1, 1)
 
         self._build_pages()
-        self._ensure_notepadpp_pages_built()
         self._apply_non_stretch_settings_layout()
 
         buttons_row = QHBoxLayout()
@@ -163,10 +169,13 @@ class SettingsDialog(QDialog):
 
         self.button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel, self)
         self.button_box.accepted.connect(self._accept_with_apply)
-        self.button_box.rejected.connect(self.reject)
+        self.button_box.rejected.connect(self._handle_cancel)
         save_btn = self.button_box.button(QDialogButtonBox.StandardButton.Ok)
         if save_btn is not None:
-            save_btn.setText("Save && Close")
+            save_btn.setText("Save" if self._embedded_mode else "Save && Close")
+        cancel_btn = self.button_box.button(QDialogButtonBox.StandardButton.Cancel)
+        if cancel_btn is not None and self._embedded_mode:
+            cancel_btn.setText("Revert")
         buttons_row.addWidget(self.button_box)
         root.addLayout(buttons_row)
 
@@ -184,13 +193,15 @@ class SettingsDialog(QDialog):
         if npp_dark_combo is not None:
             npp_dark_combo.currentTextChanged.connect(lambda _text: self._sync_dark_checkbox_from_npp_preference())
             self._sync_dark_checkbox_from_npp_preference()
+        if not self._npp_pages_built and not self._npp_lazy_build_scheduled:
+            self._npp_lazy_build_scheduled = True
+            QTimer.singleShot(0, self._ensure_notepadpp_pages_built)
         if self._initial_section:
             QTimer.singleShot(0, lambda: self.focus_section(self._initial_section))
 
     def reload_from_settings(self, settings: dict, initial_section: str | None = None) -> None:
         """Refresh the dialog from a new settings snapshot, preserving reusable dialog state."""
         self._settings = migrate_settings(dict(settings))
-        self._ensure_notepadpp_pages_built()
         self._initial_section = str(initial_section or "").strip()
         self._settings_nav_scope = "all"
         self.scope_all_btn.setChecked(True)
@@ -211,6 +222,18 @@ class SettingsDialog(QDialog):
         # Public pre-open hook for cached dialog reuse. Keeps visual theme in sync
         # with current state before exec() without exposing internal helpers.
         self._apply_dialog_theme()
+
+    def _handle_cancel(self) -> None:
+        """Cancel dialog edits or revert an embedded surface back to persisted settings."""
+        if self._embedded_mode:
+            self.reload_from_settings(dict(self._parent_window.settings), initial_section=self._initial_section or None)
+            return
+        self.reject()
+
+    @staticmethod
+    def _is_npp_category_name(name: str) -> bool:
+        """Return whether a settings category belongs to the Notepad++ compatibility group."""
+        return str(name or "").strip().startswith("N++")
 
     @staticmethod
     def _normalize_hex(value: str, fallback: str) -> str:
@@ -278,7 +301,7 @@ class SettingsDialog(QDialog):
         item.setToolTip(self._page_description_for_name(name))
         self.settings_nav_list.addItem(item)
         self._nav_base_labels.append(name)
-        self._nav_scopes.append("npp" if str(name).startswith("N++ ") else "pypad")
+        self._nav_scopes.append("npp" if self._is_npp_category_name(name) else "pypad")
         item.setText(self._format_nav_item_text(idx))
         self._route_index_map.setdefault(self._normalize_route_key(name), idx)
         return idx
@@ -287,8 +310,8 @@ class SettingsDialog(QDialog):
     def _clean_nav_title(name: str) -> str:
         """Clean nav title."""
         text = str(name or "").strip()
-        if text.startswith("N++ "):
-            return text.replace("N++ ", "", 1)
+        if text.startswith("N++"):
+            return text.removeprefix("N++").lstrip(" •:-")
         return text
 
     def _format_nav_item_text(self, idx: int, count: int = 0, *, query_active: bool = False) -> str:
@@ -308,7 +331,7 @@ class SettingsDialog(QDialog):
     def _page_description_for_name(self, name: str) -> str:
         """Page description for name."""
         text = str(name or "")
-        key = self._normalize_route_key(text.replace("N++", ""))
+        key = self._normalize_route_key(text.removeprefix("N++").lstrip(" •:-"))
         descriptions = {
             "appearance": "Theme, colors, fonts, and visual density for the app.",
             "editor": "Core editing behavior, syntax defaults, and caret options.",
@@ -642,6 +665,9 @@ class SettingsDialog(QDialog):
         font_layout.addWidget(self.font_size_label)
         appearance_form.addRow("Font size", font_row)
         self.ui_density_combo = self._add_combo(appearance_form, idx, "UI density", ["compact", "comfortable"])
+        self.app_zoom_scale_spin = self._add_spin(appearance_form, idx, "App zoom (%)", 70, 200)
+        self.app_zoom_scale_spin.setSingleStep(10)
+        self.app_zoom_scale_spin.setSuffix("%")
         self.icon_size_combo = self._add_combo(appearance_form, idx, "Icon size", ["16", "18", "20", "24"])
         self.toolbar_label_mode_combo = self._add_combo(
             appearance_form, idx, "Toolbar labels", ["icons_only", "text_only", "icons_text"]
@@ -1375,6 +1401,7 @@ class SettingsDialog(QDialog):
             load_notepadpp_like_page_settings(self, self._settings)
             self._apply_non_stretch_settings_layout()
             self._apply_dialog_theme()
+            self._apply_search_filter(self.settings_search_input.text())
         except Exception:
             _LOGGER.exception("Failed building N++ compatibility pages lazily")
 
@@ -1439,13 +1466,23 @@ class SettingsDialog(QDialog):
                 preview_settings[key] = self._label_color_value(label)
         if hasattr(self, "ui_density_combo"):
             preview_settings["ui_density"] = str(self.ui_density_combo.currentText() or preview_settings.get("ui_density", "comfortable"))
+        if hasattr(self, "app_zoom_scale_spin"):
+            preview_settings["app_zoom_scale_percent"] = int(self.app_zoom_scale_spin.value() or preview_settings.get("app_zoom_scale_percent", 100))
 
         tokens = build_tokens_from_settings(preview_settings)
         self.setStyleSheet(
             build_dialog_theme_qss_from_tokens(tokens) + "\n" + build_settings_dialog_qss(tokens)
         )
+        self._apply_settings_header_typography(tokens)
         self._apply_settings_stack_direct_style(tokens.surface_bg, tokens.text, tokens.text_muted)
         self._apply_settings_stack_palette(tokens.surface_bg, tokens.text)
+
+    def _apply_settings_header_typography(self, tokens) -> None:
+        """Apply zoom-aware typography to the Settings header area."""
+        title_px = max(24, tokens.space_lg * 2 + tokens.space_sm + 1)
+        desc_px = max(12, tokens.space_md + tokens.space_sm)
+        self.settings_page_title.setStyleSheet(f"font-size: {title_px}px; font-weight: 700;")
+        self.settings_page_desc.setStyleSheet(f"font-size: {desc_px}px;")
 
     def _apply_settings_stack_direct_style(self, surface_bg: str, text: str, text_muted: str) -> None:
         """Apply settings stack direct style."""
@@ -1570,6 +1607,9 @@ class SettingsDialog(QDialog):
     def showEvent(self, event: QShowEvent) -> None:
         """Refresh state when the widget becomes visible."""
         super().showEvent(event)
+        if not self._npp_pages_built and not self._npp_lazy_build_scheduled:
+            self._npp_lazy_build_scheduled = True
+            QTimer.singleShot(0, self._ensure_notepadpp_pages_built)
         if not self._theme_probe_logged_open:
             self._theme_probe_logged_open = True
             self._log_theme_probe("open")
@@ -1824,6 +1864,7 @@ class SettingsDialog(QDialog):
         self.font_family_edit.setText(str(s.get("font_family", "")))
         self.font_size_slider.setValue(int(s.get("font_size", 11)))
         self.ui_density_combo.setCurrentText(str(s.get("ui_density", "comfortable")))
+        self.app_zoom_scale_spin.setValue(int(s.get("app_zoom_scale_percent", 100)))
         self.icon_size_combo.setCurrentText(str(int(s.get("icon_size_px", 18))))
         self.toolbar_label_mode_combo.setCurrentText(str(s.get("toolbar_label_mode", "icons_only")))
         self.show_main_toolbar_checkbox.setChecked(bool(s.get("show_main_toolbar", True)))
@@ -1996,7 +2037,8 @@ class SettingsDialog(QDialog):
         self.accessibility_cursor_blink_rate_spin.setValue(int(s.get("accessibility_cursor_blink_rate_ms", 1000)))
         self._sync_accessibility_controls_enabled()
         self.settings_schema_version_label.setText(str(int(s.get("settings_schema_version", 3))))
-        load_notepadpp_like_page_settings(self, s)
+        if bool(getattr(self, "_npp_pages_built", False)):
+            load_notepadpp_like_page_settings(self, s)
 
     def _collect_settings(self) -> dict:
         """Read all dialog controls into a migrated settings payload ready to persist."""
@@ -2013,6 +2055,7 @@ class SettingsDialog(QDialog):
         s["font_family"] = self.font_family_edit.text().strip() or s.get("font_family", "")
         s["font_size"] = int(self.font_size_slider.value())
         s["ui_density"] = self.ui_density_combo.currentText()
+        s["app_zoom_scale_percent"] = int(self.app_zoom_scale_spin.value())
         s["icon_size_px"] = int(self.icon_size_combo.currentText())
         s["toolbar_label_mode"] = self.toolbar_label_mode_combo.currentText()
         s["show_main_toolbar"] = self.show_main_toolbar_checkbox.isChecked()
@@ -2185,7 +2228,8 @@ class SettingsDialog(QDialog):
             s["ui_density"] = "comfortable"
         s["accessibility_cursor_blink_rate_ms"] = int(self.accessibility_cursor_blink_rate_spin.value())
         s["settings_schema_version"] = 3
-        collect_notepadpp_like_page_settings(self, s)
+        if bool(getattr(self, "_npp_pages_built", False)):
+            collect_notepadpp_like_page_settings(self, s)
         return migrate_settings(s)
 
     def _sync_security_profile_summary(self, *_args) -> None:
@@ -2283,6 +2327,16 @@ class SettingsDialog(QDialog):
     def _accept_with_apply(self) -> None:
         """Validate and accept the dialog only when the edited settings are consistent."""
         if not self._apply_to_memory():
+            return
+        if self._embedded_mode:
+            current_settings = dict(self._parent_window.settings)
+            next_settings = self.get_settings()
+            if next_settings == current_settings:
+                return
+            self._parent_window.settings = next_settings
+            self._parent_window.apply_settings()
+            self._parent_window.save_settings_to_disk()
+            self.prepare_for_open()
             return
         self.accept()
 

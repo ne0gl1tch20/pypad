@@ -305,6 +305,7 @@ def migrate_settings(settings: dict) -> dict:
     current["show_markdown_toolbar"] = coerce_bool(current.get("show_markdown_toolbar", False), False)
     current["show_find_panel"] = coerce_bool(current.get("show_find_panel", False), False)
     current["ui_density"] = _coerce_enum(current.get("ui_density"), {"compact", "comfortable"}, "comfortable")
+    current["app_zoom_scale_percent"] = _coerce_int_clamped(current.get("app_zoom_scale_percent", 100), 100, 70, 200)
     current["icon_size_px"] = _coerce_int_clamped(current.get("icon_size_px", 18), 18, 16, 24)
     current["toolbar_label_mode"] = _coerce_enum(
         current.get("toolbar_label_mode"),

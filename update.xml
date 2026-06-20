@@ -1,11 +1,11 @@
 ﻿<?xml version="1.0" encoding="UTF-8"?>
 <updates>
   <item>
-    <title>PyPad 2.0.0 Major Upgrade</title>
-    <version>2.0.0</version>
-    <pubDate>2026-03-20</pubDate>
+    <title>PyPad 2.0.1</title>
+    <version>2.0.1</version>
+    <pubDate>2026-03-21</pubDate>
     <description>
-      - PyPad 2.0.0 is a major upgrade focused on accessibility-first desktop UX, serious editor workflows, and stronger modular architecture.
+      - PyPad 2.0.1 continues the accessibility-first desktop UX, serious editor workflows, and stronger modular architecture introduced in 2.0.0.
       - New compare and merge workflow, structured data tools, Large File Mode banner, named sessions, macro library manager, and upgraded local history review.
       - New split-view polish, portable mode storage support, workspace insights, and clearer plugin health reporting.
       - Main editor UX now better reflects a production-ready desktop tool with stronger status feedback, more intentional layouts, and clearer review flows.
@@ -14,7 +14,7 @@
     </description>
     <sha256>0000000000000000000000000000000000000000000000000000000000000000</sha256>
     <enclosure
-      url="https://github.com/ne0gl1tch20/pypad/releases/download/2.0.0/PyPad-Setup-2.0.0.exe"
+      url="https://github.com/ne0gl1tch20/pypad/releases/download/2.0.1/PyPad-Setup-2.0.1.exe"
       type="application/octet-stream" />
   </item>
 </updates>

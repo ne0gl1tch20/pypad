@@ -68,19 +68,10 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtPrintSupport import QPrintDialog, QPrintPreviewDialog, QPrinter
-from PySide6.QtCore import QUrl
-from PySide6.QtGui import QDesktopServices
-try:
-    from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
-    from PySide6.QtMultimediaWidgets import QVideoWidget
-except Exception:  # pragma: no cover - optional runtime module
-    QAudioOutput = None
-    QMediaPlayer = None
-    QVideoWidget = None
-
 from pypad.ui.debug.debug_logs_dialog import DebugLogsDialog
 from pypad.ui.editor.detachable_tab_bar import DetachableTabBar
 from pypad.ui.editor.editor_tab import EditorTab
+from pypad.ui.editor.media_viewers import ImageViewerWidget, MediaPlayerWidget
 from pypad.ui.ai.ai_controller import AIController
 from pypad.ui.theme.asset_paths import resolve_asset_path
 from pypad.ui.system.autosave import AutoSaveRecoveryDialog, AutoSaveStore
@@ -246,98 +237,14 @@ class FileOpsMixin:
 
             opened = False
             if suffix in {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".svg"}:
-                scroll = QScrollArea(media_container)
-                scroll.setWidgetResizable(True)
-                viewer = QLabel(scroll)
-                viewer.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                viewer.setText("Loading image...")
-                viewer.setAccessibleName("Image Preview")
-                viewer.setAccessibleDescription(f"Preview of image file {Path(path).name}")
-                scroll.setWidget(viewer)
-                layout.addWidget(scroll, 1)
-                pix = QPixmap(path)
-                if not pix.isNull():
-                    viewer.setPixmap(pix)
-                    opened = True
-                else:
-                    viewer.setText("Could not render image preview.")
+                layout.addWidget(ImageViewerWidget(path, media_container), 1)
+                opened = True
             elif suffix in {".mp3", ".wav", ".ogg", ".flac", ".m4a", ".mp4", ".mkv", ".mov", ".webm", ".avi"}:
-                if QMediaPlayer is not None and QAudioOutput is not None:
-                    media_player = QMediaPlayer(media_container)
-                    audio_output = QAudioOutput(media_container)
-                    media_player.setAudioOutput(audio_output)
-                    row = QHBoxLayout()
-                    icon_fn = getattr(self, "_svg_icon", None)
-                    play_btn = QToolButton(media_container)
-                    pause_btn = QToolButton(media_container)
-                    stop_btn = QToolButton(media_container)
-                    play_btn.setText("Play")
-                    pause_btn.setText("Pause")
-                    stop_btn.setText("Stop")
-                    play_btn.setAccessibleName("Play media")
-                    pause_btn.setAccessibleName("Pause media")
-                    stop_btn.setAccessibleName("Stop media")
-                    if callable(icon_fn):
-                        play_btn.setIcon(icon_fn("macro-run-multi"))
-                        pause_btn.setIcon(icon_fn("macro-record-stop"))
-                        stop_btn.setIcon(icon_fn("tab-close"))
-                    row.addWidget(play_btn)
-                    row.addWidget(pause_btn)
-                    row.addWidget(stop_btn)
-                    elapsed_label = QLabel("00:00", media_container)
-                    total_label = QLabel("00:00", media_container)
-                    slider = QSlider(Qt.Orientation.Horizontal, media_container)
-                    slider.setRange(0, 0)
-                    slider.setAccessibleName("Media progress")
-                    slider.setAccessibleDescription("Seek bar for media playback position")
-                    row.addWidget(elapsed_label)
-                    row.addWidget(slider, 1)
-                    row.addWidget(total_label)
-                    vol = QSlider(Qt.Orientation.Horizontal, media_container)
-                    vol.setRange(0, 100)
-                    vol.setValue(80)
-                    vol.setFixedWidth(120)
-                    vol.setAccessibleName("Media volume")
-                    vol.setAccessibleDescription("Volume control slider")
-                    row.addWidget(QLabel("Vol", media_container))
-                    row.addWidget(vol)
-                    layout.addLayout(row)
-                    if suffix in {".mp4", ".mkv", ".mov", ".webm", ".avi"} and QVideoWidget is not None:
-                        video_widget = QVideoWidget(media_container)
-                        video_widget.setAccessibleName("Video Preview")
-                        video_widget.setAccessibleDescription(f"Video playback area for {Path(path).name}")
-                        media_player.setVideoOutput(video_widget)
-                        layout.addWidget(video_widget, 1)
-                    else:
-                        layout.addWidget(QLabel("Audio player", media_container), 1)
-
-                    def _fmt(ms: int) -> str:
-                        """Fmt."""
-                        sec = max(0, int(ms // 1000))
-                        return f"{sec // 60:02d}:{sec % 60:02d}"
-
-                    def _on_pos(ms: int) -> None:
-                        """Update the slider position."""
-                        if not slider.isSliderDown():
-                            slider.setValue(int(ms))
-                        elapsed_label.setText(_fmt(ms))
-
-                    def _on_dur(ms: int) -> None:
-                        """Update the slider duration."""
-                        slider.setRange(0, max(0, int(ms)))
-                        total_label.setText(_fmt(ms))
-
-                    media_player.positionChanged.connect(_on_pos)
-                    media_player.durationChanged.connect(_on_dur)
-                    slider.sliderMoved.connect(lambda v: media_player.setPosition(int(v)))
-                    vol.valueChanged.connect(lambda v: audio_output.setVolume(max(0.0, min(1.0, float(v) / 100.0))))
-                    play_btn.clicked.connect(media_player.play)
-                    pause_btn.clicked.connect(media_player.pause)
-                    stop_btn.clicked.connect(media_player.stop)
-                    media_player.setSource(QUrl.fromLocalFile(path))
-                    opened = True
-                else:
-                    layout.addWidget(QLabel("Embedded media playback is unavailable in this build.", media_container), 1)
+                layout.addWidget(
+                    MediaPlayerWidget(path, suffix, icon_fn=getattr(self, "_svg_icon", None), parent=media_container),
+                    1,
+                )
+                opened = True
             else:
                 return False
 
@@ -349,9 +256,7 @@ class FileOpsMixin:
 
             open_raw_btn.clicked.connect(_open_raw)
             if not opened:
-                open_ext_btn = QPushButton("Open in System Player", media_container)
-                layout.addWidget(open_ext_btn)
-                open_ext_btn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(path)))
+                layout.addWidget(QLabel("Open this file in the system viewer or use raw fallback.", media_container))
             tab.set_media_widget(media_container, path)
             self._refresh_tab_title(tab)
             self.update_window_title()

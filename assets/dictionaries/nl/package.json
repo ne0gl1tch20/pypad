@@ -1,6 +1,6 @@
-{
+﻿{
   "name": "dictionary-nl",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Dutch spelling dictionary",
   "license": "(BSD-3-Clause OR CC-BY-3.0)",
   "keywords": [
@@ -32,3 +32,4 @@
     "index.js"
   ]
 }
+

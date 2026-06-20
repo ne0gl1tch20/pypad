@@ -1,6 +1,6 @@
-{
+﻿{
   "name": "dictionary-el-polyton",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Greek (Polyton) spelling dictionary",
   "license": "GPL-3.0",
   "keywords": [
@@ -33,3 +33,4 @@
     "index.js"
   ]
 }
+

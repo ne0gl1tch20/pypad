@@ -254,6 +254,58 @@ class PluginExamplesSmokeTests(unittest.TestCase):
         finally:
             shutil.rmtree(tmp_plugins, ignore_errors=True)
 
+    def test_online_plugin_install_marks_source_and_loads_from_writable_dir(self) -> None:
+        tmp_root = ROOT / "tests_tmp"
+        tmp_plugins = tmp_root / f"plugins_online_{time.time_ns()}"
+        tmp_plugins.mkdir(parents=True, exist_ok=True)
+        window = _PluginTestWindow()
+        try:
+            with patch("pypad.ui.features.advanced_features.get_plugins_dir_path", return_value=tmp_plugins):
+                host = PluginHost(window)
+                entry = {
+                    "id": "online_demo",
+                    "repo": "",
+                    "source": "online_plugins/plugin_online_example",
+                }
+
+                def _fake_urlopen(url: str, timeout: float = 0.0):
+                    _ = timeout
+                    payloads = {
+                        "https://raw.githubusercontent.com/ne0gl1tch20/pypad/main/online_plugins/plugin_online_example/plugin.json":
+                            json.dumps({
+                                "id": "online_demo",
+                                "name": "Online Demo",
+                                "version": "1.0.0",
+                                "permissions": [],
+                            }).encode("utf-8"),
+                        "https://raw.githubusercontent.com/ne0gl1tch20/pypad/main/online_plugins/plugin_online_example/plugin.py":
+                            b"class Plugin:\n    def __init__(self, api):\n        self.api = api\n",
+                    }
+
+                    class _Resp:
+                        def __init__(self, data: bytes) -> None:
+                            self._data = data
+
+                        def __enter__(self):
+                            return self
+
+                        def __exit__(self, exc_type, exc, tb):
+                            return False
+
+                        def read(self) -> bytes:
+                            return self._data
+
+                    return _Resp(payloads[url])
+
+                with patch("pypad.ui.features.advanced_features.urlopen", side_effect=_fake_urlopen):
+                    installed = host.install_online_plugin(entry)
+                manifest = json.loads((installed / "plugin.json").read_text(encoding="utf-8"))
+                self.assertEqual(manifest["source"], "online")
+                discovered = {rec.plugin_id: rec for rec in host.discover()}
+                self.assertEqual(discovered["online_demo"].metadata.get("source_class"), "online_installed")
+        finally:
+            shutil.rmtree(tmp_plugins, ignore_errors=True)
+
 
 class PluginScaffoldTests(unittest.TestCase):
     @classmethod

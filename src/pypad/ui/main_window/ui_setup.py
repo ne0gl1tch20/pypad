@@ -75,6 +75,7 @@ from PySide6.QtPrintSupport import QPrintDialog, QPrintPreviewDialog, QPrinter
 
 from pypad.ui.editor.detachable_tab_bar import DetachableTabBar
 from pypad.ui.editor.editor_tab import EditorTab
+from pypad.ui.editor.tool_tab_host import ToolTabDescriptor, ToolTabHost
 from ...app_settings import build_default_settings
 from pypad.ui.ai.ai_controller import AIController
 from pypad.ui.theme.asset_paths import resolve_asset_path
@@ -610,18 +611,18 @@ class UiSetupMixin:
             }}
             QLabel#emptyTabsTitle {{
                 color: {tokens.text};
-                font-size: 20px;
+                font-size: {max(16, tokens.space_lg + tokens.space_md)}px;
                 font-weight: 700;
                 padding-top: 2px;
             }}
             QLabel#emptyTabsHint {{
                 color: {tokens.text_muted};
-                font-size: 13px;
+                font-size: {max(11, tokens.space_md + tokens.space_xs + 1)}px;
                 padding-bottom: 6px;
             }}
             QLabel#emptyTabsSectionLabel {{
                 color: {tokens.text};
-                font-size: 12px;
+                font-size: {max(10, tokens.space_md + 4)}px;
                 font-weight: 700;
                 letter-spacing: 0.6px;
                 text-transform: uppercase;
@@ -672,12 +673,12 @@ class UiSetupMixin:
             }}
             QLabel#emptyTabsRecentTitle {{
                 color: {tokens.text};
-                font-size: 12px;
+                font-size: {max(10, tokens.space_md + 4)}px;
                 font-weight: 700;
             }}
             QLabel#emptyTabsRecentPath {{
                 color: {tokens.text_muted};
-                font-size: 11px;
+                font-size: {max(10, tokens.space_sm + tokens.space_xs)}px;
             }}
             QLabel#emptyTabsRecentIcon {{
                 color: {tokens.icon_fg};
@@ -801,6 +802,8 @@ class UiSetupMixin:
 
     def _tab_display_name(self, tab: EditorTab) -> str:
         """Build the user-visible tab title, including state badges."""
+        if bool(getattr(tab, "tool_mode_enabled", False)):
+            return str(getattr(tab, "tool_title", "") or getattr(tab, "tool_id", "") or "Tool")
         base = Path(tab.current_file).name if tab.current_file else "Untitled"
         prefix = ""
         if tab.encryption_enabled:
@@ -1141,6 +1144,12 @@ class UiSetupMixin:
 
     def _tab_icon_for(self, tab: EditorTab) -> QIcon:
         """Build the tab icon, including overlays such as the read-only lock."""
+        if bool(getattr(tab, "tool_mode_enabled", False)):
+            icon_name = str(getattr(tab, "tool_icon_name", "") or "").strip()
+            if icon_name:
+                icon = self._svg_icon_colored(icon_name, size=18)
+                if not icon.isNull():
+                    return icon
         fallback = self._standard_style_icon("SP_FileIcon")
         base_icon = self._file_icon_for_tab(tab, fallback)
 
@@ -1161,6 +1170,30 @@ class UiSetupMixin:
 
     def _file_icon_for_tab(self, tab: EditorTab, fallback: QIcon) -> QIcon:
         """Choose the base file icon for a tab from its mode or file extension."""
+        if bool(getattr(tab, "media_mode_enabled", False)):
+            suffix = Path(str(getattr(tab, "media_path", "") or "")).suffix.lower()
+            media_icon = {
+                ".png": "md-image",
+                ".jpg": "md-image",
+                ".jpeg": "md-image",
+                ".gif": "md-image",
+                ".bmp": "md-image",
+                ".webp": "md-image",
+                ".svg": "md-image",
+                ".mp3": "macro-run-multi",
+                ".wav": "macro-run-multi",
+                ".ogg": "macro-run-multi",
+                ".flac": "macro-run-multi",
+                ".m4a": "macro-run-multi",
+                ".mp4": "view-fullscreen",
+                ".mkv": "view-fullscreen",
+                ".mov": "view-fullscreen",
+                ".webm": "view-fullscreen",
+                ".avi": "view-fullscreen",
+            }.get(suffix, "file-generic")
+            svg_icon = self._svg_icon_colored(media_icon, size=18)
+            if not svg_icon.isNull():
+                return svg_icon
         if tab.markdown_mode_enabled:
             markdown_icon = self._svg_icon_colored("file-markdown", size=18)
             if not markdown_icon.isNull():
@@ -1266,11 +1299,11 @@ class UiSetupMixin:
             if isinstance(configured, QColor) and configured.isValid():
                 resolved_color = QColor(configured)
             else:
-                dark_mode = resolve_dark_mode_from_settings(getattr(self, "settings", {}))
-                resolved_color = QColor("#ffffff" if dark_mode else "#000000")
+                tokens = build_tokens_from_settings(getattr(self, "settings", {}))
+                resolved_color = QColor(tokens.icon_fg)
         if not resolved_color.isValid():
-            dark_mode = resolve_dark_mode_from_settings(getattr(self, "settings", {}))
-            resolved_color = QColor("#ffffff" if dark_mode else "#000000")
+            tokens = build_tokens_from_settings(getattr(self, "settings", {}))
+            resolved_color = QColor(tokens.icon_fg)
         svg_text = icon_path.read_text(encoding="utf-8")
         svg_text = self._force_svg_monochrome(svg_text, resolved_color.name())
         renderer = QSvgRenderer(svg_text.encode("utf-8"))
@@ -1785,8 +1818,6 @@ class UiSetupMixin:
                     step = 1 if angle_y > 0 else -1
                 tab.text_edit.zoom_in(step)
                 tab.zoom_steps += step
-                if tab is self.active_tab():
-                    self.zoom_label.setText(f"{max(10, 100 + (tab.zoom_steps * 10))}%")
                 return True
         if event.type() == QEvent.Type.KeyPress and getattr(self, "macro_recording", False):
             if event.modifiers() & (
@@ -1989,6 +2020,66 @@ class UiSetupMixin:
         self._emit_plugin_event("open", tab=tab)
         return tab
 
+    def _find_existing_tool_tab(self, tool_id: str, reuse_key: str = "") -> EditorTab | None:
+        """Return the matching tool tab if one is already open."""
+        wanted_id = str(tool_id or "").strip().lower()
+        wanted_reuse = str(reuse_key or "").strip().lower()
+        for index in range(self.tab_widget.count()):
+            tab = self.tab_widget.widget(index)
+            if not isinstance(tab, EditorTab) or not bool(getattr(tab, "tool_mode_enabled", False)):
+                continue
+            current_id = str(getattr(tab, "tool_id", "") or "").strip().lower()
+            current_reuse = str(getattr(tab, "tool_reuse_key", "") or "").strip().lower()
+            if current_id != wanted_id:
+                continue
+            if wanted_reuse and current_reuse != wanted_reuse:
+                continue
+            return tab
+        return None
+
+    def _build_tool_tab_widget(self, descriptor: ToolTabDescriptor, content: QWidget) -> ToolTabHost:
+        """Wrap a tool surface for use inside a normal editor tab."""
+        return ToolTabHost(descriptor, content, self)
+
+    def open_tool_tab(self, descriptor: ToolTabDescriptor, content_factory, *, activate: bool = True) -> EditorTab:
+        """Open or focus a reusable non-document tab surface."""
+        reuse_key = str(descriptor.preferred_tab_reuse_key or "").strip()
+        existing = self._find_existing_tool_tab(descriptor.tool_id, reuse_key if descriptor.singleton else "")
+        if existing is not None:
+            if activate:
+                index = self.tab_widget.indexOf(existing)
+                if index >= 0:
+                    self.tab_widget.setCurrentIndex(index)
+            host = existing._tool_page_layout.itemAt(0).widget() if existing._tool_page_layout.count() else None
+            if isinstance(host, ToolTabHost) and hasattr(host.content, "refresh"):
+                try:
+                    host.content.refresh()
+                except Exception:
+                    pass
+            self._refresh_tab_title(existing)
+            return existing
+
+        content = content_factory()
+        tab = self.add_new_tab(text="", file_path=None, make_current=False)
+        host = self._build_tool_tab_widget(descriptor, content)
+        tab.read_only = True
+        tab.text_edit.set_read_only(True)
+        tab.text_edit.set_text("")
+        tab.text_edit.set_modified(False)
+        tab.set_tool_widget(
+            host,
+            tool_id=descriptor.tool_id,
+            title=descriptor.title,
+            icon_name=descriptor.icon_name,
+            reuse_key=reuse_key,
+        )
+        self._refresh_tab_title(tab)
+        if activate:
+            index = self.tab_widget.indexOf(tab)
+            if index >= 0:
+                self.tab_widget.setCurrentIndex(index)
+        return tab
+
     def on_tab_changed(self, _index: int) -> None:
         """Synchronize UI state when the active editor tab changes."""
         tab = self.active_tab()
@@ -2035,7 +2126,7 @@ class UiSetupMixin:
             self.track_changes_toggle_action.blockSignals(True)
             self.track_changes_toggle_action.setChecked(bool(tab.track_changes_enabled))
             self.track_changes_toggle_action.blockSignals(False)
-        self.zoom_label.setText(f"{max(10, 100 + (tab.zoom_steps * 10))}%")
+        self.zoom_label.setText(f"{int(self.settings.get('app_zoom_scale_percent', 100) or 100)}%")
         self._sync_language_picker(tab)
         if hasattr(self, "pin_tab_action"):
             self.pin_tab_action.setText("&Unpin Tab" if tab.pinned else "&Pin Tab")
@@ -4524,6 +4615,114 @@ class UiSetupMixin:
         for action, icon_name in icon_map.items():
             action.setIcon(self._svg_icon(icon_name))
 
+    def _apply_menu_action_icons(self) -> None:
+        """Apply themed SVG icons to menu actions and submenu entries."""
+        action_icon_map = {
+            self.gamification_dashboard_action: "gamification-dashboard",
+            self.productivity_hub_action: "productivity-hub",
+            self.daily_briefing_action: "productivity-hub",
+            self.seasonal_event_briefing_action: "gamification-dashboard",
+            self.session_review_action: "productivity-hub",
+            self.productivity_routine_action: "productivity-hub",
+            self.coach_recommendation_action: "gamification-dashboard",
+            self.focus_sprint_action: "timer-stopwatch",
+            self.typing_speed_test_action: "play-typing",
+            self.no_backspace_challenge_action: "shortcut-mapper",
+            self.bug_hunt_action: "developer-hub",
+            self.craft_tool_action: "productivity-hub",
+            self.export_crafted_tools_action: "export-package",
+            self.mark_plugin_use_action: "plugins",
+            self.quiz_action: "play-quiz",
+            self.quiz_format_help_action: "help-circle",
+            self.goto_definition_action: "language-define",
+            self.lsp_hover_action: "language-define",
+            self.lsp_references_action: "document-map",
+            self.lsp_rename_action: "edit-find-replace",
+            self.lsp_completion_action: "language-define",
+            self.lsp_format_action: "format-bold",
+            self.lsp_diagnostics_action: "diagnostics-bundle",
+            self.spell_check_document_action: "offline-writing-studio",
+            self.spell_check_word_action: "offline-writing-studio",
+            self.offline_writing_studio_action: "offline-writing-studio",
+            self.side_by_side_diff_action: "compare-data",
+            self.three_way_merge_action: "compare-data",
+            self.apply_patch_file_action: "compare-data",
+            self.structured_data_tools_action: "document-map",
+            self.load_full_large_file_action: "folder-open",
+            self.snippet_engine_action: "productivity-hub",
+            self.template_packs_action: "document-list",
+            self.terminal_tasks_action: "terminal-tasks",
+            self.git_panel_action_open: "git-workspace",
+            self.task_workflow_action: "productivity-hub",
+            self.backup_scheduler_action: "backup-scheduler",
+            self.backup_now_action: "backup-scheduler",
+            self.diagnostics_bundle_action: "diagnostics-bundle",
+            self.lan_collaboration_action: "collab-presence",
+            self.collab_presence_action: "collab-presence",
+            self.collab_resolve_conflict_action: "collab-resolve",
+            self.annotation_layer_action: "annotations-layer",
+            self.start_macro_recording_action: "macro-record-start",
+            self.stop_macro_recording_action: "macro-record-stop",
+            self.play_macro_action: "macro-run-multi",
+            self.save_current_macro_action: "macro-save",
+            self.run_macro_multiple_times_action: "macro-run-multi",
+            self.trim_trailing_spaces_and_save_action: "format-text-wrapping",
+            self.macro_library_action: "macro-save",
+            self.modify_macro_shortcut_delete_action: "shortcut-mapper",
+            self.plugin_manager_action: "plugins",
+            self.online_plugins_action: "plugins",
+            self.open_plugins_folder_action: "folder-open",
+            self.mime_tools_action: "compare-data",
+            self.converter_tools_action: "compare-data",
+            self.npp_export_tools_action: "export-package",
+            self.window_sort_name_asc_action: "sort-window",
+            self.window_sort_name_desc_action: "sort-window",
+            self.window_sort_path_asc_action: "sort-window",
+            self.window_sort_path_desc_action: "sort-window",
+            self.window_sort_type_asc_action: "sort-window",
+            self.window_sort_type_desc_action: "sort-window",
+            self.window_sort_len_asc_action: "sort-window",
+            self.window_sort_len_desc_action: "sort-window",
+            self.window_sort_modified_asc_action: "sort-window",
+            self.window_sort_modified_desc_action: "sort-window",
+            self.windows_manager_action: "window-layout",
+            self.user_guide_action: "help-circle",
+            self.first_time_tutorial_action: "help-circle",
+            self.open_demo_pack_action: "document-list",
+            self.what_can_i_do_action: "help-circle",
+            self.reload_app_action: "sync-horizontal",
+            self.check_updates_action: "sync-horizontal",
+            self.developer_hub_action: "developer-hub",
+            self.show_debug_logs_action: "diagnostics-bundle",
+            self.show_debug_info_action: "diagnostics-bundle",
+            self.developer_ai_prompt_inspector_action: "ai-explain",
+            self.developer_show_last_ai_payload_action: "ai-citations",
+            self.developer_copy_last_ai_payload_action: "edit-copy",
+            self.developer_export_snapshot_action: "export-package",
+            self.open_source_licenses_action: "document-list",
+            self.about_action: "help-circle",
+            self.shortcut_mapper_action: "shortcut-mapper",
+            getattr(self, "settings_workbench_action", None): "settings-workbench",
+        }
+        for action, icon_name in action_icon_map.items():
+            if action is not None:
+                action.setIcon(self._svg_icon(icon_name))
+        submenu_icon_map = {
+            getattr(self, "code_tools_menu", None): "language-define",
+            getattr(self, "writing_tools_menu", None): "offline-writing-studio",
+            getattr(self, "compare_tools_menu", None): "compare-data",
+            getattr(self, "workspace_tools_menu", None): "productivity-hub",
+            getattr(self, "built_in_tools_menu", None): "built-in-tools",
+            getattr(self, "more_tools_menu", None): "developer-hub",
+            getattr(self, "sort_by_menu", None): "sort-window",
+            getattr(self, "developer_menu", None): "developer-hub",
+        }
+        for menu, icon_name in submenu_icon_map.items():
+            if menu is not None:
+                menu.menuAction().setIcon(self._svg_icon(icon_name))
+        if hasattr(self, "built_in_tools"):
+            self.built_in_tools.apply_icons()
+
     def _apply_main_toolbar_icons(self) -> None:
         """Apply main toolbar icons."""
         fallback = self._standard_style_icon("SP_FileIcon")
@@ -5291,45 +5490,45 @@ class UiSetupMixin:
         self.play_menu.addAction(self.mark_plugin_use_action)
 
         self.tools_menu = menu_bar.addMenu("&Tools")
-        code_tools_menu = self.tools_menu.addMenu("Code Intelligence")
-        code_tools_menu.addAction(self.goto_definition_action)
-        code_tools_menu.addAction(self.lsp_hover_action)
-        code_tools_menu.addAction(self.lsp_references_action)
-        code_tools_menu.addAction(self.lsp_rename_action)
-        code_tools_menu.addAction(self.lsp_completion_action)
-        code_tools_menu.addAction(self.lsp_format_action)
-        code_tools_menu.addAction(self.lsp_diagnostics_action)
-        writing_tools_menu = self.tools_menu.addMenu("Writing && Review")
-        writing_tools_menu.addAction(self.spell_check_document_action)
-        writing_tools_menu.addAction(self.spell_check_word_action)
-        writing_tools_menu.addAction(self.offline_writing_studio_action)
-        compare_tools_menu = self.tools_menu.addMenu("Compare && Data")
-        compare_tools_menu.addAction(self.side_by_side_diff_action)
-        compare_tools_menu.addAction(self.three_way_merge_action)
-        compare_tools_menu.addAction(self.apply_patch_file_action)
-        compare_tools_menu.addAction(self.structured_data_tools_action)
-        compare_tools_menu.addAction(self.load_full_large_file_action)
-        workspace_tools_menu = self.tools_menu.addMenu("Workspace && Automation")
-        workspace_tools_menu.addAction(self.snippet_engine_action)
-        workspace_tools_menu.addAction(self.template_packs_action)
-        workspace_tools_menu.addAction(self.terminal_tasks_action)
-        workspace_tools_menu.addAction(self.git_panel_action_open)
-        workspace_tools_menu.addSeparator()
-        workspace_tools_menu.addAction(self.task_workflow_action)
+        self.code_tools_menu = self.tools_menu.addMenu("Code Intelligence")
+        self.code_tools_menu.addAction(self.goto_definition_action)
+        self.code_tools_menu.addAction(self.lsp_hover_action)
+        self.code_tools_menu.addAction(self.lsp_references_action)
+        self.code_tools_menu.addAction(self.lsp_rename_action)
+        self.code_tools_menu.addAction(self.lsp_completion_action)
+        self.code_tools_menu.addAction(self.lsp_format_action)
+        self.code_tools_menu.addAction(self.lsp_diagnostics_action)
+        self.writing_tools_menu = self.tools_menu.addMenu("Writing && Review")
+        self.writing_tools_menu.addAction(self.spell_check_document_action)
+        self.writing_tools_menu.addAction(self.spell_check_word_action)
+        self.writing_tools_menu.addAction(self.offline_writing_studio_action)
+        self.compare_tools_menu = self.tools_menu.addMenu("Compare && Data")
+        self.compare_tools_menu.addAction(self.side_by_side_diff_action)
+        self.compare_tools_menu.addAction(self.three_way_merge_action)
+        self.compare_tools_menu.addAction(self.apply_patch_file_action)
+        self.compare_tools_menu.addAction(self.structured_data_tools_action)
+        self.compare_tools_menu.addAction(self.load_full_large_file_action)
+        self.workspace_tools_menu = self.tools_menu.addMenu("Workspace && Automation")
+        self.workspace_tools_menu.addAction(self.snippet_engine_action)
+        self.workspace_tools_menu.addAction(self.template_packs_action)
+        self.workspace_tools_menu.addAction(self.terminal_tasks_action)
+        self.workspace_tools_menu.addAction(self.git_panel_action_open)
+        self.workspace_tools_menu.addSeparator()
+        self.workspace_tools_menu.addAction(self.task_workflow_action)
         self.tools_menu.addSeparator()
-        built_in_tools_menu = self.tools_menu.addMenu("Built-in Tools")
+        self.built_in_tools_menu = self.tools_menu.addMenu("Built-in Tools")
         if hasattr(self, "built_in_tools"):
-            self.built_in_tools.add_to_menu(built_in_tools_menu)
+            self.built_in_tools.add_to_menu(self.built_in_tools_menu)
         self.tools_menu.addSeparator()
-        more_tools_menu = self.tools_menu.addMenu("More")
-        more_tools_menu.addAction(self.backup_scheduler_action)
-        more_tools_menu.addAction(self.backup_now_action)
-        more_tools_menu.addAction(self.diagnostics_bundle_action)
-        more_tools_menu.addSeparator()
-        more_tools_menu.addAction(self.lan_collaboration_action)
-        more_tools_menu.addAction(self.collab_presence_action)
-        more_tools_menu.addAction(self.collab_resolve_conflict_action)
-        more_tools_menu.addAction(self.annotation_layer_action)
+        self.more_tools_menu = self.tools_menu.addMenu("More")
+        self.more_tools_menu.addAction(self.backup_scheduler_action)
+        self.more_tools_menu.addAction(self.backup_now_action)
+        self.more_tools_menu.addAction(self.diagnostics_bundle_action)
+        self.more_tools_menu.addSeparator()
+        self.more_tools_menu.addAction(self.lan_collaboration_action)
+        self.more_tools_menu.addAction(self.collab_presence_action)
+        self.more_tools_menu.addAction(self.collab_resolve_conflict_action)
+        self.more_tools_menu.addAction(self.annotation_layer_action)
         self.tools_menu.addSeparator()
         self.play_menu.addSeparator()
         self.play_menu.addAction(self.quiz_action)
@@ -5364,17 +5563,17 @@ class UiSetupMixin:
         # Window
         self.window_menu = menu_bar.addMenu("&Window")
         self.window_menu.aboutToShow.connect(self._refresh_window_menu_entries)
-        sort_by_menu = self.window_menu.addMenu("Sort By")
-        sort_by_menu.addAction(self.window_sort_name_asc_action)
-        sort_by_menu.addAction(self.window_sort_name_desc_action)
-        sort_by_menu.addAction(self.window_sort_path_asc_action)
-        sort_by_menu.addAction(self.window_sort_path_desc_action)
-        sort_by_menu.addAction(self.window_sort_type_asc_action)
-        sort_by_menu.addAction(self.window_sort_type_desc_action)
-        sort_by_menu.addAction(self.window_sort_len_asc_action)
-        sort_by_menu.addAction(self.window_sort_len_desc_action)
-        sort_by_menu.addAction(self.window_sort_modified_asc_action)
-        sort_by_menu.addAction(self.window_sort_modified_desc_action)
+        self.sort_by_menu = self.window_menu.addMenu("Sort By")
+        self.sort_by_menu.addAction(self.window_sort_name_asc_action)
+        self.sort_by_menu.addAction(self.window_sort_name_desc_action)
+        self.sort_by_menu.addAction(self.window_sort_path_asc_action)
+        self.sort_by_menu.addAction(self.window_sort_path_desc_action)
+        self.sort_by_menu.addAction(self.window_sort_type_asc_action)
+        self.sort_by_menu.addAction(self.window_sort_type_desc_action)
+        self.sort_by_menu.addAction(self.window_sort_len_asc_action)
+        self.sort_by_menu.addAction(self.window_sort_len_desc_action)
+        self.sort_by_menu.addAction(self.window_sort_modified_asc_action)
+        self.sort_by_menu.addAction(self.window_sort_modified_desc_action)
         self.window_menu.addAction(self.windows_manager_action)
         self.window_tabs_separator = self.window_menu.addSeparator()
         self._refresh_window_menu_entries()
@@ -5405,6 +5604,7 @@ class UiSetupMixin:
         menu_bar.addAction(self.update_available_menu_action)
         if hasattr(self, "_sync_developer_mode_actions"):
             self._sync_developer_mode_actions()
+        self._apply_menu_action_icons()
 
         if hasattr(self, "log_event"):
             try:

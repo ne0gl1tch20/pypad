@@ -16,26 +16,27 @@ class ToolDescriptor:
     launcher_name: str
     module_name: str
     class_name: str
+    icon_name: str
 
 
 class BuiltInToolsController:
     DESCRIPTORS = (
-        ToolDescriptor("random_number", "Random Number Generator...", "toolRandomNumberAction", "open_random_number_tool", "random_number_tool", "RandomNumberToolDialog"),
-        ToolDescriptor("password_generator", "Password Generator...", "toolPasswordGeneratorAction", "open_password_generator_tool", "password_tool", "PasswordToolDialog"),
-        ToolDescriptor("finance_calculator", "Percentage / Finance Calculator...", "toolFinanceCalculatorAction", "open_finance_calculator_tool", "finance_tool", "FinanceToolDialog"),
-        ToolDescriptor("scientific_calculator", "Scientific Calculator...", "toolScientificCalculatorAction", "open_scientific_calculator_tool", "scientific_calculator_tool", "ScientificCalculatorToolDialog"),
-        ToolDescriptor("unit_converter", "Unit Converter...", "toolUnitConverterAction", "open_unit_converter_tool", "unit_converter_tool", "UnitConverterToolDialog"),
-        ToolDescriptor("equation_solver", "Equation Solver...", "toolEquationSolverAction", "open_equation_solver_tool", "equation_solver_tool", "EquationSolverToolDialog"),
-        ToolDescriptor("graph_viewer", "Offline Graph Viewer...", "toolGraphViewerAction", "open_graph_viewer_tool", "graph_viewer_tool", "GraphViewerToolDialog"),
-        ToolDescriptor("currency_converter", "Currency Converter...", "toolCurrencyConverterAction", "open_currency_converter_tool", "currency_tool", "CurrencyToolDialog"),
-        ToolDescriptor("timer_stopwatch", "Timer / Stopwatch...", "toolTimerStopwatchAction", "open_timer_stopwatch_tool", "timer_tool", "TimerToolDialog"),
-        ToolDescriptor("color_picker", "Color Picker...", "toolColorPickerAction", "open_color_picker_tool", "color_picker_tool", "ColorPickerToolDialog"),
-        ToolDescriptor("world_clock", "World Clock...", "toolWorldClockAction", "open_world_clock_tool", "world_clock_tool", "WorldClockToolDialog"),
-        ToolDescriptor("reminders_hub", "Reminders...", "toolRemindersHubAction", "open_reminders_tool", "reminders_tool", "RemindersToolDialog"),
-        ToolDescriptor("taskers", "Taskers...", "toolTaskersAction", "open_taskers_tool", "taskers_tool", "TaskersToolDialog"),
-        ToolDescriptor("reader_mode", "Clean Reader Mode...", "toolReaderModeAction", "open_reader_mode_tool", "reader_mode_tool", "ReaderModeToolDialog"),
-        ToolDescriptor("annotations_manager", "Highlights + Notes...", "toolHighlightsNotesAction", "open_annotations_tool", "annotations_tool", "AnnotationsToolDialog"),
-        ToolDescriptor("qr_tools", "QR Generator / Scanner...", "toolQrToolsAction", "open_qr_tool", "qr_tool", "QRToolDialog"),
+        ToolDescriptor("random_number", "Random Number Generator...", "toolRandomNumberAction", "open_random_number_tool", "random_number_tool", "RandomNumberToolDialog", "random-number"),
+        ToolDescriptor("password_generator", "Password Generator...", "toolPasswordGeneratorAction", "open_password_generator_tool", "password_tool", "PasswordToolDialog", "password-generator"),
+        ToolDescriptor("finance_calculator", "Percentage / Finance Calculator...", "toolFinanceCalculatorAction", "open_finance_calculator_tool", "finance_tool", "FinanceToolDialog", "finance-calculator"),
+        ToolDescriptor("scientific_calculator", "Scientific Calculator...", "toolScientificCalculatorAction", "open_scientific_calculator_tool", "scientific_calculator_tool", "ScientificCalculatorToolDialog", "scientific-calculator"),
+        ToolDescriptor("unit_converter", "Unit Converter...", "toolUnitConverterAction", "open_unit_converter_tool", "unit_converter_tool", "UnitConverterToolDialog", "unit-converter"),
+        ToolDescriptor("equation_solver", "Equation Solver...", "toolEquationSolverAction", "open_equation_solver_tool", "equation_solver_tool", "EquationSolverToolDialog", "equation-solver"),
+        ToolDescriptor("graph_viewer", "Offline Graph Viewer...", "toolGraphViewerAction", "open_graph_viewer_tool", "graph_viewer_tool", "GraphViewerToolDialog", "graph-viewer"),
+        ToolDescriptor("currency_converter", "Currency Converter...", "toolCurrencyConverterAction", "open_currency_converter_tool", "currency_tool", "CurrencyToolDialog", "currency-converter"),
+        ToolDescriptor("timer_stopwatch", "Timer / Stopwatch...", "toolTimerStopwatchAction", "open_timer_stopwatch_tool", "timer_tool", "TimerToolDialog", "timer-stopwatch"),
+        ToolDescriptor("color_picker", "Color Picker...", "toolColorPickerAction", "open_color_picker_tool", "color_picker_tool", "ColorPickerToolDialog", "color-picker"),
+        ToolDescriptor("world_clock", "World Clock...", "toolWorldClockAction", "open_world_clock_tool", "world_clock_tool", "WorldClockToolDialog", "world-clock"),
+        ToolDescriptor("reminders_hub", "Reminders...", "toolRemindersHubAction", "open_reminders_tool", "reminders_tool", "RemindersToolDialog", "reminders"),
+        ToolDescriptor("taskers", "Taskers...", "toolTaskersAction", "open_taskers_tool", "taskers_tool", "TaskersToolDialog", "taskers"),
+        ToolDescriptor("reader_mode", "Clean Reader Mode...", "toolReaderModeAction", "open_reader_mode_tool", "reader_mode_tool", "ReaderModeToolDialog", "reader-mode"),
+        ToolDescriptor("annotations_manager", "Highlights + Notes...", "toolHighlightsNotesAction", "open_annotations_tool", "annotations_tool", "AnnotationsToolDialog", "highlights-notes"),
+        ToolDescriptor("qr_tools", "QR Generator / Scanner...", "toolQrToolsAction", "open_qr_tool", "qr_tool", "QRToolDialog", "qr-tools"),
     )
 
     def __init__(self, window) -> None:
@@ -47,9 +48,21 @@ class BuiltInToolsController:
             launcher = getattr(self, descriptor.launcher_name)
             action = QAction(descriptor.title, self.window)
             action.setObjectName(descriptor.object_name)
+            action.setIconVisibleInMenu(True)
             action.triggered.connect(launcher)
             setattr(self.window, f"{descriptor.tool_id}_action", action)
             self.actions[descriptor.tool_id] = action
+        self.apply_icons()
+
+    def apply_icons(self) -> None:
+        icon_resolver = getattr(self.window, "_svg_icon", None)
+        if not callable(icon_resolver):
+            return
+        for descriptor in self.DESCRIPTORS:
+            action = self.actions.get(descriptor.tool_id)
+            if action is not None:
+                action.setIcon(icon_resolver(descriptor.icon_name))
+                action.setIconVisibleInMenu(True)
 
     def add_to_menu(self, menu) -> None:
         for descriptor in self.DESCRIPTORS:

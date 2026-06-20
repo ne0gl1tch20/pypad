@@ -1,6 +1,6 @@
-{
+﻿{
   "name": "dictionary-pl",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Polish spelling dictionary",
   "license": "(GPL-3.0 OR LGPL-3.0 OR MPL-2.0)",
   "keywords": [
@@ -32,3 +32,4 @@
     "index.js"
   ]
 }
+

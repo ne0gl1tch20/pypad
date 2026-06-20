@@ -821,6 +821,35 @@ class PluginHost:
                     return bundled
         return _root() / "plugins"
 
+    def _classify_plugin_source(self, plugin_dir: Path) -> str:
+        """Return a stable source label for diagnostics and frozen-build debugging."""
+        try:
+            resolved = plugin_dir.resolve()
+        except Exception:
+            return "unknown"
+        try:
+            if not getattr(sys, "frozen", False) and bool(self.window.settings.get("plugin_dev_use_repo_plugins", False)):
+                repo_root = (_root() / "plugins").resolve()
+                if resolved == repo_root or repo_root in resolved.parents:
+                    return "repo_dev"
+        except Exception:
+            pass
+        try:
+            packaged_root = self._packaged_plugins_dir().resolve()
+            if resolved == packaged_root or packaged_root in resolved.parents:
+                return "bundled_seed"
+        except Exception:
+            pass
+        plugin_json = plugin_dir / "plugin.json"
+        try:
+            meta = json.loads(plugin_json.read_text(encoding="utf-8-sig"))
+        except Exception:
+            meta = {}
+        source = str(meta.get("source", "") or meta.get("install_source", "") or "").strip().lower()
+        if source in {"online", "catalog", "online_plugin"}:
+            return "online_installed"
+        return "user_installed"
+
     def runtime_mode_label(self) -> str:
         """Return a short label describing whether the app is frozen or running from source."""
         return "production" if getattr(sys, "frozen", False) else "development"
@@ -1422,6 +1451,9 @@ class PluginHost:
                 raise RuntimeError(f"Invalid plugin.json: {exc}") from exc
             if not isinstance(meta, dict):
                 raise RuntimeError("Invalid plugin.json format.")
+            if not str(meta.get("source", "") or "").strip():
+                meta["source"] = "archive"
+                (source_dir / "plugin.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
             pid = self._normalize_plugin_id(str(meta.get("id", source_dir.name)))
             if not self._valid_plugin_id(pid):
                 raise RuntimeError("Invalid plugin id in archive.")
@@ -1601,6 +1633,8 @@ class PluginHost:
                 raise RuntimeError(f"Invalid plugin.json from online source: {exc}") from exc
             if not isinstance(meta, dict):
                 raise RuntimeError("Invalid online plugin manifest format.")
+            meta["source"] = "online"
+            (staging / "plugin.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
             manifest_id = self._normalize_plugin_id(str(meta.get("id", plugin_id)))
             if manifest_id != plugin_id:
                 raise RuntimeError(
@@ -2023,6 +2057,7 @@ class PluginHost:
                         "max_app_version": max_app_version,
                         "update_url": update_url,
                         "homepage": homepage,
+                        "source_class": self._classify_plugin_source(folder),
                     },
                     settings_schema=settings_schema if isinstance(settings_schema, dict) else {},
                     dependencies=dependencies,
@@ -2127,6 +2162,18 @@ class PluginHost:
 
         self._unload_all()
         self.records = self.discover()
+        try:
+            packaged_root = str(self._packaged_plugins_dir())
+        except Exception:
+            packaged_root = "<unavailable>"
+        self.window.log_event(
+            "Info",
+            (
+                f"Plugin reload mode={self.runtime_mode_label()} writable_root={self.plugins_dir} "
+                f"packaged_root={packaged_root} discovered="
+                f"{[f'{rec.plugin_id}:{rec.metadata.get('source_class', 'unknown')}' for rec in self.records]}"
+            ),
+        )
         if startup and self._is_startup_safe_mode():
             self.window.show_status_message("Plugin startup safe mode is enabled.", 3000)
             return
