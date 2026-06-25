@@ -1,11 +1,19 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 from importlib.util import find_spec
+from pathlib import Path
+import sys
 
 from PyInstaller.utils.hooks import collect_dynamic_libs, collect_submodules
 
+ROOT = Path(SPECPATH)
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
 binaries = []
 hiddenimports = []
+hiddenimports += collect_submodules("pypad.ui.tools")
 if find_spec("PySide6.Qsci") is not None:
     hiddenimports.append("PySide6.Qsci")
 if find_spec("zxingcpp") is not None:
