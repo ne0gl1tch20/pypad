@@ -7,7 +7,7 @@ The format is based on Keep a Changelog, and this project uses Semantic Versioni
 ## [2.0.1] - 2026-06-25
 
 ### Developer's Note
-- Due to the rising pressure of long-term development, I’m taking a break from active development for now. The project will stay open, so feel free to download, explore, and enjoy it. I wont be accepting contributions and/or feedbacks for now.
+- Due to the rising pressure of long-term development, I’m taking a break from active development for now. The project will stay open, so feel free to download, explore, and enjoy it. I will still be accepting contributions and/or feedbacks for now as long as it's appropriate.
 - (Also yes… Codex quota is feeling like a smaller bucket lately 💀)
 
 ### Changed
