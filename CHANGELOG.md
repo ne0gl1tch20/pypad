@@ -4,7 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, and this project uses Semantic Versioning.
 
-## [2.0.1] - 2026-03-21
+## [2.0.1] - 2026-06-25
+
+### Developer's Note
+- Due to the rising pressure of long-term development, I’m taking a break from active development for now. The project will stay open, so feel free to download, explore, and enjoy it. I wont be accepting contributions and/or feedbacks for now.
+- (Also yes… Codex quota is feeling like a smaller bucket lately 💀)
 
 ### Changed
 - Settings, Developer Hub, Shortcut Mapper, Gamification Dashboard, Productivity Hub, and Offline Writing Studio can now open inside editor tabs through the new reusable tool-tab host flow instead of relying only on standalone dialogs.
@@ -14,6 +18,7 @@ The format is based on Keep a Changelog, and this project uses Semantic Versioni
 - Toolbar-driven menus now use themed SVG action icons much more consistently across `Tools`, `Macro`, `Plugins`, `Window`, `Help`, `Play`, and their submenus instead of leaving many entries iconless.
 
 ### Added
+- Raw text files can now store PyPad document font hints with a plain-text reminder to open them in PyPad for the best experience.
 - New reusable tool-tab infrastructure:
   - `src/pypad/ui/editor/tool_tab_host.py`
   - tool-mode support in `src/pypad/ui/editor/editor_tab.py`

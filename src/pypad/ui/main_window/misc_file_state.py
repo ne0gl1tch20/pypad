@@ -9,9 +9,11 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QMessageBox
 
 from pypad.ui.editor.editor_tab import EditorTab
+from pypad.ui.document.raw_text_fonts import decode_raw_text_with_font
 
 
 class MiscFileStateMixin:
@@ -56,6 +58,9 @@ class MiscFileStateMixin:
         try:
             encoding = tab.encoding or self._encoding_for_path(tab.current_file)
             text, encrypted, password = self._load_text_from_path(tab.current_file, encoding=encoding)
+            raw_text_font_metadata = None
+            if not encrypted and Path(tab.current_file).suffix.lower() == ".txt":
+                text, raw_text_font_metadata = decode_raw_text_with_font(text)
         except Exception as e:  # noqa: BLE001
             QMessageBox.critical(self, "Reload Failed", f"Could not reload file:\n{e}")
             return
@@ -69,6 +74,13 @@ class MiscFileStateMixin:
             tab.large_file = False
         tab.encryption_enabled = encrypted
         tab.encryption_password = password
+        tab.raw_text_font_metadata = raw_text_font_metadata
+        if raw_text_font_metadata:
+            font = QFont(
+                str(raw_text_font_metadata.get("family") or self.settings.get("font_family", "")),
+                int(raw_text_font_metadata.get("point_size") or self.settings.get("font_size", 11) or 11),
+            )
+            tab.text_edit.set_font(font)
         tab.partial_large_preview = False
         tab.large_file_total_lines = max(1, text.count("\n") + 1)
         tab.large_file_total_chars = len(text)

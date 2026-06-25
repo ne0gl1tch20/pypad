@@ -24,6 +24,7 @@ from PySide6.QtGui import (
     QAction,
     QColor,
     QFont,
+    QFontDatabase,
     QIcon,
     QKeySequence,
     QPainter,
@@ -90,6 +91,7 @@ from pypad.ui.theme.theme_tokens import (
     build_tokens_from_settings,
     build_tool_dialog_qss,
 )
+from pypad.ui.document.raw_text_fonts import RAW_FONT_REMINDER
 from pypad.ui.document.document_authoring import (
     PageLayoutConfig,
     PageLayoutDialog,
@@ -1253,6 +1255,81 @@ class ViewOpsMixin:
         font, ok = QFontDialog.getFont(current_font, self, "Choose Font")
         if ok:
             self.text_edit.set_font(font)
+
+    def choose_raw_text_document_font(self) -> None:
+        """Choose a font hint that is saved into raw text files."""
+        tab = self.active_tab()
+        if tab is None:
+            return
+        current_font: QFont = tab.text_edit.current_font()
+        metadata = getattr(tab, "raw_text_font_metadata", None) or {}
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Raw Text Document Font")
+        layout = QVBoxLayout(dialog)
+        form = QFormLayout()
+        family_combo = QComboBox(dialog)
+        family_combo.setEditable(True)
+        families = sorted(set(QFontDatabase.families()), key=str.lower)
+        family_combo.addItems(families)
+        current_family = str(metadata.get("family") or current_font.family() or self.settings.get("font_family", "") or "")
+        if current_family:
+            index = family_combo.findText(current_family)
+            if index >= 0:
+                family_combo.setCurrentIndex(index)
+            else:
+                family_combo.setEditText(current_family)
+        size_spin = QSpinBox(dialog)
+        size_spin.setRange(6, 96)
+        size_spin.setValue(int(metadata.get("point_size") or current_font.pointSize() or self.settings.get("font_size", 11) or 11))
+        form.addRow("Font family", family_combo)
+        form.addRow("Size", size_spin)
+        layout.addLayout(form)
+        reminder = QLabel(RAW_FONT_REMINDER, dialog)
+        reminder.setWordWrap(True)
+        layout.addWidget(reminder)
+        row = QHBoxLayout()
+        pick_btn = QPushButton("Browse...", dialog)
+        clear_btn = QPushButton("Clear Saved Font", dialog)
+        row.addWidget(pick_btn)
+        row.addWidget(clear_btn)
+        row.addStretch(1)
+        layout.addLayout(row)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, Qt.Horizontal, dialog)
+        layout.addWidget(buttons)
+
+        def _browse_font() -> None:
+            chosen = QFont(family_combo.currentText().strip() or current_font.family(), int(size_spin.value()))
+            font, ok = QFontDialog.getFont(chosen, dialog, "Choose Raw Text Font")
+            if ok:
+                family_combo.setEditText(font.family())
+                if font.pointSize() > 0:
+                    size_spin.setValue(font.pointSize())
+
+        def _clear_font() -> None:
+            tab.raw_text_font_metadata = None
+            tab.text_edit.set_modified(True)
+            self.show_status_message("Raw text document font cleared.", 2500)
+            dialog.accept()
+
+        pick_btn.clicked.connect(_browse_font)
+        clear_btn.clicked.connect(_clear_font)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        if dialog.exec() != QDialog.Accepted:
+            return
+        family = family_combo.currentText().strip()
+        if not family:
+            return
+        font = QFont(family, int(size_spin.value()))
+        tab.text_edit.set_font(font)
+        tab.raw_text_font_metadata = {
+            "family": family,
+            "point_size": int(size_spin.value()),
+            "display": "document",
+            "reminder": RAW_FONT_REMINDER,
+        }
+        tab.text_edit.set_modified(True)
+        self.show_status_message(f'Raw text font saved for this document: "{family}"', 3000)
 
     def format_selection_text_size(self) -> None:
         """Format selection text size."""

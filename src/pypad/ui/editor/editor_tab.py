@@ -149,6 +149,7 @@ class EditorTab(QWidget):
         self.show_line_numbers = True
         self.auto_completion_mode = "all"
         self.tags: list[str] = []
+        self.raw_text_font_metadata: dict[str, Any] | None = None
         self.encryption_enabled = False
         self.encryption_password: str | None = None
         self.trust_state = "trusted"

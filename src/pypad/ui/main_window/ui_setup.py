@@ -4005,6 +4005,8 @@ class UiSetupMixin:
 
         self.font_action = QAction("&Font...", self)
         self.font_action.triggered.connect(self.choose_font)
+        self.raw_text_document_font_action = QAction("Raw Text Document Font...", self)
+        self.raw_text_document_font_action.triggered.connect(self.choose_raw_text_document_font)
         self.text_size_selection_action = QAction("Text Si&ze (Selection)...", self)
         self.text_size_selection_action.setShortcut(QKeySequence("Ctrl+Alt+Shift+Z"))
         self.text_size_selection_action.triggered.connect(self.format_selection_text_size)
@@ -5344,6 +5346,7 @@ class UiSetupMixin:
         self.format_menu.addSeparator()
         self.format_menu.addAction(self.word_wrap_action)
         self.format_menu.addAction(self.font_action)
+        self.format_menu.addAction(self.raw_text_document_font_action)
 
         # View
         self.view_menu = menu_bar.addMenu("&View")

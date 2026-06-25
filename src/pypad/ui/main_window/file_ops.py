@@ -84,6 +84,7 @@ from pypad.ui.workspace.workspace_controller import WorkspaceController
 from pypad.ui.document.document_authoring import PageLayoutConfig, build_layout_html
 from pypad.ui.workspace.project_workflow import read_text_with_large_file_preview
 from pypad.ui.document.document_fidelity import DocumentFidelityError, export_document_text, import_document_text
+from pypad.ui.document.raw_text_fonts import decode_raw_text_with_font, encode_raw_text_with_font
 from pypad.ui.security.note_crypto import HEADER as ENCRYPTED_NOTE_HEADER
 from pypad.ui.security.note_trust import SESSION_TRUSTED, TRUSTED
 from pypad.ui.security.safe_save import SCRIPT_LIKE_SUFFIXES, build_effective_save_policy, safe_write_text
@@ -357,6 +358,10 @@ class FileOpsMixin:
             QMessageBox.critical(self, "Error", f"Could not open file:\n{e}")
             return False
 
+        raw_text_font_metadata = None
+        if not structured_import and not encrypted and suffix == ".txt":
+            text, raw_text_font_metadata = decode_raw_text_with_font(text)
+
         active = preferred_tab if preferred_tab is not None else self.active_tab()
         can_reuse_active_placeholder = bool(
             open_origin != "recent_file"
@@ -398,6 +403,13 @@ class FileOpsMixin:
         tab.zoom_steps = 0
         tab.encryption_enabled = encrypted
         tab.encryption_password = password
+        tab.raw_text_font_metadata = raw_text_font_metadata
+        if raw_text_font_metadata:
+            font = QFont(
+                str(raw_text_font_metadata.get("family") or self.settings.get("font_family", "")),
+                int(raw_text_font_metadata.get("point_size") or self.settings.get("font_size", 11) or 11),
+            )
+            tab.text_edit.set_font(font)
         tab.opened_via_startup_arg = open_origin == "startup_arg"
         tab.partial_large_preview = bool(preview is not None and preview.is_partial)
         if preview is not None:
@@ -446,6 +458,9 @@ class FileOpsMixin:
             )
         elif tab.trust_state == "untrusted":
             self.show_status_message("Opened as untrusted read-only. Use File > More > Security to trust and edit.", 7000)
+        elif raw_text_font_metadata:
+            reminder = str(raw_text_font_metadata.get("reminder") or "For the best experience, use PyPad.")
+            self.show_status_message(reminder, 7000)
         _LOGGER.debug(
             "_open_file_path complete path=%s tab_large=%s partial_preview=%s markdown_mode=%s encrypted=%s",
             path,
@@ -544,6 +559,8 @@ class FileOpsMixin:
                     )
                     if answer != QMessageBox.StandardButton.Yes:
                         return False
+                if suffix == ".txt" and not tab.encryption_enabled:
+                    payload = encode_raw_text_with_font(payload, getattr(tab, "raw_text_font_metadata", None))
                 safe_write_text(
                     tab.current_file,
                     payload,
