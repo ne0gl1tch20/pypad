@@ -14,6 +14,11 @@ if str(SRC) not in sys.path:
 binaries = []
 hiddenimports = []
 hiddenimports += collect_submodules("pypad.ui.tools")
+if find_spec("PySide6.QtWebEngineWidgets") is not None:
+    hiddenimports += [
+        "PySide6.QtWebEngineCore",
+        "PySide6.QtWebEngineWidgets",
+    ]
 if find_spec("PySide6.Qsci") is not None:
     hiddenimports.append("PySide6.Qsci")
 if find_spec("zxingcpp") is not None:
@@ -41,7 +46,6 @@ excludes = [
     "PySide6.QtQuick",
     "PySide6.QtQuickWidgets",
     "PySide6.QtQml",
-    "PySide6.QtPositioning",
 ]
 
 a = Analysis(
