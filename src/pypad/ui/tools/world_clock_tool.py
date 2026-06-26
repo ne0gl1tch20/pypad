@@ -13,28 +13,150 @@ from .base_dialog import ToolDialogBase
 
 COMMON_ZONES = [
     "UTC",
+
+    # North America
     "America/New_York",
     "America/Chicago",
     "America/Denver",
     "America/Los_Angeles",
+    "America/Phoenix",
+    "America/Toronto",
+    "America/Vancouver",
+    "America/Mexico_City",
+
+    # South America
+    "America/Sao_Paulo",
+    "America/Buenos_Aires",
+    "America/Lima",
+    "America/Bogota",
+    "America/Santiago",
+
+    # Europe
     "Europe/London",
+    "Europe/Dublin",
     "Europe/Paris",
+    "Europe/Berlin",
+    "Europe/Madrid",
+    "Europe/Rome",
+    "Europe/Amsterdam",
+    "Europe/Warsaw",
+    "Europe/Athens",
+    "Europe/Helsinki",
+    "Europe/Istanbul",
+    "Europe/Moscow",
+
+    # Africa
+    "Africa/Cairo",
+    "Africa/Johannesburg",
+    "Africa/Lagos",
+    "Africa/Nairobi",
+    "Africa/Casablanca",
+
+    # Middle East
+    "Asia/Dubai",
+    "Asia/Riyadh",
+    "Asia/Jerusalem",
+    "Asia/Tehran",
+    "Asia/Qatar",
+
+    # Asia
+    "Asia/Karachi",
+    "Asia/Kolkata",
+    "Asia/Dhaka",
+    "Asia/Bangkok",
+    "Asia/Jakarta",
+    "Asia/Singapore",
+    "Asia/Kuala_Lumpur",
+    "Asia/Manila",
+    "Asia/Hong_Kong",
+    "Asia/Shanghai",
+    "Asia/Taipei",
     "Asia/Tokyo",
     "Asia/Seoul",
+
+    # Oceania
+    "Australia/Perth",
+    "Australia/Adelaide",
+    "Australia/Darwin",
+    "Australia/Brisbane",
     "Australia/Sydney",
+    "Pacific/Auckland",
+    "Pacific/Fiji",
+    "Pacific/Honolulu",
 ]
 
 FALLBACK_ZONES = {
     "UTC": timezone.utc,
+
+    # North America
     "America/New_York": timezone(timedelta(hours=-5), "UTC-05"),
     "America/Chicago": timezone(timedelta(hours=-6), "UTC-06"),
     "America/Denver": timezone(timedelta(hours=-7), "UTC-07"),
     "America/Los_Angeles": timezone(timedelta(hours=-8), "UTC-08"),
+    "America/Phoenix": timezone(timedelta(hours=-7), "UTC-07"),
+    "America/Toronto": timezone(timedelta(hours=-5), "UTC-05"),
+    "America/Vancouver": timezone(timedelta(hours=-8), "UTC-08"),
+    "America/Mexico_City": timezone(timedelta(hours=-6), "UTC-06"),
+
+    # South America
+    "America/Sao_Paulo": timezone(timedelta(hours=-3), "UTC-03"),
+    "America/Buenos_Aires": timezone(timedelta(hours=-3), "UTC-03"),
+    "America/Lima": timezone(timedelta(hours=-5), "UTC-05"),
+    "America/Bogota": timezone(timedelta(hours=-5), "UTC-05"),
+    "America/Santiago": timezone(timedelta(hours=-4), "UTC-04"),
+
+    # Europe
     "Europe/London": timezone(timedelta(hours=0), "UTC+00"),
+    "Europe/Dublin": timezone(timedelta(hours=0), "UTC+00"),
     "Europe/Paris": timezone(timedelta(hours=1), "UTC+01"),
+    "Europe/Berlin": timezone(timedelta(hours=1), "UTC+01"),
+    "Europe/Madrid": timezone(timedelta(hours=1), "UTC+01"),
+    "Europe/Rome": timezone(timedelta(hours=1), "UTC+01"),
+    "Europe/Amsterdam": timezone(timedelta(hours=1), "UTC+01"),
+    "Europe/Warsaw": timezone(timedelta(hours=1), "UTC+01"),
+    "Europe/Athens": timezone(timedelta(hours=2), "UTC+02"),
+    "Europe/Helsinki": timezone(timedelta(hours=2), "UTC+02"),
+    "Europe/Istanbul": timezone(timedelta(hours=3), "UTC+03"),
+    "Europe/Moscow": timezone(timedelta(hours=3), "UTC+03"),
+
+    # Africa
+    "Africa/Cairo": timezone(timedelta(hours=2), "UTC+02"),
+    "Africa/Johannesburg": timezone(timedelta(hours=2), "UTC+02"),
+    "Africa/Lagos": timezone(timedelta(hours=1), "UTC+01"),
+    "Africa/Nairobi": timezone(timedelta(hours=3), "UTC+03"),
+    "Africa/Casablanca": timezone(timedelta(hours=1), "UTC+01"),
+
+    # Middle East
+    "Asia/Dubai": timezone(timedelta(hours=4), "UTC+04"),
+    "Asia/Riyadh": timezone(timedelta(hours=3), "UTC+03"),
+    "Asia/Jerusalem": timezone(timedelta(hours=2), "UTC+02"),
+    "Asia/Tehran": timezone(timedelta(hours=3, minutes=30), "UTC+03:30"),
+    "Asia/Qatar": timezone(timedelta(hours=3), "UTC+03"),
+
+    # Asia
+    "Asia/Karachi": timezone(timedelta(hours=5), "UTC+05"),
+    "Asia/Kolkata": timezone(timedelta(hours=5, minutes=30), "UTC+05:30"),
+    "Asia/Dhaka": timezone(timedelta(hours=6), "UTC+06"),
+    "Asia/Bangkok": timezone(timedelta(hours=7), "UTC+07"),
+    "Asia/Jakarta": timezone(timedelta(hours=7), "UTC+07"),
+    "Asia/Singapore": timezone(timedelta(hours=8), "UTC+08"),
+    "Asia/Kuala_Lumpur": timezone(timedelta(hours=8), "UTC+08"),
+    "Asia/Manila": timezone(timedelta(hours=8), "UTC+08"),
+    "Asia/Hong_Kong": timezone(timedelta(hours=8), "UTC+08"),
+    "Asia/Shanghai": timezone(timedelta(hours=8), "UTC+08"),
+    "Asia/Taipei": timezone(timedelta(hours=8), "UTC+08"),
     "Asia/Tokyo": timezone(timedelta(hours=9), "UTC+09"),
     "Asia/Seoul": timezone(timedelta(hours=9), "UTC+09"),
+
+    # Oceania
+    "Australia/Perth": timezone(timedelta(hours=8), "UTC+08"),
+    "Australia/Adelaide": timezone(timedelta(hours=9, minutes=30), "UTC+09:30"),
+    "Australia/Darwin": timezone(timedelta(hours=9, minutes=30), "UTC+09:30"),
+    "Australia/Brisbane": timezone(timedelta(hours=10), "UTC+10"),
     "Australia/Sydney": timezone(timedelta(hours=10), "UTC+10"),
+    "Pacific/Auckland": timezone(timedelta(hours=12), "UTC+12"),
+    "Pacific/Fiji": timezone(timedelta(hours=12), "UTC+12"),
+    "Pacific/Honolulu": timezone(timedelta(hours=-10), "UTC-10"),
 }
 
 
