@@ -117,7 +117,6 @@ class _AIWorker(QObject):
         try:
             result = _generate_sync(self.prompt, self.api_key, self.model)
         except Exception as exc:  # noqa: BLE001
-            _LOGGER.exception("AI worker failed model=%s", self.model)
             self.failed.emit(str(exc))
             return
         self.finished.emit(result)
