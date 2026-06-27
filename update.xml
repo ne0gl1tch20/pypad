@@ -5,6 +5,7 @@
     <version>2.0.1</version>
     <pubDate>2026-03-21</pubDate>
     <description>
+      - Currently the last active update, due to the pressure of active development.
       - PyPad 2.0.1 continues the accessibility-first desktop UX, serious editor workflows, and stronger modular architecture introduced in 2.0.0.
       - New compare and merge workflow, structured data tools, Large File Mode banner, named sessions, macro library manager, and upgraded local history review.
       - New split-view polish, portable mode storage support, workspace insights, and clearer plugin health reporting.
